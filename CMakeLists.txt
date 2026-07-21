@@ -1,7 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
-project(Megajump C)
+project(Boing C)
 
 set(CMAKE_C_STANDARD 99)
+
+# Size is the hard constraint (<= 1.44MB), so default to a size-optimized build
+# and strip the binary. `build/` alone now produces the shippable executable.
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE MinSizeRel)
+endif()
 
 # 1. Add raylib from your local subdirectory
 # This automatically configures raylib's own targets
@@ -27,4 +33,11 @@ if(APPLE)
         "-framework CoreVideo"
         "-framework OpenGL"
     )
+endif()
+
+# Strip symbols after linking so the measured size is the shipped size (but keep
+# them for a Debug override so it stays debuggable).
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_STRIP} $<TARGET_FILE:${PROJECT_NAME}>)
 endif()

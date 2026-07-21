@@ -20,7 +20,8 @@ Player createPlayer(void) {
       .acceleration = {0.0f, GRAVITY},
       .radius = PLAYER_RADIUS,
       .trailHead = 0,
-      .character = {CANDY_PINK, CANDY_PINK_DK, BELLY},
+      .character = {CANDY_PINK, CANDY_PINK_DK},
+      .expression = EXPR_HAPPY,
       .attractTimer = 0.0f,
       .attractTarget = SCREEN_WIDTH / 2.0f,
   };
@@ -128,10 +129,9 @@ void drawPlayer(const Player *player) {
   // Soft glow.
   DrawEllipse(px, py, rx * 1.25f, ry * 1.25f, Fade(c.body, 0.25f));
 
-  // Body (layered ellipses fake a gradient) + belly highlight.
+  // Body (layered ellipses fake a gradient).
   DrawEllipse(px, py, rx, ry, c.bodyDark);
   DrawEllipse(px, py - ry * 0.12f, rx * 0.82f, ry * 0.82f, c.body);
-  DrawEllipse(px, py + ry * 0.30f, rx * 0.5f, ry * 0.38f, c.belly);
 
   // Googly eyes; pupils lean toward the direction of motion.
   float ex = rx * 0.38f;
@@ -142,4 +142,21 @@ void drawPlayer(const Player *player) {
   DrawCircle(px + ex, py + ey, r * 0.2f, RAYWHITE);
   DrawCircle(px - ex + pupx, py + ey + pupy, r * 0.1f, BLACK);
   DrawCircle(px + ex + pupx, py + ey + pupy, r * 0.1f, BLACK);
+
+  // Mouth, below the eyes. DrawRing angle 0 is at 3 o'clock, +angle sweeps
+  // clockwise (down); a smile is the bottom arc below its center, a frown the
+  // top arc above its center.
+  float mw = r * 0.34f, th = r * 0.09f; // half-width & line thickness
+  switch (player->expression) {
+  case EXPR_HAPPY:
+    DrawRing((Vector2){px, py + ry * 0.16f}, mw - th, mw, 25, 155, 24, MOUTH);
+    break;
+  case EXPR_SAD:
+    DrawRing((Vector2){px, py + ry * 0.52f}, mw - th, mw, 205, 335, 24, MOUTH);
+    break;
+  case EXPR_NEUTRAL:
+    DrawLineEx((Vector2){px - mw * 0.7f, py + ry * 0.34f},
+               (Vector2){px + mw * 0.7f, py + ry * 0.34f}, th, MOUTH);
+    break;
+  }
 }

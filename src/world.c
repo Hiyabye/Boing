@@ -201,6 +201,7 @@ static void collectCoins(World *world, Player *player) {
       world->coins[i].active = false;
       world->coinsCollected++;
       player->velocity.y = COIN_BOOST;
+      player->expression = EXPR_HAPPY;
       sfxCoin();
     }
   }
@@ -261,6 +262,7 @@ static void updateMonsters(World *world, Player *player) {
       } else {
         world->dead = true;
         world->shake = SHAKE_HIT;
+        player->expression = EXPR_SAD; // frozen sad face carries into GAME OVER
         sfxHit();
       }
     }

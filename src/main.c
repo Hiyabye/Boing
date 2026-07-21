@@ -25,6 +25,7 @@ typedef struct {
   float accumulator; // fixed-timestep carry
   bool mouseControl; // true once the mouse moves; arrows reclaim control
   bool quit;         // set by the menu EXIT button to end the loop
+  bool showHelp;     // menu "How to Play" overlay toggled by the ? button
 } Game;
 
 #define FIXED_DT (1.0f / 60.0f)
@@ -45,6 +46,8 @@ static Rectangle centeredBtn(float y, float w, float h) {
   return (Rectangle){SCREEN_WIDTH / 2.0f - w / 2.0f, y, w, h};
 }
 static Rectangle rPauseBtn(void) { return (Rectangle){SCREEN_WIDTH - 54, 10, 44, 44}; }
+static Rectangle rHelpBtn(void) { return (Rectangle){10, 10, 44, 44}; }
+static Rectangle rHelpClose(void) { return centeredBtn(SCREEN_HEIGHT / 2.0f + 168, 180, 54); }
 static Rectangle rMenuPlay(void) { return centeredBtn(424, 240, 62); }
 static Rectangle rMenuSettings(void) { return centeredBtn(498, 240, 54); }
 static Rectangle rMenuExit(void) { return centeredBtn(564, 240, 54); }
@@ -109,8 +112,45 @@ static void startGame(Game *g, bool fromMenu) {
 // ---------------------------------------------------------------------------
 // Per-state update handlers
 // ---------------------------------------------------------------------------
+// Static "How to Play" lines — concise, no interactive walkthrough.
+static const char *HELP_LINES[] = {
+    "Move:  arrow keys or mouse",
+    "Grab coins to launch higher",
+    "Bounce off the cloud platforms",
+    "Dodge the grape monsters",
+    "Magnet & Rocket power-ups boost you",
+    "Never fall below the screen",
+};
+#define HELP_LINE_COUNT ((int)(sizeof(HELP_LINES) / sizeof(HELP_LINES[0])))
+
+static void drawHelpOverlay(void) {
+  DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.55f));
+  Rectangle panel = {SCREEN_WIDTH / 2.0f - 300, 180, 600, 420};
+  DrawRectangleRounded(panel, 0.08f, 12, Fade(BLACK, 0.55f));
+  DrawRectangleRoundedLines(panel, 0.08f, 12, CANDY_PINK);
+  drawCenteredText("HOW TO PLAY", 210, 48, CANDY_PINK);
+  int y = 300;
+  for (int i = 0; i < HELP_LINE_COUNT; i++) {
+    drawCenteredText(HELP_LINES[i], y, 26, RAYWHITE);
+    y += 44;
+  }
+  uiButton(rHelpClose(), "GOT IT", ICON_PLAY);
+}
+
 static void updateMenu(Game *g) {
   updateAttract(&g->player); // demo: blob wanders the menu
+  if (g->showHelp) {         // modal open: only close-input is live
+    if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) || clicked(rHelpClose())) {
+      g->showHelp = false;
+      sfxSelect();
+    }
+    return;
+  }
+  if (clicked(rHelpBtn())) {
+    g->showHelp = true;
+    sfxSelect();
+    return;
+  }
   if (IsKeyPressed(KEY_SPACE) || clicked(rMenuPlay())) {
     startGame(g, true);
   } else if (IsKeyPressed(KEY_S) || clicked(rMenuSettings())) {
@@ -147,6 +187,7 @@ static void updatePlaying(Game *g) {
     updatePlayer(&g->player);
     updateWorld(&g->world, &g->player);
     if (isPlayerFallen(&g->world, &g->player) || worldDead(&g->world)) {
+      g->player.expression = EXPR_SAD; // sad face through the game-over screen
       int score = getScore(&g->world);
       if (score > g->highScore) {
         g->highScore = score;
@@ -189,12 +230,16 @@ static void drawMenu(Game *g) {
   drawGround(); // so the attract blob stands on grass, like gameplay
   drawPlayer(&g->player); // the wandering attract blob
   int bob = (int)(sinf((float)GetTime() * 2.0f) * 10.0f);
-  drawCenteredText("MEGA JUMP", SCREEN_HEIGHT / 4 + bob, 80, CANDY_PINK);
+  drawCenteredText("BOING!", SCREEN_HEIGHT / 4 + bob, 80, CANDY_PINK);
   drawCenteredText(TextFormat("BEST %d", g->highScore), SCREEN_HEIGHT / 4 + 100,
                    24, COIN_LO);
   uiButton(rMenuPlay(), "PLAY", ICON_PLAY);
   uiButton(rMenuSettings(), "SETTINGS", ICON_GEAR);
   uiButton(rMenuExit(), "EXIT", ICON_EXIT);
+  uiButton(rHelpBtn(), "?", ICON_NONE);
+  if (g->showHelp) {
+    drawHelpOverlay();
+  }
 }
 
 // Shared by PLAYING / PAUSED / GAMEOVER: the world, then state-specific overlay.
@@ -258,7 +303,7 @@ static const struct {
 };
 
 int main(void) {
-  InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Mega Jump");
+  InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Boing!");
   SetExitKey(KEY_NULL); // Esc leaves the settings menu, it doesn't quit
 
   AudioStream stream;

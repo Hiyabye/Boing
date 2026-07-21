@@ -10,8 +10,15 @@
 typedef struct Character {
   Color body;     // main fill
   Color bodyDark; // outline / gradient base
-  Color belly;    // belly highlight
 } Character;
+
+// Face mouth shape. Drives drawPlayer's mouth so future code can react to game
+// events (bounce = happy, hit = sad, …) by setting player->expression.
+typedef enum {
+  EXPR_HAPPY, // smile (default)
+  EXPR_NEUTRAL,
+  EXPR_SAD, // frown
+} Expression;
 
 typedef struct Player {
   Vector2 position;
@@ -21,6 +28,7 @@ typedef struct Player {
   Vector2 trail[TRAIL_LEN]; // recent positions for the motion trail
   int trailHead;            // next slot to write (also the oldest sample)
   Character character;      // colors drawPlayer renders with
+  Expression expression;    // current face; drawPlayer renders the mouth
   float attractTimer;       // menu-demo: time until next wander target
   float attractTarget;      // menu-demo: x the blob is strolling toward
 } Player;

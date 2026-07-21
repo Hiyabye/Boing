@@ -1,6 +1,8 @@
-# Mega Jump
+# Boing!
 
-C99 + [raylib](https://www.raylib.com/)로 만든 수직 점프 게임. raylib은
+C99 + [raylib](https://www.raylib.com/)로 만든 수직 점프 게임.
+["Mega Jump"](https://www.halfbrick.com/games/megajump)(Halfbrick)에서 장르적
+영감을 받았으나, 코드·아트·오디오·이름은 모두 독자 제작이다. raylib은
 `lib/raylib/`에 git 서브모듈로 고정되어 CMake 서브디렉터리로 소스에서 함께
 빌드되므로 따로 설치할 시스템 의존성이 없다. (일반 `git clone`으로는
 서브모듈이 비어 있으니 아래 빌드 절차를 따를 것.)
@@ -33,8 +35,8 @@ git clone --recurse-submodules <repo-url>
 git submodule update --init
 
 cmake -S . -B build      # 최초 1회, 또는 .c 파일 추가/삭제 후
-cmake --build build      # ./build/Megajump 생성
-./build/Megajump
+cmake --build build      # ./build/Boing 생성
+./build/Boing
 ```
 
 `CMakeLists.txt`가 `src/*.c`를 glob하므로 `.c` 파일을 추가/삭제하면
@@ -43,11 +45,8 @@ OpenGL 프레임워크가 자동으로 링크된다.
 
 ## 크기 확인
 
-기본 빌드는 최적화가 없어 ~2.2MB다. 실제 크기는 크기 최적화 빌드로 잰다:
+기본 빌드가 `MinSizeRel` + strip이라 `build/Boing`이 곧 배포 크기다:
 
 ```sh
-cmake -S . -B build-minsize -DCMAKE_BUILD_TYPE=MinSizeRel
-cmake --build build-minsize
-strip build-minsize/Megajump
-ls -l build-minsize/Megajump   # stripped ~1.03MB
+ls -l build/Boing   # stripped ~1.05MB (1,047,608 B), 한도 1,474,560 B
 ```
