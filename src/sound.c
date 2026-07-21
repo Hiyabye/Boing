@@ -12,31 +12,122 @@
 #define LOOP_SAMPLES ((int)(LOOP_DURATION * SAMPLE_RATE))
 
 // Note frequencies (Hz), scientific pitch notation.
-#define E2 82.41f
-#define GS2 103.83f
-#define A2 110.00f
-#define B2 123.47f
-#define C3 130.81f
-#define D3 146.83f
-#define E3 164.81f
-#define GS3 207.65f
-#define A3 220.00f
-#define B3 246.94f
-#define GS4 415.30f
-#define A4 440.00f
-#define B4 493.88f
-#define C4 261.63f
-#define D4 293.66f
-#define E4 329.62f
-#define G4 392.00f
-#define C5 523.25f
-#define D5 587.33f
-#define E5 659.25f
-#define F5 698.46f
-#define G5 783.99f
-#define GS5 830.61f
-#define A5 880.00f
-#define C6 1046.5f
+static const float C0 = 16.35f;
+static const float CS0 = 17.32f;
+static const float D0 = 18.35f;
+static const float DS0 = 19.45f;
+static const float E0 = 20.60f;
+static const float F0 = 21.83f;
+static const float FS0 = 23.12f;
+static const float G0 = 24.50f;
+static const float GS0 = 25.96f;
+static const float A0 = 27.50f;
+static const float AS0 = 29.14f;
+static const float B0 = 30.87f;
+
+static const float C1 = 32.70f;
+static const float CS1 = 34.65f;
+static const float D1 = 36.71f;
+static const float DS1 = 38.89f;
+static const float E1 = 41.20f;
+static const float F1 = 43.65f;
+static const float FS1 = 46.25f;
+static const float G1 = 49.00f;
+static const float GS1 = 51.91f;
+static const float A1 = 55.00f;
+static const float AS1 = 58.27f;
+static const float B1 = 61.74f;
+
+static const float C2 = 65.41f;
+static const float CS2 = 69.30f;
+static const float D2 = 73.42f;
+static const float DS2 = 77.78f;
+static const float E2 = 82.41f;
+static const float F2 = 87.31f;
+static const float FS2 = 92.50f;
+static const float G2 = 98.00f;
+static const float GS2 = 103.83f;
+static const float A2 = 110.00f;
+static const float AS2 = 116.54f;
+static const float B2 = 123.47f;
+
+static const float C3 = 130.81f;
+static const float CS3 = 138.59f;
+static const float D3 = 146.83f;
+static const float DS3 = 155.56f;
+static const float E3 = 164.81f;
+static const float F3 = 174.61f;
+static const float FS3 = 185.00f;
+static const float G3 = 196.00f;
+static const float GS3 = 207.65f;
+static const float A3 = 220.00f;
+static const float AS3 = 233.08f;
+static const float B3 = 246.94f;
+
+static const float C4 = 261.63f;
+static const float CS4 = 277.18f;
+static const float D4 = 293.66f;
+static const float DS4 = 311.13f;
+static const float E4 = 329.63f;
+static const float F4 = 349.23f;
+static const float FS4 = 369.99f;
+static const float G4 = 392.00f;
+static const float GS4 = 415.30f;
+static const float A4 = 440.00f;
+static const float AS4 = 466.16f;
+static const float B4 = 493.88f;
+
+static const float C5 = 523.25f;
+static const float CS5 = 554.37f;
+static const float D5 = 587.33f;
+static const float DS5 = 622.25f;
+static const float E5 = 659.25f;
+static const float F5 = 698.46f;
+static const float FS5 = 739.99f;
+static const float G5 = 783.99f;
+static const float GS5 = 830.61f;
+static const float A5 = 880.00f;
+static const float AS5 = 932.33f;
+static const float B5 = 987.77f;
+
+static const float C6 = 1046.50f;
+static const float CS6 = 1108.73f;
+static const float D6 = 1174.66f;
+static const float DS6 = 1244.51f;
+static const float E6 = 1318.51f;
+static const float F6 = 1396.91f;
+static const float FS6 = 1479.98f;
+static const float G6 = 1567.98f;
+static const float GS6 = 1661.22f;
+static const float A6 = 1760.00f;
+static const float AS6 = 1864.66f;
+static const float B6 = 1975.53f;
+
+static const float C7 = 2093.00f;
+static const float CS7 = 2217.46f;
+static const float D7 = 2349.32f;
+static const float DS7 = 2489.00f;
+static const float E7 = 2637.00f;
+static const float F7 = 2793.83f;
+static const float FS7 = 2959.96f;
+static const float G7 = 3135.96f;
+static const float GS7 = 3322.44f;
+static const float A7 = 3520.00f;
+static const float AS7 = 3729.31f;
+static const float B7 = 3951.00f;
+
+static const float C8 = 4186.00f;
+static const float CS8 = 4434.92f;
+static const float D8 = 4698.63f;
+static const float DS8 = 4978.00f;
+static const float E8 = 5274.00f;
+static const float F8 = 5587.65f;
+static const float FS8 = 5919.90f;
+static const float G8 = 6271.93f;
+static const float GS8 = 6644.88f;
+static const float A8 = 7040.00f;
+static const float AS8 = 7458.62f;
+static const float B8 = 7902.13f;
 
 struct Note {
   float frequency;

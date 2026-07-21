@@ -42,9 +42,8 @@
 //              duration color       label     weight shake        invincible
 const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
     // HUD timer-bar colors are fixed (not themed): the table is static config.
-    [POWERUP_MAGNET] = {300.0f, SKYBLUE, "MAGNET", 1, 0.0f, false}, // ~5s
-    [POWERUP_ROCKET] = {90.0f, ORANGE, "ROCKET", 1, SHAKE_LAUNCH,
-                        true}, // ~1.5s
+    [POWERUP_MAGNET] = {600.0f, SKYBLUE, "MAGNET", 1, 0.0f, false}, // ~10s
+    [POWERUP_ROCKET] = {120.0f, ORANGE, "ROCKET", 1, SHAKE_LAUNCH, true}, // ~2s
 };
 
 float worldCameraY(const World *world) { return world->cameraY; }
@@ -268,7 +267,8 @@ static void updateMonsters(World *world, Player *player) {
         sfxBounce();
       } else {
         // Mega-Jump-style: a hit costs coins (they scatter out) and knocks you
-        // down + pops the monster, but does NOT kill — only a fall ends the run.
+        // down + pops the monster, but does NOT kill — only a fall ends the
+        // run.
         int lost = world->coinsCollected < MONSTER_COIN_LOSS
                        ? world->coinsCollected
                        : MONSTER_COIN_LOSS;
