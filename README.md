@@ -14,7 +14,7 @@ C99 + [raylib](https://www.raylib.com/)로 만든 수직 점프 게임.
 ## 구조
 
 ```
-1.44MB/
+Boing/
 ├── src/                # 구현부
 │   ├── main.c          # 게임 루프 + GameState 머신, HUD/오버레이
 │   ├── player.c        # 플레이어 물리(중력, 입력, 스쿼시&스트레치)
@@ -30,7 +30,7 @@ C99 + [raylib](https://www.raylib.com/)로 만든 수직 점프 게임.
 
 ```sh
 # 처음 받을 때는 서브모듈(raylib)까지 함께 클론:
-git clone --recurse-submodules <repo-url>
+git clone --recurse-submodules https://github.com/Hiyabye/Boing.git
 # 이미 일반 clone 했다면:
 git submodule update --init
 
@@ -48,5 +48,5 @@ OpenGL 프레임워크가 자동으로 링크된다.
 기본 빌드가 `MinSizeRel` + strip이라 `build/Boing`이 곧 배포 크기다:
 
 ```sh
-ls -l build/Boing   # stripped ~1.05MB (1,047,608 B), 한도 1,474,560 B
+ls -l build/Boing   # stripped ~1.06MB (1,064,312 B), 한도 1,474,560 B
 ```
