@@ -869,9 +869,7 @@ static float renderVoice(int type, int pos) {
   bool arc = (curTrack == 1);
   switch (type) {
   case SFX_COIN: // rising two-note blip (brighter on arcade)
-    s = square(pos < len / 2 ? (arc ? 1174.66f : 987.77f)
-                             : (arc ? 1567.98f : 1318.51f),
-               t);
+    s = square(pos < len / 2 ? (arc ? D6 : B5) : (arc ? G6 : E6), t);
     break;
   case SFX_BOUNCE: { // downward pitch sweep "boing"
     float f = 400.0f - 280.0f * (float)pos / len;
@@ -879,8 +877,8 @@ static float renderVoice(int type, int pos) {
     break;
   }
   case SFX_POWERUP: { // rising arpeggio
-    static const float natNotes[3] = {523.25f, 659.25f, 783.99f};  // C5 E5 G5
-    static const float arcNotes[3] = {659.25f, 987.77f, 1318.51f}; // E5 B5 E6
+    static const float natNotes[3] = {C5, E5, G5};
+    static const float arcNotes[3] = {E5, B5, E6};
     const float *notes = arc ? arcNotes : natNotes;
     int k = pos * 3 / len;
     s = square(notes[k > 2 ? 2 : k], t);
@@ -896,8 +894,8 @@ static float renderVoice(int type, int pos) {
   case SFX_SELECT:
     s = square(arc ? 880.0f : 660.0f, t);
     break;
-  case SFX_LEVELUP: { // triumphant rising fanfare (C5 E5 G5 C6), full major
-    static const float notes[4] = {523.25f, 659.25f, 783.99f, 1046.50f};
+  case SFX_LEVELUP: { // triumphant rising fanfare, full major
+    static const float notes[4] = {C5, E5, G5, C6};
     int k = pos * 4 / len;
     s = square(notes[k > 3 ? 3 : k], t);
     break;

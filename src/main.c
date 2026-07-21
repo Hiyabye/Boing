@@ -86,8 +86,8 @@ static void drawHud(const World *world) {
   themeBlend(&lo, &hi, &f);
   float pw = 360, ph = 12, px = (SCREEN_WIDTH - pw) / 2.0f, py = 30;
   const char *lvlStr = TextFormat("LEVEL %d", worldLevel(world) + 1);
-  drawTextShadow(lvlStr, (int)(SCREEN_WIDTH - MeasureText(lvlStr, 18)) / 2, 8, 18,
-                 RAYWHITE);
+  drawTextShadow(lvlStr, (int)(SCREEN_WIDTH - MeasureText(lvlStr, 18)) / 2, 8,
+                 18, RAYWHITE);
   DrawRectangleRounded((Rectangle){px, py, pw, ph}, 0.9f, 8, Fade(BLACK, 0.3f));
   DrawRectangleRounded((Rectangle){px, py, pw * f, ph}, 0.9f, 8,
                        Fade(COIN_HI, 0.9f));
