@@ -40,8 +40,9 @@
 // Power-up table (indexed by PowerUpType). Ordered exactly as the enum.
 //              duration color       label     weight shake        invincible
 const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
+    // HUD timer-bar colors are fixed (not themed): the table is static config.
     [POWERUP_MAGNET] = {300.0f, SKYBLUE, "MAGNET", 1, 0.0f, false}, // ~5s
-    [POWERUP_ROCKET] = {90.0f, ROCKET_FIN, "ROCKET", 1, SHAKE_LAUNCH,
+    [POWERUP_ROCKET] = {90.0f, ORANGE, "ROCKET", 1, SHAKE_LAUNCH,
                         true}, // ~1.5s
 };
 
@@ -151,9 +152,6 @@ static void spawnPowerups(World *world) {
   }
 }
 
-static const Color CONFETTI[] = CONFETTI_COLORS;
-#define CONFETTI_COUNT ((int)(sizeof(CONFETTI) / sizeof(CONFETTI[0])))
-
 static void spawnParticles(World *world, Vector2 at, Color color, int count,
                            bool confetti) {
   int made = 0;
@@ -164,7 +162,7 @@ static void spawnParticles(World *world, Vector2 at, Color color, int count,
     float a = GetRandomValue(0, 628) / 100.0f; // 0..2π
     float sp = GetRandomValue(2, 7);
     Color c =
-        confetti ? CONFETTI[GetRandomValue(0, CONFETTI_COUNT - 1)] : color;
+        confetti ? gTheme.confetti[GetRandomValue(0, 5)] : color; // 6 colors
     world->particles[i] = (Particle){
         at, {cosf(a) * sp, sinf(a) * sp - 2.0f}, 1.0f, c}; // slight pop upward
     made++;

@@ -323,6 +323,8 @@ int main(void) {
   AudioStream stream;
   initAudio(&stream);
 
+  themeUpdate(0.0f); // seed gTheme so createPlayer reads the nature palette
+
   Game game = {
       .state = GAMESTATE_MENU,
       .prevState = GAMESTATE_MENU,
@@ -341,6 +343,7 @@ int main(void) {
   while (!WindowShouldClose() && !game.quit) {
     updateAudio(&stream);
     STATES[game.state].update(&game);
+    setTrack(themeTrack()); // music follows the theme the draw pass resolved
 
     BeginTextureMode(target);
     STATES[game.state].draw(&game);

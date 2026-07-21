@@ -7,6 +7,10 @@ void initAudio(AudioStream *stream);
 void updateAudio(AudioStream *stream);
 void deinitAudio(AudioStream *stream);
 
+// Select the music/SFX track; starts a crossfade from the current one. Themes
+// drive this via themeTrack() (see theme.h); no-op if already on `track`.
+void setTrack(int track);
+
 // Procedural sound effects (synthesized in C, mixed into the music stream).
 void sfxCoin(void);
 void sfxBounce(void);
