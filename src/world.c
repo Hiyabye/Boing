@@ -28,7 +28,6 @@
 #define MAGNET_RADIUS 260.0f    // coins within this get pulled
 #define MAGNET_PULL 6.0f        // px/frame toward the player
 #define ROCKET_VELOCITY -34.0f  // upward thrust while active
-// MAGNET_DURATION / ROCKET_DURATION live in world.h — shared with the HUD.
 #define PARTICLE_GRAVITY 0.3f
 #define PARTICLE_DECAY 0.03f
 #define SHAKE_HIT 14.0f   // screen shake on a monster hit
@@ -36,6 +35,30 @@
 #define SHAKE_DECAY 0.85f // per-frame shake falloff
 #define FLASH_DECAY 0.08f // pop-ring fade per frame
 #define DEATH_DROP 450.0f // how far below the peak view the camera chases a fall
+
+// Power-up table (indexed by PowerUpType). Ordered exactly as the enum.
+//              duration color       label     weight shake        invincible
+const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
+    [POWERUP_MAGNET] = {300.0f, SKYBLUE, "MAGNET", 1, 0.0f, false},        // ~5s
+    [POWERUP_ROCKET] = {90.0f, ROCKET_FIN, "ROCKET", 1, SHAKE_LAUNCH, true}, // ~1.5s
+};
+
+float worldCameraY(const World *world) { return world->cameraY; }
+float worldShake(const World *world) { return world->shake; }
+bool worldDead(const World *world) { return world->dead; }
+
+float worldPowerTimer(const World *world, PowerUpType type) {
+  return world->powerTimer[type];
+}
+
+bool worldInvincible(const World *world) {
+  for (int t = 0; t < POWERUP_COUNT; t++) {
+    if (world->powerTimer[t] > 0.0f && POWERUP_DEFS[t].invincible) {
+      return true;
+    }
+  }
+  return false;
+}
 
 World createWorld(void) {
   World world = {0};
@@ -108,7 +131,17 @@ static void spawnPowerups(World *world) {
         continue;
       }
       float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
-      PowerUpType t = GetRandomValue(0, 1) ? POWERUP_ROCKET : POWERUP_MAGNET;
+      // Weighted pick over POWERUP_DEFS[].spawnWeight.
+      int total = 0;
+      for (int k = 0; k < POWERUP_COUNT; k++) {
+        total += POWERUP_DEFS[k].spawnWeight;
+      }
+      int roll = GetRandomValue(0, total - 1);
+      PowerUpType t = 0;
+      while (t < POWERUP_COUNT - 1 && roll >= POWERUP_DEFS[t].spawnWeight) {
+        roll -= POWERUP_DEFS[t].spawnWeight;
+        t++;
+      }
       world->powerups[i] = (PowerUp){{x, world->powerupSpawnY}, t, true};
       break;
     }
@@ -117,6 +150,7 @@ static void spawnPowerups(World *world) {
 }
 
 static const Color CONFETTI[] = CONFETTI_COLORS;
+#define CONFETTI_COUNT ((int)(sizeof(CONFETTI) / sizeof(CONFETTI[0])))
 
 static void spawnParticles(World *world, Vector2 at, Color color, int count,
                            bool confetti) {
@@ -135,32 +169,24 @@ static void spawnParticles(World *world, Vector2 at, Color color, int count,
   }
 }
 
+// Deactivate any element of world->arr[] that has dropped `margin` past the
+// bottom cull line. Assumes locals `world` and `cullY`.
+#define CULL(arr, count, margin)                                               \
+  for (int i = 0; i < (count); i++) {                                          \
+    if (world->arr[i].active &&                                                \
+        world->arr[i].position.y > cullY + (margin)) {                         \
+      world->arr[i].active = false;                                            \
+    }                                                                          \
+  }
+
 static void cullBelowView(World *world) {
   float cullY = world->cameraY + SCREEN_HEIGHT + COIN_RADIUS;
-  for (int i = 0; i < MAX_COINS; i++) {
-    if (world->coins[i].active && world->coins[i].position.y > cullY) {
-      world->coins[i].active = false;
-    }
-  }
-  for (int i = 0; i < MAX_PLATFORMS; i++) {
-    if (world->platforms[i].active &&
-        world->platforms[i].position.y > cullY + PLATFORM_HEIGHT) {
-      world->platforms[i].active = false;
-    }
-  }
-  for (int i = 0; i < MAX_MONSTERS; i++) {
-    if (world->monsters[i].active &&
-        world->monsters[i].position.y > cullY + MONSTER_RADIUS) {
-      world->monsters[i].active = false;
-    }
-  }
-  for (int i = 0; i < MAX_POWERUPS; i++) {
-    if (world->powerups[i].active &&
-        world->powerups[i].position.y > cullY + POWERUP_RADIUS) {
-      world->powerups[i].active = false;
-    }
-  }
+  CULL(coins, MAX_COINS, 0.0f);
+  CULL(platforms, MAX_PLATFORMS, PLATFORM_HEIGHT);
+  CULL(monsters, MAX_MONSTERS, MONSTER_RADIUS);
+  CULL(powerups, MAX_POWERUPS, POWERUP_RADIUS);
 }
+#undef CULL
 
 static void collectCoins(World *world, Player *player) {
   for (int i = 0; i < MAX_COINS; i++) {
@@ -205,13 +231,10 @@ static void collectPowerups(World *world, const Player *player) {
     }
     if (CheckCollisionCircles(player->position, player->radius,
                               world->powerups[i].position, POWERUP_RADIUS)) {
+      PowerUpType t = world->powerups[i].type;
       world->powerups[i].active = false;
-      if (world->powerups[i].type == POWERUP_MAGNET) {
-        world->magnetTimer = MAGNET_DURATION;
-      } else {
-        world->rocketTimer = ROCKET_DURATION;
-        world->shake = SHAKE_LAUNCH;
-      }
+      world->powerTimer[t] = POWERUP_DEFS[t].duration;
+      world->shake = fmaxf(world->shake, POWERUP_DEFS[t].pickupShake);
       sfxPowerup();
     }
   }
@@ -230,8 +253,8 @@ static void updateMonsters(World *world, Player *player) {
     }
     if (CheckCollisionCircles(player->position, player->radius, m->position,
                               MONSTER_RADIUS)) {
-      if (world->rocketTimer > 0.0f) {
-        // Invincible on rocket: plow through, splatter the monster.
+      if (worldInvincible(world)) {
+        // Invincible (rocket etc.): plow through, splatter the monster.
         spawnParticles(world, m->position, GRAPE, 12, false);
         m->active = false;
         sfxBounce();
@@ -296,14 +319,19 @@ void updateWorld(World *world, Player *player) {
   bounceOnPlatforms(world, player);
   collectPowerups(world, player);
 
-  if (world->magnetTimer > 0.0f) {
+  // Per-type active effects (the physics is inherently type-specific)...
+  if (world->powerTimer[POWERUP_MAGNET] > 0.0f) {
     applyMagnet(world, player);
-    world->magnetTimer -= 1.0f;
   }
   collectCoins(world, player);
-  if (world->rocketTimer > 0.0f) {
+  if (world->powerTimer[POWERUP_ROCKET] > 0.0f) {
     player->velocity.y = ROCKET_VELOCITY;
-    world->rocketTimer -= 1.0f;
+  }
+  // ...then tick every power-up timer down uniformly.
+  for (int t = 0; t < POWERUP_COUNT; t++) {
+    if (world->powerTimer[t] > 0.0f) {
+      world->powerTimer[t] -= 1.0f;
+    }
   }
 
   updateMonsters(world, player);
@@ -412,26 +440,21 @@ void drawWorld(const World *world) {
 
   drawGround();
 
-  for (int i = 0; i < MAX_PLATFORMS; i++) {
-    if (world->platforms[i].active) {
-      drawCloudPad(world->platforms[i].position);
-    }
-  }
-  for (int i = 0; i < MAX_COINS; i++) {
-    if (world->coins[i].active) {
-      drawCoin(world->coins[i].position, t);
-    }
-  }
-  for (int i = 0; i < MAX_POWERUPS; i++) {
-    if (world->powerups[i].active) {
-      drawPowerUp(&world->powerups[i], t);
-    }
-  }
-  for (int i = 0; i < MAX_MONSTERS; i++) {
-    if (world->monsters[i].active) {
-      drawMonster(world->monsters[i].position, t);
-    }
-  }
+  // Iterate active elements of world->arr[]. Assumes local `world`.
+#define FOREACH_ACTIVE(arr, count, i)                                          \
+  for (int i = 0; i < (count); i++)                                            \
+    if (world->arr[i].active)
+
+  FOREACH_ACTIVE(platforms, MAX_PLATFORMS, i)
+  drawCloudPad(world->platforms[i].position);
+  FOREACH_ACTIVE(coins, MAX_COINS, i)
+  drawCoin(world->coins[i].position, t);
+  FOREACH_ACTIVE(powerups, MAX_POWERUPS, i)
+  drawPowerUp(&world->powerups[i], t);
+  FOREACH_ACTIVE(monsters, MAX_MONSTERS, i)
+  drawMonster(world->monsters[i].position, t);
+
+#undef FOREACH_ACTIVE
 
   // Particles as spinning confetti flecks (on top).
   for (int i = 0; i < MAX_PARTICLES; i++) {

@@ -20,11 +20,20 @@ Player createPlayer(void) {
       .acceleration = {0.0f, GRAVITY},
       .radius = PLAYER_RADIUS,
       .trailHead = 0,
+      .character = {CANDY_PINK, CANDY_PINK_DK, BELLY},
+      .attractTimer = 0.0f,
+      .attractTarget = SCREEN_WIDTH / 2.0f,
   };
   for (int i = 0; i < TRAIL_LEN; i++) {
     p.trail[i] = p.position; // avoid a trail streaking from (0,0)
   }
   return p;
+}
+
+// Record the current position into the motion-trail ring buffer.
+static void pushTrail(Player *player) {
+  player->trail[player->trailHead] = player->position;
+  player->trailHead = (player->trailHead + 1) % TRAIL_LEN;
 }
 
 void handlePlayerInput(Player *player, float targetX) {
@@ -66,26 +75,23 @@ void updatePlayer(Player *player) {
 
   wrapHorizontal(player);
 
-  player->trail[player->trailHead] = player->position;
-  player->trailHead = (player->trailHead + 1) % TRAIL_LEN;
+  pushTrail(player);
 }
 
 // Menu demo: pick a new random target every ~1.5s, stroll toward it at a steady
 // pace, wrap the edges, and bob gently at the floor line.
 void updateAttract(Player *player) {
-  static float timer = 0.0f;
-  static float target = SCREEN_WIDTH / 2.0f;
-  timer -= GetFrameTime();
-  if (timer <= 0.0f) {
-    target = (float)GetRandomValue(0, SCREEN_WIDTH);
-    timer = 1.5f;
+  player->attractTimer -= GetFrameTime();
+  if (player->attractTimer <= 0.0f) {
+    player->attractTarget = (float)GetRandomValue(0, SCREEN_WIDTH);
+    player->attractTimer = 1.5f;
   }
 
   // Move toward the target, but stop within one step of it instead of
   // overshooting and flipping direction (which read as a sudden shake).
-  float d = target - player->position.x;
+  float d = player->attractTarget - player->position.x;
   if (fabsf(d) <= ATTRACT_SPEED) {
-    player->position.x = target;
+    player->position.x = player->attractTarget;
     player->velocity.x = 0.0f;
   } else {
     player->velocity.x = (d > 0.0f ? 1.0f : -1.0f) * ATTRACT_SPEED;
@@ -95,8 +101,7 @@ void updateAttract(Player *player) {
   player->position.y =
       FLOOR_Y - player->radius + sinf((float)GetTime() * 3.0f) * ATTRACT_BOB;
 
-  player->trail[player->trailHead] = player->position;
-  player->trailHead = (player->trailHead + 1) % TRAIL_LEN;
+  pushTrail(player);
 }
 
 void drawPlayer(const Player *player) {
@@ -109,22 +114,24 @@ void drawPlayer(const Player *player) {
   float rx = r * (1.0f - 0.5f * st);
   float ry = r * (1.0f + 0.5f * st);
 
+  Character c = player->character;
+
   // Motion trail: oldest (trailHead) faint & small, newest fuller.
   for (int k = 0; k < TRAIL_LEN; k++) {
     int idx = (player->trailHead + k) % TRAIL_LEN;
     float f = (float)(k + 1) / TRAIL_LEN;
     Vector2 tp = player->trail[idx];
     DrawEllipse(tp.x, tp.y, rx * f * 0.8f, ry * f * 0.8f,
-                Fade(CANDY_PINK, 0.22f * f));
+                Fade(c.body, 0.22f * f));
   }
 
   // Soft glow.
-  DrawEllipse(px, py, rx * 1.25f, ry * 1.25f, Fade(CANDY_PINK, 0.25f));
+  DrawEllipse(px, py, rx * 1.25f, ry * 1.25f, Fade(c.body, 0.25f));
 
   // Body (layered ellipses fake a gradient) + belly highlight.
-  DrawEllipse(px, py, rx, ry, CANDY_PINK_DK);
-  DrawEllipse(px, py - ry * 0.12f, rx * 0.82f, ry * 0.82f, CANDY_PINK);
-  DrawEllipse(px, py + ry * 0.30f, rx * 0.5f, ry * 0.38f, BELLY);
+  DrawEllipse(px, py, rx, ry, c.bodyDark);
+  DrawEllipse(px, py - ry * 0.12f, rx * 0.82f, ry * 0.82f, c.body);
+  DrawEllipse(px, py + ry * 0.30f, rx * 0.5f, ry * 0.38f, c.belly);
 
   // Googly eyes; pupils lean toward the direction of motion.
   float ex = rx * 0.38f;

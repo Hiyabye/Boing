@@ -2,6 +2,7 @@
 
 #include "background.h"
 #include "core.h"
+#include "persist.h"
 #include "player.h"
 #include "settings.h"
 #include "sound.h"
@@ -10,14 +11,13 @@
 #include "world.h"
 
 #include <math.h>
-#include <stdio.h>
 
 // ---------------------------------------------------------------------------
 // Game context — the whole mutable state, threaded through every FSM handler.
 // ---------------------------------------------------------------------------
 typedef struct {
   GameState state;
-  GameState settingsReturn; // where leaving the settings screen goes back to
+  GameState prevState; // the state we came from (settings returns here)
   Player player;
   World world;
   Settings settings;
@@ -29,17 +29,29 @@ typedef struct {
 
 #define FIXED_DT (1.0f / 60.0f)
 
+// Every state transition goes through here so `prevState` is always the screen
+// we came from — that's what SETTINGS returns to, replacing a hand-threaded
+// return field.
+static void gotoState(Game *g, GameState next) {
+  g->prevState = g->state;
+  g->state = next;
+}
+
 // Button rects, in virtual (800x800) space. Convention: each button is one rect
 // helper here, referenced by uiButton(rect,...) in a draw() handler and by
 // clicked(rect) in the matching update() handler — declare once, use in both.
+// A w-wide, h-tall button horizontally centered at row y.
+static Rectangle centeredBtn(float y, float w, float h) {
+  return (Rectangle){SCREEN_WIDTH / 2.0f - w / 2.0f, y, w, h};
+}
 static Rectangle rPauseBtn(void) { return (Rectangle){SCREEN_WIDTH - 54, 10, 44, 44}; }
-static Rectangle rMenuPlay(void) { return (Rectangle){SCREEN_WIDTH / 2.0f - 120, 424, 240, 62}; }
-static Rectangle rMenuSettings(void) { return (Rectangle){SCREEN_WIDTH / 2.0f - 120, 498, 240, 54}; }
-static Rectangle rMenuExit(void) { return (Rectangle){SCREEN_WIDTH / 2.0f - 120, 564, 240, 54}; }
+static Rectangle rMenuPlay(void) { return centeredBtn(424, 240, 62); }
+static Rectangle rMenuSettings(void) { return centeredBtn(498, 240, 54); }
+static Rectangle rMenuExit(void) { return centeredBtn(564, 240, 54); }
 static Rectangle rResume(void) { return (Rectangle){SCREEN_WIDTH / 2.0f - 172, SCREEN_HEIGHT / 2.0f + 40, 160, 56}; }
 static Rectangle rPauseSettings(void) { return (Rectangle){SCREEN_WIDTH / 2.0f + 12, SCREEN_HEIGHT / 2.0f + 40, 160, 56}; }
-static Rectangle rPauseHome(void) { return (Rectangle){SCREEN_WIDTH / 2.0f - 80, SCREEN_HEIGHT / 2.0f + 108, 160, 56}; }
-static Rectangle rRetry(void) { return (Rectangle){SCREEN_WIDTH / 2.0f - 100, SCREEN_HEIGHT * 2.0f / 3, 200, 60}; }
+static Rectangle rPauseHome(void) { return centeredBtn(SCREEN_HEIGHT / 2.0f + 108, 160, 56); }
+static Rectangle rRetry(void) { return centeredBtn(SCREEN_HEIGHT * 2.0f / 3, 200, 60); }
 
 // clicked(), drawTextShadow(), drawCenteredText() now live in the ui module.
 
@@ -50,17 +62,20 @@ static void drawHud(const World *world) {
                        0.4f, 8, Fade(BLACK, 0.28f));
   drawTextShadow(scoreStr, 20, 13, 30, RAYWHITE);
 
-  if (world->rocketTimer > 0.0f || world->magnetTimer > 0.0f) {
-    bool rocket = world->rocketTimer > 0.0f;
-    const char *label = rocket ? "ROCKET" : "MAGNET";
-    Color col = rocket ? ROCKET_FIN : SKYBLUE;
-    float frac = rocket ? world->rocketTimer / ROCKET_DURATION
-                        : world->magnetTimer / MAGNET_DURATION;
-    int bx = 12, by = 56, bw = 150;
+  // One timer bar per active power-up, stacked (magnet + rocket can overlap).
+  int bx = 12, by = 56, bw = 150;
+  for (PowerUpType t = 0; t < POWERUP_COUNT; t++) {
+    float timer = worldPowerTimer(world, t);
+    if (timer <= 0.0f) {
+      continue;
+    }
+    PowerUpDef d = POWERUP_DEFS[t];
+    float frac = timer / d.duration;
     DrawRectangleRounded((Rectangle){bx, by, bw, 26}, 0.5f, 8, Fade(BLACK, 0.3f));
     DrawRectangleRounded((Rectangle){bx, by, bw * frac, 26}, 0.5f, 8,
-                         Fade(col, 0.85f));
-    drawTextShadow(label, bx + 12, by + 4, 18, RAYWHITE);
+                         Fade(d.color, 0.85f));
+    drawTextShadow(d.label, bx + 12, by + 4, 18, RAYWHITE);
+    by += 32;
   }
 }
 
@@ -69,23 +84,11 @@ static void drawHud(const World *world) {
 // ---------------------------------------------------------------------------
 static int loadHighScore(void) {
   int best = 0;
-  FILE *f = fopen("highscore", "r");
-  if (f) {
-    if (fscanf(f, "%d", &best) != 1) {
-      best = 0;
-    }
-    fclose(f);
-  }
+  readInts("highscore", &best, 1); // keeps 0 on a missing/garbage file
   return best;
 }
 
-static void saveHighScore(int best) {
-  FILE *f = fopen("highscore", "w");
-  if (f) {
-    fprintf(f, "%d\n", best);
-    fclose(f);
-  }
-}
+static void saveHighScore(int best) { writeInts("highscore", &best, 1); }
 
 // ---------------------------------------------------------------------------
 // Transitions
@@ -99,7 +102,7 @@ static void startGame(Game *g, bool fromMenu) {
     g->player = createPlayer();
   }
   g->accumulator = 0.0f;
-  g->state = GAMESTATE_PLAYING;
+  gotoState(g, GAMESTATE_PLAYING);
   sfxSelect();
 }
 
@@ -111,8 +114,7 @@ static void updateMenu(Game *g) {
   if (IsKeyPressed(KEY_SPACE) || clicked(rMenuPlay())) {
     startGame(g, true);
   } else if (IsKeyPressed(KEY_S) || clicked(rMenuSettings())) {
-    g->settingsReturn = GAMESTATE_MENU;
-    g->state = GAMESTATE_SETTINGS;
+    gotoState(g, GAMESTATE_SETTINGS);
     sfxSelect();
   } else if (clicked(rMenuExit())) {
     g->quit = true;
@@ -121,7 +123,7 @@ static void updateMenu(Game *g) {
 
 static void updatePlaying(Game *g) {
   if (IsKeyPressed(KEY_P) || clicked(rPauseBtn())) {
-    g->state = GAMESTATE_PAUSED;
+    gotoState(g, GAMESTATE_PAUSED);
     return;
   }
   // Fixed 60Hz steps to catch up to real time; cap to avoid a spiral of death.
@@ -144,13 +146,13 @@ static void updatePlaying(Game *g) {
     handlePlayerInput(&g->player, mouseX);
     updatePlayer(&g->player);
     updateWorld(&g->world, &g->player);
-    if (isPlayerFallen(&g->world, &g->player) || g->world.dead) {
+    if (isPlayerFallen(&g->world, &g->player) || worldDead(&g->world)) {
       int score = getScore(&g->world);
       if (score > g->highScore) {
         g->highScore = score;
         saveHighScore(g->highScore);
       }
-      g->state = GAMESTATE_GAMEOVER;
+      gotoState(g, GAMESTATE_GAMEOVER);
       return;
     }
   }
@@ -158,14 +160,13 @@ static void updatePlaying(Game *g) {
 
 static void updatePaused(Game *g) {
   if (IsKeyPressed(KEY_P) || clicked(rResume())) {
-    g->state = GAMESTATE_PLAYING;
+    gotoState(g, GAMESTATE_PLAYING);
   } else if (IsKeyPressed(KEY_S) || clicked(rPauseSettings())) {
-    g->settingsReturn = GAMESTATE_PAUSED;
-    g->state = GAMESTATE_SETTINGS;
+    gotoState(g, GAMESTATE_SETTINGS);
     sfxSelect();
   } else if (clicked(rPauseHome())) {
     g->player = createPlayer(); // back to the menu's attract demo
-    g->state = GAMESTATE_MENU;
+    gotoState(g, GAMESTATE_MENU);
     sfxSelect();
   }
 }
@@ -177,7 +178,7 @@ static void updateGameover(Game *g) {
 }
 
 static void updateSettingsState(Game *g) {
-  updateSettingsMenu(&g->settings, &g->state, g->settingsReturn);
+  updateSettingsMenu(&g->settings, &g->state, g->prevState);
 }
 
 // ---------------------------------------------------------------------------
@@ -198,13 +199,14 @@ static void drawMenu(Game *g) {
 
 // Shared by PLAYING / PAUSED / GAMEOVER: the world, then state-specific overlay.
 static void drawPlay(Game *g) {
-  drawGameBackground(g->world.cameraY);
+  float cameraY = worldCameraY(&g->world), shake = worldShake(&g->world);
+  drawGameBackground(cameraY);
   float sx = 0.0f, sy = 0.0f;
-  if (g->world.shake > 0.0f) {
-    sx = GetRandomValue(-100, 100) / 100.0f * g->world.shake;
-    sy = GetRandomValue(-100, 100) / 100.0f * g->world.shake;
+  if (shake > 0.0f) {
+    sx = GetRandomValue(-100, 100) / 100.0f * shake;
+    sy = GetRandomValue(-100, 100) / 100.0f * shake;
   }
-  Camera2D camera = {.target = {sx, g->world.cameraY + sy}, .zoom = 1.0f};
+  Camera2D camera = {.target = {sx, cameraY + sy}, .zoom = 1.0f};
   BeginMode2D(camera);
   drawWorld(&g->world);
   drawPlayer(&g->player);
@@ -233,7 +235,7 @@ static void drawPlay(Game *g) {
 
 static void drawSettingsState(Game *g) {
   // Draw the return context underneath, then the settings overlay on top.
-  if (g->settingsReturn == GAMESTATE_MENU) {
+  if (g->prevState == GAMESTATE_MENU) {
     drawMenu(g);
   } else {
     drawPlay(g);
@@ -264,7 +266,7 @@ int main(void) {
 
   Game game = {
       .state = GAMESTATE_MENU,
-      .settingsReturn = GAMESTATE_MENU,
+      .prevState = GAMESTATE_MENU,
       .player = createPlayer(),
       .world = createWorld(),
       .settings = loadSettings(),

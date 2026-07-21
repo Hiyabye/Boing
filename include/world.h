@@ -12,11 +12,6 @@
 #define MAX_POWERUPS 4
 #define MAX_PARTICLES 64
 
-// Power-up durations (frames @60fps). Public so the HUD timer bar can compute
-// its fill fraction without duplicating them.
-#define MAGNET_DURATION 300.0f // ~5s
-#define ROCKET_DURATION 90.0f  // ~1.5s
-
 typedef struct Coin {
   Vector2 position;
   bool active;
@@ -33,7 +28,22 @@ typedef struct Monster {
   bool active;
 } Monster;
 
-typedef enum { POWERUP_MAGNET, POWERUP_ROCKET } PowerUpType;
+typedef enum { POWERUP_MAGNET, POWERUP_ROCKET, POWERUP_COUNT } PowerUpType;
+
+// Per-type behaviour, in one place so adding a power-up (Balloon/Shield/…) is a
+// new enum value + one table row — no hunting across spawn/collect/HUD sites.
+// The moment-to-moment *effect* (magnet pull, rocket thrust) is still coded
+// per-type in world.c; the table owns everything else.
+typedef struct PowerUpDef {
+  float duration;    // frames @60fps the effect lasts
+  Color color;       // HUD timer-bar color
+  const char *label; // HUD timer-bar label
+  int spawnWeight;   // relative spawn frequency vs other types
+  float pickupShake; // screen shake on pickup
+  bool invincible;   // grants monster immunity while active (worldInvincible)
+} PowerUpDef;
+
+extern const PowerUpDef POWERUP_DEFS[POWERUP_COUNT];
 
 typedef struct PowerUp {
   Vector2 position;
@@ -61,8 +71,7 @@ typedef struct World {
   float powerupSpawnY;  // next height at which to consider a power-up
   float lastSpawnX;     // previous coin x, so coins form a followable trail
   float bestY;          // highest point the player has reached (smallest y)
-  float magnetTimer;    // frames of coin-magnet remaining
-  float rocketTimer;    // frames of rocket thrust remaining
+  float powerTimer[POWERUP_COUNT]; // frames of each power-up remaining
   float shake;          // screen-shake magnitude, decays each frame
   Vector2 flashPos;     // where the last collect "pop" ring is centered
   float flash;          // pop-ring life, 1 at collect -> 0
@@ -76,5 +85,14 @@ void drawGround(void);
 void drawWorld(const World *world);
 bool isPlayerFallen(const World *world, const Player *player);
 int getScore(const World *world);
+
+// Accessors so callers (HUD/camera/loop) read state without poking World fields.
+// (C can't fully hide a stack struct without a heap/opaque pointer — overkill
+// here — so the fields stay public; these just keep main.c from reaching in.)
+float worldCameraY(const World *world);
+float worldShake(const World *world);
+bool worldDead(const World *world);
+float worldPowerTimer(const World *world, PowerUpType type);
+bool worldInvincible(const World *world); // any active power-up grants immunity
 
 #endif // WORLD_H

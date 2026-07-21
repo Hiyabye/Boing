@@ -89,3 +89,8 @@ Temporary Items
 
 # End of https://www.toptal.com/developers/gitignore/api/cmake,macos,visualstudiocode,git
 
+
+### Mega Jump ###
+build*/
+highscore
+settings

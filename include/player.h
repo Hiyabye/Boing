@@ -5,6 +5,14 @@
 
 #define TRAIL_LEN 8
 
+// Blob appearance. Kept separate from physics so multiple characters are just
+// different palettes over the same body-drawing code.
+typedef struct Character {
+  Color body;     // main fill
+  Color bodyDark; // outline / gradient base
+  Color belly;    // belly highlight
+} Character;
+
 typedef struct Player {
   Vector2 position;
   Vector2 velocity;
@@ -12,6 +20,9 @@ typedef struct Player {
   float radius;
   Vector2 trail[TRAIL_LEN]; // recent positions for the motion trail
   int trailHead;            // next slot to write (also the oldest sample)
+  Character character;      // colors drawPlayer renders with
+  float attractTimer;       // menu-demo: time until next wander target
+  float attractTarget;      // menu-demo: x the blob is strolling toward
 } Player;
 
 Player createPlayer(void);

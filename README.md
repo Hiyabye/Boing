@@ -1,8 +1,9 @@
 # Mega Jump
 
 C99 + [raylib](https://www.raylib.com/)로 만든 수직 점프 게임. raylib은
-`lib/raylib/`에 벤더링되어 CMake 서브디렉터리로 소스에서 함께 빌드되므로
-따로 설치할 시스템 의존성이 없다.
+`lib/raylib/`에 git 서브모듈로 고정되어 CMake 서브디렉터리로 소스에서 함께
+빌드되므로 따로 설치할 시스템 의존성이 없다. (일반 `git clone`으로는
+서브모듈이 비어 있으니 아래 빌드 절차를 따를 것.)
 
 [2PG Arcade 1.44MB 콘테스트](https://2pgarcade.com/contest-144mb.html)를 겨냥 —
 배포되는 게임(실행 파일 + 런타임 + 에셋)은 **1,474,560바이트(3.5" 플로피 1장)
@@ -19,13 +20,18 @@ C99 + [raylib](https://www.raylib.com/)로 만든 수직 점프 게임. raylib�
 │   ├── background.c    # 절차적 하늘/구름/태양 배경
 │   └── sound.c         # 절차적 칩튠 + SFX (샘플 파일 없음)
 ├── include/            # 헤더 (core.h, theme.h는 헤더 온리)
-├── lib/raylib/         # 벤더링된 raylib
+├── lib/raylib/         # raylib (git 서브모듈)
 └── CMakeLists.txt
 ```
 
 ## 빌드 & 실행
 
 ```sh
+# 처음 받을 때는 서브모듈(raylib)까지 함께 클론:
+git clone --recurse-submodules <repo-url>
+# 이미 일반 clone 했다면:
+git submodule update --init
+
 cmake -S . -B build      # 최초 1회, 또는 .c 파일 추가/삭제 후
 cmake --build build      # ./build/Megajump 생성
 ./build/Megajump

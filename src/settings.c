@@ -1,11 +1,10 @@
 #include "settings.h"
 
+#include "persist.h"
 #include "raylib.h"
 #include "sound.h"
 #include "theme.h"
 #include "ui.h"
-
-#include <stdio.h>
 
 const int FPS_OPTIONS[] = {30, 60, 120, 144};
 const int FPS_COUNT = 4;
@@ -51,12 +50,11 @@ static void changeRow(Settings *s, int row, int dir) {
 
 Settings loadSettings(void) {
   Settings s = {.fpsIndex = 1, .resIndex = 1, .volume = 1.0f}; // 60fps, 800, max
-  FILE *f = fopen("settings", "r");
-  if (f) {
-    if (fscanf(f, "%d %d %f", &s.fpsIndex, &s.resIndex, &s.volume) != 3) {
-      s = (Settings){.fpsIndex = 1, .resIndex = 1, .volume = 1.0f};
-    }
-    fclose(f);
+  int buf[3];
+  if (readInts("settings", buf, 3)) {
+    s.fpsIndex = buf[0];
+    s.resIndex = buf[1];
+    s.volume = buf[2] / 100.0f; // stored as an int percent
   }
   s.fpsIndex = wrapi(s.fpsIndex, FPS_COUNT);
   s.resIndex = wrapi(s.resIndex, RES_COUNT);
@@ -65,11 +63,8 @@ Settings loadSettings(void) {
 }
 
 void saveSettings(const Settings *s) {
-  FILE *f = fopen("settings", "w");
-  if (f) {
-    fprintf(f, "%d %d %.2f\n", s->fpsIndex, s->resIndex, s->volume);
-    fclose(f);
-  }
+  int buf[3] = {s->fpsIndex, s->resIndex, (int)(s->volume * 100.0f + 0.5f)};
+  writeInts("settings", buf, 3);
 }
 
 void applySettings(const Settings *s) {
