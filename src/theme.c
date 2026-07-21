@@ -108,20 +108,16 @@ static Theme lerpTheme(const Theme *a, const Theme *b, float f) {
 }
 
 void themeUpdate(float ascent) {
+  if (ascent < 0.0f) {
+    ascent = 0.0f;
+  }
   float t = ascent / BAND_HEIGHT;
-  if (t < 0.0f) {
-    t = 0.0f;
-  }
-  int i = (int)t;
-  if (i > THEME_COUNT - 2) {
-    i = THEME_COUNT - 2; // saturate at the top band (THEME_COUNT >= 2)
-  }
-  if (i < 0) {
-    i = 0;
-  }
-  gLo = i;
-  gHi = i + 1;
-  gF = clampf(t - (float)i, 0.0f, 1.0f);
+  int level = (int)t; // 0-based band, unbounded
+  gF = clampf(t - (float)level, 0.0f, 1.0f);
+  // Levels are infinite; themes loop, so once the last theme's band fills it
+  // wraps back to the first (e.g. with 2 themes: nature→arcade→nature→…).
+  gLo = level % THEME_COUNT;
+  gHi = (level + 1) % THEME_COUNT;
   gTheme = lerpTheme(&THEMES[gLo], &THEMES[gHi], gF);
 }
 
@@ -132,3 +128,13 @@ void themeBlend(int *lo, int *hi, float *f) {
 }
 
 int themeTrack(void) { return gTheme.track; }
+
+// 0-based level (theme band) fully entered at this ascent — increments once
+// per whole BAND_HEIGHT climbed, unbounded (levels are infinite; themes loop).
+// Pure (no global state) so gameplay can poll it.
+int themeLevelAt(float ascent) {
+  if (ascent < 0.0f) {
+    ascent = 0.0f;
+  }
+  return (int)(ascent / BAND_HEIGHT);
+}

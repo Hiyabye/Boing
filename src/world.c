@@ -21,8 +21,9 @@
 #define POINTS_PER_COIN 5
 
 #define MONSTER_RADIUS 24.0f
-#define MONSTER_SPACING 600.0f // vertical distance between monster bands
+#define MONSTER_SPACING 900.0f // vertical distance between monster bands
 #define MONSTER_DRIFT 1.5f     // horizontal speed
+#define MONSTER_COIN_LOSS 5    // coins scattered/lost on a monster hit
 #define POWERUP_RADIUS 18.0f
 #define POWERUP_SPACING 1500.0f // rare
 #define MAGNET_RADIUS 260.0f    // coins within this get pulled
@@ -49,6 +50,7 @@ const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
 float worldCameraY(const World *world) { return world->cameraY; }
 float worldShake(const World *world) { return world->shake; }
 bool worldDead(const World *world) { return world->dead; }
+int worldLevel(const World *world) { return world->level; } // 0-based band
 
 float worldPowerTimer(const World *world, PowerUpType type) {
   return world->powerTimer[type];
@@ -112,7 +114,7 @@ static void spawnPlatforms(World *world) {
 
 static void spawnMonsters(World *world) {
   while (world->monsterSpawnY > world->cameraY - SCREEN_HEIGHT) {
-    if (GetRandomValue(0, 2) == 0) { // ~1 in 3 bands actually gets a monster
+    if (GetRandomValue(0, 4) == 0) { // ~1 in 5 bands actually gets a monster
       for (int i = 0; i < MAX_MONSTERS; i++) {
         if (world->monsters[i].active) {
           continue;
@@ -224,7 +226,7 @@ static void applyMagnet(World *world, const Player *player) {
   }
 }
 
-static void collectPowerups(World *world, const Player *player) {
+static void collectPowerups(World *world, Player *player) {
   for (int i = 0; i < MAX_POWERUPS; i++) {
     if (!world->powerups[i].active) {
       continue;
@@ -232,9 +234,15 @@ static void collectPowerups(World *world, const Player *player) {
     if (CheckCollisionCircles(player->position, player->radius,
                               world->powerups[i].position, POWERUP_RADIUS)) {
       PowerUpType t = world->powerups[i].type;
+      // Same collect juice as a coin: pop particles, flash, and an upward kick.
+      spawnParticles(world, world->powerups[i].position, WHITE, 14, true);
+      world->flashPos = world->powerups[i].position;
+      world->flash = 1.0f;
       world->powerups[i].active = false;
       world->powerTimer[t] = POWERUP_DEFS[t].duration;
       world->shake = fmaxf(world->shake, POWERUP_DEFS[t].pickupShake);
+      player->velocity.y = COIN_BOOST;
+      player->expression = EXPR_HAPPY;
       sfxPowerup();
     }
   }
@@ -259,9 +267,18 @@ static void updateMonsters(World *world, Player *player) {
         m->active = false;
         sfxBounce();
       } else {
-        world->dead = true;
+        // Mega-Jump-style: a hit costs coins (they scatter out) and knocks you
+        // down + pops the monster, but does NOT kill — only a fall ends the run.
+        int lost = world->coinsCollected < MONSTER_COIN_LOSS
+                       ? world->coinsCollected
+                       : MONSTER_COIN_LOSS;
+        world->coinsCollected -= lost;
+        spawnParticles(world, player->position, COIN_HI, lost > 0 ? lost : 4,
+                       false);
+        m->active = false;
         world->shake = SHAKE_HIT;
-        player->expression = EXPR_SAD; // frozen sad face carries into GAME OVER
+        player->velocity.y = 12.0f;    // knocked downward
+        player->expression = EXPR_SAD; // shakes off on the next coin/power-up
         sfxHit();
       }
     }
@@ -348,6 +365,14 @@ void updateWorld(World *world, Player *player) {
   float need = player->position.y + player->radius - SCREEN_HEIGHT;
   float floorY = peakY + DEATH_DROP;
   world->cameraY = clampf(need, peakY, floorY);
+
+  // Level-up fanfare on first arrival in a new theme band. Keyed off the peak
+  // (monotonic), so a fall-and-reclimb never re-triggers it.
+  int lvl = themeLevelAt(-peakY);
+  if (lvl > world->level) {
+    world->level = lvl;
+    sfxLevelUp();
+  }
 
   updateParticles(world);
   world->shake *= SHAKE_DECAY;

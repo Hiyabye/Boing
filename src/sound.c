@@ -721,7 +721,7 @@ void setTrack(int track) {
 // A small pool of voices synthesized on the fly and summed into the music
 // stream. No sample files: every effect is math over its sample index.
 
-enum { SFX_COIN, SFX_BOUNCE, SFX_POWERUP, SFX_HIT, SFX_SELECT };
+enum { SFX_COIN, SFX_BOUNCE, SFX_POWERUP, SFX_HIT, SFX_SELECT, SFX_LEVELUP };
 
 // Effect lengths in samples.
 static const int sfxLen[] = {
@@ -730,6 +730,7 @@ static const int sfxLen[] = {
     [SFX_POWERUP] = (int)(0.35f * SAMPLE_RATE),
     [SFX_HIT] = (int)(0.40f * SAMPLE_RATE),
     [SFX_SELECT] = (int)(0.08f * SAMPLE_RATE),
+    [SFX_LEVELUP] = (int)(0.70f * SAMPLE_RATE),
 };
 
 // ponytail: fixed 8 voices; overlapping triggers past 8 drop silently — grow
@@ -756,6 +757,7 @@ void sfxBounce(void) { trigger(SFX_BOUNCE); }
 void sfxPowerup(void) { trigger(SFX_POWERUP); }
 void sfxHit(void) { trigger(SFX_HIT); }
 void sfxSelect(void) { trigger(SFX_SELECT); }
+void sfxLevelUp(void) { trigger(SFX_LEVELUP); }
 
 static float square(float freq, float t) {
   return fmodf(freq * t, 1.0f) < 0.5f ? 1.0f : -1.0f;
@@ -803,6 +805,12 @@ static float renderVoice(int type, int pos) {
   case SFX_SELECT:
     s = square(arc ? 880.0f : 660.0f, t);
     break;
+  case SFX_LEVELUP: { // triumphant rising fanfare (C5 E5 G5 C6), full major
+    static const float notes[4] = {523.25f, 659.25f, 783.99f, 1046.50f};
+    int k = pos * 4 / len;
+    s = square(notes[k > 3 ? 3 : k], t);
+    break;
+  }
   }
   return 0.35f * env * s;
 }

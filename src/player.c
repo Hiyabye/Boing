@@ -5,7 +5,7 @@
 
 #include <math.h>
 
-#define GRAVITY 1.0f
+#define GRAVITY 0.9f
 #define MOVE_SPEED 8.0f
 #define HORIZONTAL_DAMPING 0.9f
 #define PLAYER_RADIUS 34.0f

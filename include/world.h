@@ -76,6 +76,7 @@ typedef struct World {
   Vector2 flashPos; // where the last collect "pop" ring is centered
   float flash;      // pop-ring life, 1 at collect -> 0
   int coinsCollected;
+  int level; // 0-based theme band entered; a level-up fanfare fires on increase
   bool dead; // hit a monster
 } World;
 
@@ -93,6 +94,7 @@ int getScore(const World *world);
 float worldCameraY(const World *world);
 float worldShake(const World *world);
 bool worldDead(const World *world);
+int worldLevel(const World *world); // 0-based theme band the climb has entered
 float worldPowerTimer(const World *world, PowerUpType type);
 bool worldInvincible(const World *world); // any active power-up grants immunity
 

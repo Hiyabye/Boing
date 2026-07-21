@@ -17,5 +17,6 @@ void sfxBounce(void);
 void sfxPowerup(void);
 void sfxHit(void);
 void sfxSelect(void);
+void sfxLevelUp(void); // arrival at a new level/theme band
 
 #endif // SOUND_H

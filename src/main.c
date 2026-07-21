@@ -79,6 +79,19 @@ static void drawHud(const World *world) {
                        0.4f, 8, Fade(BLACK, 0.28f));
   drawTextShadow(scoreStr, 20, 13, 30, RAYWHITE);
 
+  // Level progress bar (top-center): how far into the current theme band the
+  // climb has reached (f = blend toward the next theme).
+  int lo, hi;
+  float f;
+  themeBlend(&lo, &hi, &f);
+  float pw = 360, ph = 12, px = (SCREEN_WIDTH - pw) / 2.0f, py = 30;
+  const char *lvlStr = TextFormat("LEVEL %d", worldLevel(world) + 1);
+  drawTextShadow(lvlStr, (int)(SCREEN_WIDTH - MeasureText(lvlStr, 18)) / 2, 8, 18,
+                 RAYWHITE);
+  DrawRectangleRounded((Rectangle){px, py, pw, ph}, 0.9f, 8, Fade(BLACK, 0.3f));
+  DrawRectangleRounded((Rectangle){px, py, pw * f, ph}, 0.9f, 8,
+                       Fade(COIN_HI, 0.9f));
+
   // One timer bar per active power-up, stacked (magnet + rocket can overlap).
   int bx = 12, by = 56, bw = 150;
   for (PowerUpType t = 0; t < POWERUP_COUNT; t++) {
