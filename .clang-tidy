@@ -1,0 +1,8 @@
+# LLVM defaults: clang-tidy's built-in check set is the static analyzer plus
+# compiler diagnostics. Kept minimal on purpose — the wider modules (bugprone-*
+# etc.) flood a raylib game with float<->int narrowing noise from the int APIs.
+# Add modules here per-need; only our own sources are checked (HeaderFilterRegex).
+Checks: 'clang-diagnostic-*,clang-analyzer-*'
+WarningsAsErrors: ''
+HeaderFilterRegex: 'include/.*\.h$'
+FormatStyle: file

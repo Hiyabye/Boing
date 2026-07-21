@@ -49,7 +49,8 @@ static void changeRow(Settings *s, int row, int dir) {
 }
 
 Settings loadSettings(void) {
-  Settings s = {.fpsIndex = 1, .resIndex = 1, .volume = 1.0f}; // 60fps, 800, max
+  Settings s = {
+      .fpsIndex = 1, .resIndex = 1, .volume = 1.0f}; // 60fps, 800, max
   int buf[3];
   if (readInts("settings", buf, 3)) {
     s.fpsIndex = buf[0];
@@ -86,7 +87,8 @@ void updateSettingsMenu(Settings *s, GameState *state, GameState returnTo) {
 
   int dir = IsKeyPressed(KEY_RIGHT) ? 1 : (IsKeyPressed(KEY_LEFT) ? -1 : 0);
 
-  // Mouse: click a row to select it, click its < / > to change it, Back to exit.
+  // Mouse: click a row to select it, click its < / > to change it, Back to
+  // exit.
   if (clicked(backRect())) {
     *state = returnTo;
     sfxSelect();
@@ -144,8 +146,9 @@ void drawSettingsMenu(const Settings *s) {
   drawCenteredText("SETTINGS", SCREEN_HEIGHT / 5, 60, CANDY_PINK);
 
   drawRow(0, "FRAMERATE", TextFormat("%d FPS", FPS_OPTIONS[s->fpsIndex]));
-  drawRow(1, "RESOLUTION",
-          TextFormat("%dx%d", RES_OPTIONS[s->resIndex], RES_OPTIONS[s->resIndex]));
+  drawRow(
+      1, "RESOLUTION",
+      TextFormat("%dx%d", RES_OPTIONS[s->resIndex], RES_OPTIONS[s->resIndex]));
   drawRow(2, "VOLUME", TextFormat("%d%%", (int)(s->volume * 100.0f + 0.5f)));
 
   uiButton(backRect(), "BACK", ICON_BACK);

@@ -52,7 +52,9 @@ cmake --build build      # compile; produces ./build/Boing
 - The build defaults to `MinSizeRel` + auto-strip (the 1.44MB budget is the point), so `build/Boing` is already the size-optimized, stripped binary. Override with `-DCMAKE_BUILD_TYPE=Debug` for a debug build.
 - macOS links Cocoa/IOKit/CoreVideo/OpenGL frameworks automatically (`if(APPLE)` block).
 - `compile_flags.txt` exists only to feed include paths (`include/`, `lib/raylib/src`) to clangd/the editor — it is not part of the build.
-- No test target and no linter are configured.
+- **clang-tidy runs on every build** (LLVM defaults via `.clang-tidy` — `clang-analyzer-*` only, kept minimal because the wider modules flood a raylib game with float↔int narrowing noise; warnings don't fail the build). It's scoped to our target (the `C_CLANG_TIDY` target property), never the raylib submodule.
+- **clang-format** (LLVM style via `.clang-format`): `cmake --build build --target format` reformats `src/*.c` + `include/*.h` in place. Both tools are gated on being found, so a machine without them still builds.
+- No test target is configured.
 
 ## Layout & architecture
 

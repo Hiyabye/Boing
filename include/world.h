@@ -72,9 +72,9 @@ typedef struct World {
   float lastSpawnX;     // previous coin x, so coins form a followable trail
   float bestY;          // highest point the player has reached (smallest y)
   float powerTimer[POWERUP_COUNT]; // frames of each power-up remaining
-  float shake;          // screen-shake magnitude, decays each frame
-  Vector2 flashPos;     // where the last collect "pop" ring is centered
-  float flash;          // pop-ring life, 1 at collect -> 0
+  float shake;                     // screen-shake magnitude, decays each frame
+  Vector2 flashPos; // where the last collect "pop" ring is centered
+  float flash;      // pop-ring life, 1 at collect -> 0
   int coinsCollected;
   bool dead; // hit a monster
 } World;
@@ -86,9 +86,10 @@ void drawWorld(const World *world);
 bool isPlayerFallen(const World *world, const Player *player);
 int getScore(const World *world);
 
-// Accessors so callers (HUD/camera/loop) read state without poking World fields.
-// (C can't fully hide a stack struct without a heap/opaque pointer — overkill
-// here — so the fields stay public; these just keep main.c from reaching in.)
+// Accessors so callers (HUD/camera/loop) read state without poking World
+// fields. (C can't fully hide a stack struct without a heap/opaque pointer —
+// overkill here — so the fields stay public; these just keep main.c from
+// reaching in.)
 float worldCameraY(const World *world);
 float worldShake(const World *world);
 bool worldDead(const World *world);

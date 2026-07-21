@@ -43,9 +43,8 @@ void drawIcon(IconKind kind, float cx, float cy, float s, Color c) {
   case ICON_GEAR: {
     for (int i = 0; i < 6; i++) {
       float a = i * (PI / 3.0f);
-      DrawRectanglePro(
-          (Rectangle){cx, cy, s * 0.5f, s * 1.5f}, (Vector2){s * 0.25f, s * 0.75f},
-          a * RAD2DEG, c);
+      DrawRectanglePro((Rectangle){cx, cy, s * 0.5f, s * 1.5f},
+                       (Vector2){s * 0.25f, s * 0.75f}, a * RAD2DEG, c);
     }
     DrawCircle(cx, cy, s * 0.6f, c);
     DrawCircle(cx, cy, s * 0.28f, Fade(BLACK, 0.55f));
@@ -71,7 +70,7 @@ void drawIcon(IconKind kind, float cx, float cy, float s, Color c) {
   case ICON_HOME:
     DrawTriangle((Vector2){cx, cy - s * 0.7f},
                  (Vector2){cx - s * 0.7f, cy - s * 0.05f},
-                 (Vector2){cx + s * 0.7f, cy - s * 0.05f}, c); // roof
+                 (Vector2){cx + s * 0.7f, cy - s * 0.05f}, c);    // roof
     DrawRectangle(cx - s * 0.5f, cy - s * 0.05f, s, s * 0.7f, c); // body
     DrawRectangle(cx - s * 0.15f, cy + s * 0.2f, s * 0.3f, s * 0.45f,
                   Fade(BLACK, 0.55f)); // door
@@ -92,8 +91,8 @@ void uiButton(Rectangle r, const char *label, IconKind icon) {
   bool hover = mouseInRect(r);
   Color base = hover ? CANDY_PINK : CANDY_PINK_DK;
   DrawRectangleRounded(r, 0.4f, 8, Fade(BLACK, 0.25f));
-  DrawRectangleRounded(
-      (Rectangle){r.x, r.y, r.width, r.height - 4}, 0.4f, 8, base);
+  DrawRectangleRounded((Rectangle){r.x, r.y, r.width, r.height - 4}, 0.4f, 8,
+                       base);
 
   float cx = r.x + r.width / 2.0f, cy = r.y + r.height / 2.0f;
   if (icon != ICON_NONE && (label == NULL || label[0] == '\0')) {

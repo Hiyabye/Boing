@@ -34,13 +34,15 @@
 #define SHAKE_LAUNCH 6.0f // shake on floor bounce / rocket pickup
 #define SHAKE_DECAY 0.85f // per-frame shake falloff
 #define FLASH_DECAY 0.08f // pop-ring fade per frame
-#define DEATH_DROP 450.0f // how far below the peak view the camera chases a fall
+#define DEATH_DROP                                                             \
+  450.0f // how far below the peak view the camera chases a fall
 
 // Power-up table (indexed by PowerUpType). Ordered exactly as the enum.
 //              duration color       label     weight shake        invincible
 const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
-    [POWERUP_MAGNET] = {300.0f, SKYBLUE, "MAGNET", 1, 0.0f, false},        // ~5s
-    [POWERUP_ROCKET] = {90.0f, ROCKET_FIN, "ROCKET", 1, SHAKE_LAUNCH, true}, // ~1.5s
+    [POWERUP_MAGNET] = {300.0f, SKYBLUE, "MAGNET", 1, 0.0f, false}, // ~5s
+    [POWERUP_ROCKET] = {90.0f, ROCKET_FIN, "ROCKET", 1, SHAKE_LAUNCH,
+                        true}, // ~1.5s
 };
 
 float worldCameraY(const World *world) { return world->cameraY; }
@@ -173,8 +175,7 @@ static void spawnParticles(World *world, Vector2 at, Color color, int count,
 // bottom cull line. Assumes locals `world` and `cullY`.
 #define CULL(arr, count, margin)                                               \
   for (int i = 0; i < (count); i++) {                                          \
-    if (world->arr[i].active &&                                                \
-        world->arr[i].position.y > cullY + (margin)) {                         \
+    if (world->arr[i].active && world->arr[i].position.y > cullY + (margin)) { \
       world->arr[i].active = false;                                            \
     }                                                                          \
   }
@@ -343,7 +344,8 @@ void updateWorld(World *world, Player *player) {
   }
   // Camera locks to the highest point reached; when the player falls below the
   // view it chases their feet downward, but only DEATH_DROP past that peak — a
-  // fall beyond it leaves the player off-screen and isPlayerFallen ends the run.
+  // fall beyond it leaves the player off-screen and isPlayerFallen ends the
+  // run.
   float peakY = fminf(0.0f, world->bestY - SCREEN_HEIGHT / 2.0f);
   float need = player->position.y + player->radius - SCREEN_HEIGHT;
   float floorY = peakY + DEATH_DROP;

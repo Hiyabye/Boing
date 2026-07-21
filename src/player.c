@@ -9,9 +9,9 @@
 #define MOVE_SPEED 8.0f
 #define HORIZONTAL_DAMPING 0.9f
 #define PLAYER_RADIUS 34.0f
-#define FOLLOW_K 0.18f       // mouse-follow steering stiffness
-#define ATTRACT_SPEED 2.6f   // menu demo wander pace
-#define ATTRACT_BOB 10.0f    // menu demo vertical bob amplitude
+#define FOLLOW_K 0.18f     // mouse-follow steering stiffness
+#define ATTRACT_SPEED 2.6f // menu demo wander pace
+#define ATTRACT_BOB 10.0f  // menu demo vertical bob amplitude
 
 Player createPlayer(void) {
   Player p = {
@@ -44,8 +44,8 @@ void handlePlayerInput(Player *player, float targetX) {
     player->velocity.x = MOVE_SPEED;
   } else if (targetX >= 0.0f && targetX <= SCREEN_WIDTH) {
     // No key held: steer toward the mouse column.
-    player->velocity.x =
-        clampf((targetX - player->position.x) * FOLLOW_K, -MOVE_SPEED, MOVE_SPEED);
+    player->velocity.x = clampf((targetX - player->position.x) * FOLLOW_K,
+                                -MOVE_SPEED, MOVE_SPEED);
   }
 }
 

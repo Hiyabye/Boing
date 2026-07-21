@@ -45,16 +45,30 @@ static void gotoState(Game *g, GameState next) {
 static Rectangle centeredBtn(float y, float w, float h) {
   return (Rectangle){SCREEN_WIDTH / 2.0f - w / 2.0f, y, w, h};
 }
-static Rectangle rPauseBtn(void) { return (Rectangle){SCREEN_WIDTH - 54, 10, 44, 44}; }
+static Rectangle rPauseBtn(void) {
+  return (Rectangle){SCREEN_WIDTH - 54, 10, 44, 44};
+}
 static Rectangle rHelpBtn(void) { return (Rectangle){10, 10, 44, 44}; }
-static Rectangle rHelpClose(void) { return centeredBtn(SCREEN_HEIGHT / 2.0f + 168, 180, 54); }
+static Rectangle rHelpClose(void) {
+  return centeredBtn(SCREEN_HEIGHT / 2.0f + 168, 180, 54);
+}
 static Rectangle rMenuPlay(void) { return centeredBtn(424, 240, 62); }
 static Rectangle rMenuSettings(void) { return centeredBtn(498, 240, 54); }
 static Rectangle rMenuExit(void) { return centeredBtn(564, 240, 54); }
-static Rectangle rResume(void) { return (Rectangle){SCREEN_WIDTH / 2.0f - 172, SCREEN_HEIGHT / 2.0f + 40, 160, 56}; }
-static Rectangle rPauseSettings(void) { return (Rectangle){SCREEN_WIDTH / 2.0f + 12, SCREEN_HEIGHT / 2.0f + 40, 160, 56}; }
-static Rectangle rPauseHome(void) { return centeredBtn(SCREEN_HEIGHT / 2.0f + 108, 160, 56); }
-static Rectangle rRetry(void) { return centeredBtn(SCREEN_HEIGHT * 2.0f / 3, 200, 60); }
+static Rectangle rResume(void) {
+  return (Rectangle){SCREEN_WIDTH / 2.0f - 172, SCREEN_HEIGHT / 2.0f + 40, 160,
+                     56};
+}
+static Rectangle rPauseSettings(void) {
+  return (Rectangle){SCREEN_WIDTH / 2.0f + 12, SCREEN_HEIGHT / 2.0f + 40, 160,
+                     56};
+}
+static Rectangle rPauseHome(void) {
+  return centeredBtn(SCREEN_HEIGHT / 2.0f + 108, 160, 56);
+}
+static Rectangle rRetry(void) {
+  return centeredBtn(SCREEN_HEIGHT * 2.0f / 3, 200, 60);
+}
 
 // clicked(), drawTextShadow(), drawCenteredText() now live in the ui module.
 
@@ -74,7 +88,8 @@ static void drawHud(const World *world) {
     }
     PowerUpDef d = POWERUP_DEFS[t];
     float frac = timer / d.duration;
-    DrawRectangleRounded((Rectangle){bx, by, bw, 26}, 0.5f, 8, Fade(BLACK, 0.3f));
+    DrawRectangleRounded((Rectangle){bx, by, bw, 26}, 0.5f, 8,
+                         Fade(BLACK, 0.3f));
     DrawRectangleRounded((Rectangle){bx, by, bw * frac, 26}, 0.5f, 8,
                          Fade(d.color, 0.85f));
     drawTextShadow(d.label, bx + 12, by + 4, 18, RAYWHITE);
@@ -96,9 +111,9 @@ static void saveHighScore(int best) { writeInts("highscore", &best, 1); }
 // ---------------------------------------------------------------------------
 // Transitions
 // ---------------------------------------------------------------------------
-// Enter gameplay. fromMenu: keep the wandering attract blob (position + velocity
-// carry over, gravity already lives in acceleration.y) for a seamless handoff;
-// otherwise (retry) respawn a fresh player.
+// Enter gameplay. fromMenu: keep the wandering attract blob (position +
+// velocity carry over, gravity already lives in acceleration.y) for a seamless
+// handoff; otherwise (retry) respawn a fresh player.
 static void startGame(Game *g, bool fromMenu) {
   g->world = createWorld();
   if (!fromMenu) {
@@ -114,12 +129,9 @@ static void startGame(Game *g, bool fromMenu) {
 // ---------------------------------------------------------------------------
 // Static "How to Play" lines — concise, no interactive walkthrough.
 static const char *HELP_LINES[] = {
-    "Move:  arrow keys or mouse",
-    "Grab coins to launch higher",
-    "Bounce off the cloud platforms",
-    "Dodge the grape monsters",
-    "Magnet & Rocket power-ups boost you",
-    "Never fall below the screen",
+    "Move:  arrow keys or mouse",          "Grab coins to launch higher",
+    "Bounce off the cloud platforms",      "Dodge the grape monsters",
+    "Magnet & Rocket power-ups boost you", "Never fall below the screen",
 };
 #define HELP_LINE_COUNT ((int)(sizeof(HELP_LINES) / sizeof(HELP_LINES[0])))
 
@@ -140,7 +152,8 @@ static void drawHelpOverlay(void) {
 static void updateMenu(Game *g) {
   updateAttract(&g->player); // demo: blob wanders the menu
   if (g->showHelp) {         // modal open: only close-input is live
-    if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) || clicked(rHelpClose())) {
+    if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
+        clicked(rHelpClose())) {
       g->showHelp = false;
       sfxSelect();
     }
@@ -227,7 +240,7 @@ static void updateSettingsState(Game *g) {
 // ---------------------------------------------------------------------------
 static void drawMenu(Game *g) {
   drawMenuBackground();
-  drawGround(); // so the attract blob stands on grass, like gameplay
+  drawGround();           // so the attract blob stands on grass, like gameplay
   drawPlayer(&g->player); // the wandering attract blob
   int bob = (int)(sinf((float)GetTime() * 2.0f) * 10.0f);
   drawCenteredText("BOING!", SCREEN_HEIGHT / 4 + bob, 80, CANDY_PINK);
@@ -242,7 +255,8 @@ static void drawMenu(Game *g) {
   }
 }
 
-// Shared by PLAYING / PAUSED / GAMEOVER: the world, then state-specific overlay.
+// Shared by PLAYING / PAUSED / GAMEOVER: the world, then state-specific
+// overlay.
 static void drawPlay(Game *g) {
   float cameraY = worldCameraY(&g->world), shake = worldShake(&g->world);
   drawGameBackground(cameraY);
@@ -272,8 +286,8 @@ static void drawPlay(Game *g) {
     drawCenteredText("GAME OVER", SCREEN_HEIGHT / 3, 60, RAYWHITE);
     drawCenteredText(TextFormat("SCORE %d", getScore(&g->world)),
                      SCREEN_HEIGHT / 2 - 20, 40, RAYWHITE);
-    drawCenteredText(TextFormat("BEST %d", g->highScore), SCREEN_HEIGHT / 2 + 25,
-                     28, GOLD);
+    drawCenteredText(TextFormat("BEST %d", g->highScore),
+                     SCREEN_HEIGHT / 2 + 25, 28, GOLD);
     uiButton(rRetry(), "RETRY", ICON_RETRY);
   }
 }

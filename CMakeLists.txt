@@ -41,3 +41,18 @@ if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_STRIP} $<TARGET_FILE:${PROJECT_NAME}>)
 endif()
+
+# clang-tidy on every build — only our target, never the raylib submodule
+# (setting the property on the target instead of CMAKE_C_CLANG_TIDY globally).
+# Config comes from .clang-tidy.
+find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+if(CLANG_TIDY_EXE)
+    set_target_properties(${PROJECT_NAME} PROPERTIES C_CLANG_TIDY "${CLANG_TIDY_EXE}")
+endif()
+
+# `cmake --build build --target format` reformats our sources in place (.clang-format).
+find_program(CLANG_FORMAT_EXE NAMES clang-format)
+if(CLANG_FORMAT_EXE)
+    file(GLOB_RECURSE FORMAT_SOURCES "src/*.c" "include/*.h")
+    add_custom_target(format COMMAND ${CLANG_FORMAT_EXE} -i ${FORMAT_SOURCES})
+endif()
