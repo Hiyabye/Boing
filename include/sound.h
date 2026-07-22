@@ -12,14 +12,20 @@ void deinitAudio(AudioStream *stream);
 void setTrack(int track);
 
 // Procedural sound effects (synthesized in C, mixed into the music stream).
-void sfxCoin(void);
-void sfxBounce(void);
-void sfxPowerup(void);
-void sfxHit(void);
-void sfxSelect(void);
-void sfxLevelUp(void);  // arrival at a new level/theme band
-void sfxGameOver(void); // sad tone on a normal death
-void sfxSplat(void);    // monster splattered (invincible plow-through)
-void sfxPowerup2(void); // Balloon/Shield pickup variant
+// Adding one = a new SfxId + a length in sfxLen[] + a case in renderVoice().
+typedef enum {
+  SFX_COIN,
+  SFX_BOUNCE,
+  SFX_POWERUP,
+  SFX_HIT,
+  SFX_SELECT,
+  SFX_LEVELUP,  // arrival at a new level/theme band
+  SFX_GAMEOVER, // sad tone on a normal death
+  SFX_SPLAT,    // monster splattered (invincible plow-through)
+  SFX_PICKUP,   // Balloon/Shield pickup variant
+  SFX_COUNT
+} SfxId;
+
+void sfx(SfxId id); // trigger a one-shot effect
 
 #endif // SOUND_H

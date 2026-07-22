@@ -716,9 +716,10 @@ struct Track {
   int count;
 };
 #define TRACK(a) {(a), (int)(sizeof(a) / sizeof((a)[0]))}
+enum { TRACK_NATURE, TRACK_ARCADE }; // indices into TRACKS[]
 static const struct Track TRACKS[] = {
-    TRACK(NOTES0),
-    TRACK(NOTES1),
+    [TRACK_NATURE] = TRACK(NOTES0),
+    [TRACK_ARCADE] = TRACK(NOTES1),
 };
 #define TRACK_COUNT ((int)(sizeof(TRACKS) / sizeof(TRACKS[0])))
 
@@ -814,19 +815,7 @@ void setTrack(int track) {
 // A small pool of voices synthesized on the fly and summed into the music
 // stream. No sample files: every effect is math over its sample index.
 
-enum {
-  SFX_COIN,
-  SFX_BOUNCE,
-  SFX_POWERUP,
-  SFX_HIT,
-  SFX_SELECT,
-  SFX_LEVELUP,
-  SFX_GAMEOVER,
-  SFX_SPLAT,
-  SFX_POWERUP2
-};
-
-// Effect lengths in samples.
+// Effect lengths in samples (SfxId lives in sound.h).
 static const int sfxLen[] = {
     [SFX_COIN] = (int)(0.12f * SAMPLE_RATE),
     [SFX_BOUNCE] = (int)(0.15f * SAMPLE_RATE),
@@ -836,7 +825,7 @@ static const int sfxLen[] = {
     [SFX_LEVELUP] = (int)(0.70f * SAMPLE_RATE),
     [SFX_GAMEOVER] = (int)(0.50f * SAMPLE_RATE),
     [SFX_SPLAT] = (int)(0.18f * SAMPLE_RATE),
-    [SFX_POWERUP2] = (int)(0.22f * SAMPLE_RATE),
+    [SFX_PICKUP] = (int)(0.22f * SAMPLE_RATE),
 };
 
 // ponytail: fixed 8 voices; overlapping triggers past 8 drop silently — grow
@@ -849,27 +838,22 @@ struct Voice {
 };
 static struct Voice voices[MAX_VOICES];
 
-static void trigger(int type) {
+void sfx(SfxId id) {
   for (int i = 0; i < MAX_VOICES; i++) {
     if (!voices[i].active) {
-      voices[i] = (struct Voice){true, type, 0};
+      voices[i] = (struct Voice){true, id, 0};
       return;
     }
   }
 }
 
-void sfxCoin(void) { trigger(SFX_COIN); }
-void sfxBounce(void) { trigger(SFX_BOUNCE); }
-void sfxPowerup(void) { trigger(SFX_POWERUP); }
-void sfxHit(void) { trigger(SFX_HIT); }
-void sfxSelect(void) { trigger(SFX_SELECT); }
-void sfxLevelUp(void) { trigger(SFX_LEVELUP); }
-void sfxGameOver(void) { trigger(SFX_GAMEOVER); }
-void sfxSplat(void) { trigger(SFX_SPLAT); }
-void sfxPowerup2(void) { trigger(SFX_POWERUP2); }
-
 static float square(float freq, float t) {
   return fmodf(freq * t, 1.0f) < 0.5f ? 1.0f : -1.0f;
+}
+
+// Linear frequency sweep: base at pos=0, falling by `depth` over the effect.
+static float sweep(float base, float depth, int pos, int len) {
+  return base - depth * (float)pos / len;
 }
 
 // One sample for a voice, amplitude-scaled with a linear decay envelope.
@@ -884,13 +868,13 @@ static float renderVoice(int type, int pos) {
   float s = 0.0f;
   // ponytail: arcade (track 1) gets a harsher, brighter 8-bit variant per
   // effect — hand-tuned, not a data table like the music.
-  bool arc = (curTrack == 1);
+  bool arc = (curTrack == TRACK_ARCADE);
   switch (type) {
   case SFX_COIN: // rising two-note blip (brighter on arcade)
     s = square(pos < len / 2 ? (arc ? D6 : B5) : (arc ? G6 : E6), t);
     break;
   case SFX_BOUNCE: { // downward pitch sweep "boing"
-    float f = 400.0f - 280.0f * (float)pos / len;
+    float f = sweep(400.0f, 280.0f, pos, len);
     s = arc ? square(f, t) : sinf(2.0f * PI * f * t); // square = crunchier
     break;
   }
@@ -903,7 +887,7 @@ static float renderVoice(int type, int pos) {
     break;
   }
   case SFX_HIT: { // descending saw + noise (noisier on arcade)
-    float f = 300.0f - 240.0f * (float)pos / len;
+    float f = sweep(300.0f, 240.0f, pos, len);
     float saw = 2.0f * (f * t - floorf(0.5f + f * t));
     float noise = (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
     s = arc ? 0.4f * saw + 0.6f * noise : 0.7f * saw + 0.3f * noise;
@@ -919,18 +903,18 @@ static float renderVoice(int type, int pos) {
     break;
   }
   case SFX_GAMEOVER: { // sad descending sweep
-    float f = 400.0f - 320.0f * (float)pos / len;
+    float f = sweep(400.0f, 320.0f, pos, len);
     s = arc ? square(f, t) : sinf(2.0f * PI * f * t);
     break;
   }
   case SFX_SPLAT: { // short wet squish: low saw + noise
-    float f = 180.0f - 120.0f * (float)pos / len;
+    float f = sweep(180.0f, 120.0f, pos, len);
     float saw = 2.0f * (f * t - floorf(0.5f + f * t));
     float noise = (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
     s = 0.5f * saw + 0.5f * noise;
     break;
   }
-  case SFX_POWERUP2: { // brighter/higher arpeggio (Balloon/Shield)
+  case SFX_PICKUP: { // brighter/higher arpeggio (Balloon/Shield)
     static const float natNotes[3] = {G5, C6, E6};
     static const float arcNotes[3] = {B5, E6, B6};
     const float *notes = arc ? arcNotes : natNotes;

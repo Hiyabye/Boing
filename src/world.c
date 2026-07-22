@@ -229,7 +229,7 @@ static void collectCoins(World *world, Player *player) {
       world->coinsCollected++;
       player->velocity.y = COIN_BOOST;
       player->expression = EXPR_HAPPY;
-      sfxCoin();
+      sfx(SFX_COIN);
     }
   }
 }
@@ -275,9 +275,9 @@ static void collectPowerups(World *world, Player *player) {
       player->velocity.y = COIN_BOOST;
       player->expression = EXPR_HAPPY;
       if (t == POWERUP_BALLOON || t == POWERUP_SHIELD) {
-        sfxPowerup2();
+        sfx(SFX_PICKUP);
       } else {
-        sfxPowerup();
+        sfx(SFX_POWERUP);
       }
     }
   }
@@ -297,7 +297,7 @@ static void updateMonsters(World *world, Player *player) {
         // Invincible (rocket etc.): plow through, splatter the monster.
         spawnParticles(world, m->position, GRAPE, 12, false);
         m->active = false;
-        sfxSplat();
+        sfx(SFX_SPLAT);
       } else {
         // Mega-Jump-style: a hit costs coins (they scatter out) and knocks you
         // down + pops the monster, but does NOT kill — only a fall ends the
@@ -311,7 +311,7 @@ static void updateMonsters(World *world, Player *player) {
         world->shake = SHAKE_HIT;
         player->velocity.y = 12.0f;    // knocked downward
         player->expression = EXPR_SAD; // shakes off on the next coin/power-up
-        sfxHit();
+        sfx(SFX_HIT);
       }
     }
   }
@@ -346,7 +346,7 @@ static void bounceOnPlatforms(World *world, Player *player) {
       player->velocity.y = PLATFORM_BOUNCE;
       spawnParticles(world, (Vector2){player->position.x, p.y}, CLOUD, 8,
                      false);
-      sfxBounce();
+      sfx(SFX_BOUNCE);
       return;
     }
   }
@@ -360,7 +360,7 @@ void updateWorld(World *world, Player *player) {
     spawnParticles(world, (Vector2){player->position.x, FLOOR_Y}, GRASS, 10,
                    false);
     world->shake = SHAKE_LAUNCH;
-    sfxBounce();
+    sfx(SFX_BOUNCE);
   }
 
   bounceOnPlatforms(world, player);
@@ -406,7 +406,7 @@ void updateWorld(World *world, Player *player) {
   int lvl = themeLevelAt(-peakY);
   if (lvl > world->level) {
     world->level = lvl;
-    sfxLevelUp();
+    sfx(SFX_LEVELUP);
   }
 
   updateParticles(world);

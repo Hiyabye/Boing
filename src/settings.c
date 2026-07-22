@@ -56,7 +56,7 @@ static void changeRow(Settings *s, int row, int dir) {
   }
   applySettings(s);
   saveSettings(s);
-  sfxSelect();
+  sfx(SFX_SELECT);
 }
 
 // Current value of a row, formatted for display.
@@ -102,11 +102,11 @@ void applySettings(const Settings *s) {
 void updateSettingsMenu(Settings *s, GameState *state, GameState returnTo) {
   if (IsKeyPressed(KEY_DOWN)) {
     selRow = wrapi(selRow + 1, ROW_COUNT);
-    sfxSelect();
+    sfx(SFX_SELECT);
   }
   if (IsKeyPressed(KEY_UP)) {
     selRow = wrapi(selRow - 1, ROW_COUNT);
-    sfxSelect();
+    sfx(SFX_SELECT);
   }
 
   int dir = IsKeyPressed(KEY_RIGHT) ? 1 : (IsKeyPressed(KEY_LEFT) ? -1 : 0);
@@ -115,7 +115,7 @@ void updateSettingsMenu(Settings *s, GameState *state, GameState returnTo) {
   // exit.
   if (clicked(backRect())) {
     *state = returnTo;
-    sfxSelect();
+    sfx(SFX_SELECT);
     return;
   }
   if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
@@ -128,7 +128,7 @@ void updateSettingsMenu(Settings *s, GameState *state, GameState returnTo) {
         dir = 1;
       } else if (mouseInRect(rowRect(r))) {
         selRow = r;
-        sfxSelect();
+        sfx(SFX_SELECT);
       }
     }
   }
@@ -139,7 +139,7 @@ void updateSettingsMenu(Settings *s, GameState *state, GameState returnTo) {
 
   if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE)) {
     *state = returnTo;
-    sfxSelect();
+    sfx(SFX_SELECT);
   }
 }
 

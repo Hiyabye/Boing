@@ -144,7 +144,7 @@ static void startGame(Game *g, bool fromMenu) {
   }
   g->accumulator = 0.0f;
   gotoState(g, GAMESTATE_PLAYING);
-  sfxSelect();
+  sfx(SFX_SELECT);
 }
 
 // ---------------------------------------------------------------------------
@@ -178,20 +178,20 @@ static void updateMenu(Game *g) {
     if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
         clicked(rHelpClose())) {
       g->showHelp = false;
-      sfxSelect();
+      sfx(SFX_SELECT);
     }
     return;
   }
   if (clicked(rHelpBtn())) {
     g->showHelp = true;
-    sfxSelect();
+    sfx(SFX_SELECT);
     return;
   }
   if (IsKeyPressed(KEY_SPACE) || clicked(rMenuPlay())) {
     startGame(g, true);
   } else if (IsKeyPressed(KEY_S) || clicked(rMenuSettings())) {
     gotoState(g, GAMESTATE_SETTINGS);
-    sfxSelect();
+    sfx(SFX_SELECT);
   } else if (clicked(rMenuCredits())) {
     // Freeze the current menu onto the tube, then start the zoom-out.
     BeginTextureMode(gMenuSnap);
@@ -201,7 +201,7 @@ static void updateMenu(Game *g) {
     g->creditsStatic = 0.5f; // static burst plays when the zoom-out finishes
     g->creditsExiting = false;
     gotoState(g, GAMESTATE_CREDITS);
-    sfxSelect();
+    sfx(SFX_SELECT);
   } else if (clicked(rMenuExit())) {
     g->quit = true;
   }
@@ -227,7 +227,7 @@ static void updateCredits(Game *g) {
       (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
        clicked(rCreditsBack()))) {
     g->creditsExiting = true;
-    sfxSelect();
+    sfx(SFX_SELECT);
   }
 }
 
@@ -262,9 +262,9 @@ static void updatePlaying(Game *g) {
       if (score > g->highScore) {
         g->highScore = score;
         saveHighScore(g->highScore);
-        sfxLevelUp(); // new best: celebratory jingle
+        sfx(SFX_LEVELUP); // new best: celebratory jingle
       } else {
-        sfxGameOver(); // ordinary death: sad tone
+        sfx(SFX_GAMEOVER); // ordinary death: sad tone
       }
       gotoState(g, GAMESTATE_GAMEOVER);
       return;
@@ -277,11 +277,11 @@ static void updatePaused(Game *g) {
     gotoState(g, GAMESTATE_PLAYING);
   } else if (IsKeyPressed(KEY_S) || clicked(rPauseSettings())) {
     gotoState(g, GAMESTATE_SETTINGS);
-    sfxSelect();
+    sfx(SFX_SELECT);
   } else if (clicked(rPauseHome())) {
     g->player = createPlayer(); // back to the menu's attract demo
     gotoState(g, GAMESTATE_MENU);
-    sfxSelect();
+    sfx(SFX_SELECT);
   }
 }
 
