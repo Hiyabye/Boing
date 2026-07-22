@@ -39,7 +39,9 @@
 #define SHAKE_DECAY 0.85f // per-frame shake falloff
 #define FLASH_DECAY 0.08f // pop-ring fade per frame
 #define DEATH_DROP                                                             \
-  450.0f // how far below the peak view the camera chases a fall
+  700.0f // how far below the peak view the camera chases a fall
+#define BOTTOM_MARGIN                                                          \
+  140.0f // keep the player this far above the screen bottom (see below it)
 
 // Power-up table (indexed by PowerUpType). Ordered exactly as the enum.
 //              duration color       label     weight shake        invincible
@@ -202,7 +204,10 @@ static void scatterCoins(World *world, Vector2 at, int count) {
   }
 
 static void cullBelowView(World *world) {
-  float cullY = world->cameraY + SCREEN_HEIGHT + COIN_RADIUS;
+  // Cull past the DEEPEST the camera can chase a fall (peak + DEATH_DROP), not
+  // the current view bottom — otherwise entities in the "reappear" band get
+  // freed while the camera is still locked high, then vanish on the way down.
+  float cullY = world->cameraY + SCREEN_HEIGHT + DEATH_DROP + COIN_RADIUS;
   CULL(coins, MAX_COINS, 0.0f);
   CULL(platforms, MAX_PLATFORMS, PLATFORM_HEIGHT);
   CULL(monsters, MAX_MONSTERS, MONSTER_RADIUS);
@@ -398,7 +403,8 @@ void updateWorld(World *world, Player *player) {
   // fall beyond it leaves the player off-screen and isPlayerFallen ends the
   // run.
   float peakY = fminf(0.0f, world->bestY - SCREEN_HEIGHT / 2.0f);
-  float need = player->position.y + player->radius - SCREEN_HEIGHT;
+  float need =
+      player->position.y + player->radius - SCREEN_HEIGHT + BOTTOM_MARGIN;
   float floorY = peakY + DEATH_DROP;
   world->cameraY = clampf(need, peakY, floorY);
 
