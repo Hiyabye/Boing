@@ -17,6 +17,11 @@ static float wrapf(float value, float range) {
   return r < 0.0f ? r + range : r;
 }
 
+// Parallax depth for decor element `i`: three quantized layers (near layers
+// drift and scroll more). Clouds and blocks share it so their crossfade lines
+// up during a theme transition.
+static float parallaxDepth(int i) { return 0.25f + (i % 3) * 0.2f; }
+
 // Fluffy cloud: a clump of overlapping circles on a flat base.
 static void drawCloud(float x, float y, float s, Color c, float a) {
   Color col = Fade(c, a);
@@ -46,7 +51,7 @@ static void drawBlock(float x, float y, float s, float a) {
 static void drawCloudsBackdrop(float cameraY, float alpha) {
   drawSun(alpha);
   for (int i = 0; i < CLOUD_COUNT; i++) {
-    float depth = 0.25f + (i % 3) * 0.2f; // near layers drift/scroll more
+    float depth = parallaxDepth(i);
     float s = 14.0f + (i % 3) * 9.0f;
     float x = wrapf(i * 151.0f + (float)GetTime() * (6.0f * depth),
                     SCREEN_WIDTH + 300.0f) -
@@ -61,7 +66,7 @@ static void drawCloudsBackdrop(float cameraY, float alpha) {
 // `alpha`. Same parallax idiom as the clouds so the crossfade lines up.
 static void drawBlocksBackdrop(float cameraY, float alpha) {
   for (int i = 0; i < BLOCK_COUNT; i++) {
-    float depth = 0.25f + (i % 3) * 0.2f;
+    float depth = parallaxDepth(i);
     float s = 26.0f + (i % 3) * 16.0f;
     float x =
         wrapf(i * 137.0f + (i % 2 ? 40.0f : 0.0f), SCREEN_WIDTH + 200.0f) -

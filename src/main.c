@@ -32,6 +32,7 @@ typedef struct {
 } Game;
 
 #define FIXED_DT (1.0f / 60.0f)
+#define MAX_FRAME_TIME 0.25f // clamp on a slow frame so physics can't spiral
 
 // The menu, frozen the instant CREDITS is pressed, shown on the CRT tube while
 // the camera pulls back. Loaded beside the main render target in main().
@@ -243,8 +244,8 @@ static void updatePlaying(Game *g) {
   }
   // Fixed 60Hz steps to catch up to real time; cap to avoid a spiral of death.
   g->accumulator += GetFrameTime();
-  if (g->accumulator > 0.25f) {
-    g->accumulator = 0.25f;
+  if (g->accumulator > MAX_FRAME_TIME) {
+    g->accumulator = MAX_FRAME_TIME;
   }
   // Follow the mouse only once it moves; pressing an arrow reclaims control so
   // a keyboard player isn't tugged toward a resting cursor.
