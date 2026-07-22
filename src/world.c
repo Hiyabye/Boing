@@ -71,6 +71,23 @@ bool worldInvincible(const World *world) {
   return false;
 }
 
+// Pool iteration idioms, shared by the fixed-array pools (all liveness-flagged
+// with `.active`). `world` is assumed in scope; particles key off `.life`
+// instead, so they keep their own loops.
+//
+// FOREACH_ACTIVE — run the next statement/block for each live slot.
+#define FOREACH_ACTIVE(arr, count, i)                                          \
+  for (int i = 0; i < (count); i++)                                           \
+    if (world->arr[i].active)
+// FIND_FREE — declare `slot` = index of the first free slot, or -1 if full.
+#define FIND_FREE(slot, arr, count)                                            \
+  int slot = -1;                                                              \
+  for (int fi_ = 0; fi_ < (count); fi_++)                                     \
+    if (!world->arr[fi_].active) {                                            \
+      slot = fi_;                                                             \
+      break;                                                                  \
+    }
+
 World createWorld(void) {
   World world = {0};
   world.spawnY = FLOOR_Y - 150.0f; // first coins reachable from the floor
@@ -85,19 +102,12 @@ World createWorld(void) {
 static void spawnCoins(World *world) {
   // Keep one screen of coins pre-generated above the view.
   while (world->spawnY > world->cameraY - SCREEN_HEIGHT) {
-    for (int i = 0; i < MAX_COINS; i++) {
-      if (world->coins[i].active) {
-        continue;
-      }
+    FIND_FREE(s, coins, MAX_COINS);
+    if (s >= 0) {
       float x = world->lastSpawnX + GetRandomValue(-COIN_WANDER, COIN_WANDER);
-      if (x < SPAWN_MARGIN) {
-        x = SPAWN_MARGIN;
-      } else if (x > SCREEN_WIDTH - SPAWN_MARGIN) {
-        x = SCREEN_WIDTH - SPAWN_MARGIN;
-      }
-      world->coins[i] = (Coin){{x, world->spawnY}, true};
+      x = clampf(x, SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
+      world->coins[s] = (Coin){{x, world->spawnY}, true};
       world->lastSpawnX = x;
-      break;
     }
     world->spawnY -= COIN_SPACING;
   }
@@ -105,14 +115,11 @@ static void spawnCoins(World *world) {
 
 static void spawnPlatforms(World *world) {
   while (world->platformSpawnY > world->cameraY - SCREEN_HEIGHT) {
-    for (int i = 0; i < MAX_PLATFORMS; i++) {
-      if (world->platforms[i].active) {
-        continue;
-      }
+    FIND_FREE(s, platforms, MAX_PLATFORMS);
+    if (s >= 0) {
       float x = GetRandomValue(SPAWN_MARGIN,
                                SCREEN_WIDTH - SPAWN_MARGIN - PLATFORM_WIDTH);
-      world->platforms[i] = (Platform){{x, world->platformSpawnY}, true};
-      break;
+      world->platforms[s] = (Platform){{x, world->platformSpawnY}, true};
     }
     world->platformSpawnY -= PLATFORM_SPACING;
   }
@@ -121,14 +128,11 @@ static void spawnPlatforms(World *world) {
 static void spawnMonsters(World *world) {
   while (world->monsterSpawnY > world->cameraY - SCREEN_HEIGHT) {
     if (GetRandomValue(0, 4) == 0) { // ~1 in 5 bands actually gets a monster
-      for (int i = 0; i < MAX_MONSTERS; i++) {
-        if (world->monsters[i].active) {
-          continue;
-        }
+      FIND_FREE(s, monsters, MAX_MONSTERS);
+      if (s >= 0) {
         float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
         float vx = GetRandomValue(0, 1) ? MONSTER_DRIFT : -MONSTER_DRIFT;
-        world->monsters[i] = (Monster){{x, world->monsterSpawnY}, vx, true};
-        break;
+        world->monsters[s] = (Monster){{x, world->monsterSpawnY}, vx, true};
       }
     }
     world->monsterSpawnY -= MONSTER_SPACING;
@@ -137,10 +141,8 @@ static void spawnMonsters(World *world) {
 
 static void spawnPowerups(World *world) {
   while (world->powerupSpawnY > world->cameraY - SCREEN_HEIGHT) {
-    for (int i = 0; i < MAX_POWERUPS; i++) {
-      if (world->powerups[i].active) {
-        continue;
-      }
+    FIND_FREE(s, powerups, MAX_POWERUPS);
+    if (s >= 0) {
       float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
       // Weighted pick over POWERUP_DEFS[].spawnWeight.
       int total = 0;
@@ -153,8 +155,7 @@ static void spawnPowerups(World *world) {
         roll -= POWERUP_DEFS[t].spawnWeight;
         t++;
       }
-      world->powerups[i] = (PowerUp){{x, world->powerupSpawnY}, t, true};
-      break;
+      world->powerups[s] = (PowerUp){{x, world->powerupSpawnY}, t, true};
     }
     world->powerupSpawnY -= POWERUP_SPACING;
   }
@@ -218,10 +219,7 @@ static void cullBelowView(World *world) {
 #undef CULL
 
 static void collectCoins(World *world, Player *player) {
-  for (int i = 0; i < MAX_COINS; i++) {
-    if (!world->coins[i].active) {
-      continue;
-    }
+  FOREACH_ACTIVE(coins, MAX_COINS, i) {
     if (CheckCollisionCircles(player->position, player->radius,
                               world->coins[i].position, COIN_RADIUS)) {
       spawnParticles(world, world->coins[i].position, WHITE, 14, true);
@@ -239,10 +237,7 @@ static void collectCoins(World *world, Player *player) {
 // Integrate + damp coin velocity. Normal coins sit at {0} velocity and don't
 // move; only ones knocked off by a hit drift outward and settle.
 static void moveCoins(World *world) {
-  for (int i = 0; i < MAX_COINS; i++) {
-    if (!world->coins[i].active) {
-      continue;
-    }
+  FOREACH_ACTIVE(coins, MAX_COINS, i) {
     world->coins[i].position.x += world->coins[i].velocity.x;
     world->coins[i].position.y += world->coins[i].velocity.y;
     world->coins[i].velocity.x *= COIN_DAMP;
@@ -253,10 +248,7 @@ static void moveCoins(World *world) {
 // Coin magnet: while active, drag nearby coins toward the player so the
 // existing overlap check sweeps them up next frame.
 static void applyMagnet(World *world, const Player *player) {
-  for (int i = 0; i < MAX_COINS; i++) {
-    if (!world->coins[i].active) {
-      continue;
-    }
+  FOREACH_ACTIVE(coins, MAX_COINS, i) {
     Vector2 c = world->coins[i].position;
     float dx = player->position.x - c.x;
     float dy = player->position.y - c.y;
@@ -269,10 +261,7 @@ static void applyMagnet(World *world, const Player *player) {
 }
 
 static void collectPowerups(World *world, Player *player) {
-  for (int i = 0; i < MAX_POWERUPS; i++) {
-    if (!world->powerups[i].active) {
-      continue;
-    }
+  FOREACH_ACTIVE(powerups, MAX_POWERUPS, i) {
     if (CheckCollisionCircles(player->position, player->radius,
                               world->powerups[i].position, POWERUP_RADIUS)) {
       PowerUpType t = world->powerups[i].type;
@@ -295,10 +284,7 @@ static void collectPowerups(World *world, Player *player) {
 }
 
 static void updateMonsters(World *world, Player *player) {
-  for (int i = 0; i < MAX_MONSTERS; i++) {
-    if (!world->monsters[i].active) {
-      continue;
-    }
+  FOREACH_ACTIVE(monsters, MAX_MONSTERS, i) {
     Monster *m = &world->monsters[i];
     m->position.x += m->vx;
     if (m->position.x < MONSTER_RADIUS ||
@@ -352,10 +338,7 @@ static void bounceOnPlatforms(World *world, Player *player) {
   }
   float feet = player->position.y + player->radius;
   float prevFeet = feet - player->velocity.y;
-  for (int i = 0; i < MAX_PLATFORMS; i++) {
-    if (!world->platforms[i].active) {
-      continue;
-    }
+  FOREACH_ACTIVE(platforms, MAX_PLATFORMS, i) {
     Vector2 p = world->platforms[i].position;
     if (prevFeet <= p.y && feet >= p.y && player->position.x >= p.x &&
         player->position.x <= p.x + PLATFORM_WIDTH) {
@@ -512,7 +495,8 @@ static void drawPowerUp(const PowerUp *pu, float t) {
     DrawPolyLines(c, 6, R, 0, ORANGE);              // rim
     DrawPoly(c, 6, R * 0.55f, 0, SKYBLUE);          // inner crest
     break;
-  default: { // POWERUP_ROCKET
+  case POWERUP_ROCKET:
+  default: {
     float fl = R * (0.6f + 0.35f * sinf(t * 22.0f)); // flame flicker
     DrawPoly((Vector2){c.x, c.y + R * 0.9f + fl * 0.4f}, 3, fl, 90, FLAME);
     DrawEllipse(c.x, c.y, R * 0.5f, R * 0.9f, ROCKET_BODY);
@@ -533,28 +517,8 @@ void drawGround(void) {
   }
 }
 
-void drawWorld(const World *world) {
-  float t = (float)GetTime();
-
-  drawGround();
-
-  // Iterate active elements of world->arr[]. Assumes local `world`.
-#define FOREACH_ACTIVE(arr, count, i)                                          \
-  for (int i = 0; i < (count); i++)                                            \
-    if (world->arr[i].active)
-
-  FOREACH_ACTIVE(platforms, MAX_PLATFORMS, i)
-  drawCloudPad(world->platforms[i].position);
-  FOREACH_ACTIVE(coins, MAX_COINS, i)
-  drawCoin(world->coins[i].position, t);
-  FOREACH_ACTIVE(powerups, MAX_POWERUPS, i)
-  drawPowerUp(&world->powerups[i], t);
-  FOREACH_ACTIVE(monsters, MAX_MONSTERS, i)
-  drawMonster(world->monsters[i].position, t);
-
-#undef FOREACH_ACTIVE
-
-  // Particles as spinning confetti flecks (on top).
+// Particles as spinning confetti flecks (on top of the scene).
+static void drawParticles(const World *world) {
   for (int i = 0; i < MAX_PARTICLES; i++) {
     if (world->particles[i].life <= 0.0f) {
       continue;
@@ -566,13 +530,33 @@ void drawWorld(const World *world) {
                      (Vector2){sz * 0.5f, sz * 0.3f}, ang,
                      Fade(pt.color, pt.life));
   }
+}
 
-  // Collect "pop" ring.
+// The expanding "pop" ring flashed at the last coin/power-up collect.
+static void drawFlash(const World *world) {
   if (world->flash > 0.0f) {
     float r = COIN_RADIUS + (1.0f - world->flash) * 42.0f;
     DrawRing(world->flashPos, r * 0.72f, r, 0, 360, 24,
              Fade(RAYWHITE, world->flash));
   }
+}
+
+void drawWorld(const World *world) {
+  float t = (float)GetTime();
+
+  drawGround();
+
+  FOREACH_ACTIVE(platforms, MAX_PLATFORMS, i)
+  drawCloudPad(world->platforms[i].position);
+  FOREACH_ACTIVE(coins, MAX_COINS, i)
+  drawCoin(world->coins[i].position, t);
+  FOREACH_ACTIVE(powerups, MAX_POWERUPS, i)
+  drawPowerUp(&world->powerups[i], t);
+  FOREACH_ACTIVE(monsters, MAX_MONSTERS, i)
+  drawMonster(world->monsters[i].position, t);
+
+  drawParticles(world);
+  drawFlash(world);
 }
 
 bool isPlayerFallen(const World *world, const Player *player) {
