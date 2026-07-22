@@ -5,6 +5,13 @@
 
 #include <stddef.h>
 
+// Rounded-rect drawing shares these: corner roundness, segment count, and the
+// 3D "lip" (the button face sits this many px above its drop shadow).
+#define BTN_ROUNDNESS 0.4f
+#define ROUND_SEGMENTS 8
+#define BTN_LIP 4.0f
+#define LABEL_PAD 12.0f // horizontal breathing room for a button's text
+
 Vector2 virtualMouse(void) {
   int sw = GetScreenWidth(), sh = GetScreenHeight();
   return (Vector2){GetMouseX() * (float)SCREEN_WIDTH / (sw ? sw : 1),
@@ -56,12 +63,12 @@ void drawIcon(IconKind kind, float cx, float cy, float s, Color c) {
                  (Vector2){cx + s * 0.15f, cy - s * 0.35f},
                  (Vector2){cx + s * 0.45f, cy + s * 0.25f}, c);
     break;
+  case ICON_BACK: // "go back" reads as a left-pointing arrow
   case ICON_ARROW_L:
     DrawTriangle((Vector2){cx + s * 0.4f, cy - s * 0.55f},
                  (Vector2){cx - s * 0.5f, cy},
                  (Vector2){cx + s * 0.4f, cy + s * 0.55f}, c);
     break;
-  case ICON_BACK:
   case ICON_ARROW_R:
     DrawTriangle((Vector2){cx - s * 0.4f, cy - s * 0.55f},
                  (Vector2){cx - s * 0.4f, cy + s * 0.55f},
@@ -96,9 +103,9 @@ void drawIcon(IconKind kind, float cx, float cy, float s, Color c) {
 void uiButton(Rectangle r, const char *label, IconKind icon) {
   bool hover = mouseInRect(r);
   Color base = hover ? CANDY_PINK : CANDY_PINK_DK;
-  DrawRectangleRounded(r, 0.4f, 8, Fade(BLACK, 0.25f));
-  DrawRectangleRounded((Rectangle){r.x, r.y, r.width, r.height - 4}, 0.4f, 8,
-                       base);
+  DrawRectangleRounded(r, BTN_ROUNDNESS, ROUND_SEGMENTS, Fade(BLACK, 0.25f));
+  DrawRectangleRounded((Rectangle){r.x, r.y, r.width, r.height - BTN_LIP},
+                       BTN_ROUNDNESS, ROUND_SEGMENTS, base);
 
   float cx = r.x + r.width / 2.0f, cy = r.y + r.height / 2.0f;
   if (icon != ICON_NONE && (label == NULL || label[0] == '\0')) {
@@ -106,7 +113,7 @@ void uiButton(Rectangle r, const char *label, IconKind icon) {
   } else {
     // Slim icon column + a font that shrinks to fit so labels never overflow.
     float iconCol = (icon != ICON_NONE) ? r.height * 0.72f : 0.0f;
-    float avail = r.width - iconCol - 12.0f;
+    float avail = r.width - iconCol - LABEL_PAD;
     int fs = (int)(r.height * 0.42f);
     while (fs > 8 && label && MeasureText(label, fs) > avail) {
       fs--;

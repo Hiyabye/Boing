@@ -53,6 +53,13 @@ static void gotoState(Game *g, GameState next) {
 static Rectangle centeredBtn(float y, float w, float h) {
   return (Rectangle){SCREEN_WIDTH / 2.0f - w / 2.0f, y, w, h};
 }
+// Button `idx` of `n` equal w-wide buttons laid out as one centered row at y.
+static Rectangle centeredRow(float y, float w, float h, int idx, int n) {
+  float gap = 24.0f;
+  float total = n * w + (n - 1) * gap;
+  return (Rectangle){SCREEN_WIDTH / 2.0f - total / 2.0f + idx * (w + gap), y, w,
+                     h};
+}
 static Rectangle rPauseBtn(void) {
   return (Rectangle){SCREEN_WIDTH - 54, 10, 44, 44};
 }
@@ -68,12 +75,10 @@ static Rectangle rCreditsBack(void) {
   return centeredBtn(SCREEN_HEIGHT - 110, 200, 54);
 }
 static Rectangle rResume(void) {
-  return (Rectangle){SCREEN_WIDTH / 2.0f - 172, SCREEN_HEIGHT / 2.0f + 40, 160,
-                     56};
+  return centeredRow(SCREEN_HEIGHT / 2.0f + 40, 160, 56, 0, 2);
 }
 static Rectangle rPauseSettings(void) {
-  return (Rectangle){SCREEN_WIDTH / 2.0f + 12, SCREEN_HEIGHT / 2.0f + 40, 160,
-                     56};
+  return centeredRow(SCREEN_HEIGHT / 2.0f + 40, 160, 56, 1, 2);
 }
 static Rectangle rPauseHome(void) {
   return centeredBtn(SCREEN_HEIGHT / 2.0f + 108, 160, 56);
