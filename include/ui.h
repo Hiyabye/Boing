@@ -18,6 +18,7 @@ typedef enum {
   ICON_BACK,
   ICON_HOME,
   ICON_EXIT,
+  ICON_HEART,
 } IconKind;
 
 // Window mouse position mapped into the virtual 800x800 render space.

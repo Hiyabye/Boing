@@ -29,7 +29,13 @@ typedef struct Monster {
   bool active;
 } Monster;
 
-typedef enum { POWERUP_MAGNET, POWERUP_ROCKET, POWERUP_COUNT } PowerUpType;
+typedef enum {
+  POWERUP_MAGNET,
+  POWERUP_ROCKET,
+  POWERUP_BALLOON,
+  POWERUP_SHIELD,
+  POWERUP_COUNT
+} PowerUpType;
 
 // Per-type behaviour, in one place so adding a power-up (Balloon/Shield/…) is a
 // new enum value + one table row — no hunting across spawn/collect/HUD sites.

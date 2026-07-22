@@ -52,9 +52,13 @@ static Rectangle rHelpBtn(void) { return (Rectangle){10, 10, 44, 44}; }
 static Rectangle rHelpClose(void) {
   return centeredBtn(SCREEN_HEIGHT / 2.0f + 168, 180, 54);
 }
-static Rectangle rMenuPlay(void) { return centeredBtn(424, 240, 62); }
-static Rectangle rMenuSettings(void) { return centeredBtn(498, 240, 54); }
-static Rectangle rMenuExit(void) { return centeredBtn(564, 240, 54); }
+static Rectangle rMenuPlay(void) { return centeredBtn(408, 240, 60); }
+static Rectangle rMenuSettings(void) { return centeredBtn(476, 240, 54); }
+static Rectangle rMenuCredits(void) { return centeredBtn(540, 240, 54); }
+static Rectangle rMenuExit(void) { return centeredBtn(604, 240, 54); }
+static Rectangle rCreditsBack(void) {
+  return centeredBtn(SCREEN_HEIGHT - 110, 200, 54);
+}
 static Rectangle rResume(void) {
   return (Rectangle){SCREEN_WIDTH / 2.0f - 172, SCREEN_HEIGHT / 2.0f + 40, 160,
                      56};
@@ -182,8 +186,20 @@ static void updateMenu(Game *g) {
   } else if (IsKeyPressed(KEY_S) || clicked(rMenuSettings())) {
     gotoState(g, GAMESTATE_SETTINGS);
     sfxSelect();
+  } else if (clicked(rMenuCredits())) {
+    gotoState(g, GAMESTATE_CREDITS);
+    sfxSelect();
   } else if (clicked(rMenuExit())) {
     g->quit = true;
+  }
+}
+
+static void updateCredits(Game *g) {
+  updateAttract(&g->player); // keep the blob wandering behind the credits
+  if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
+      clicked(rCreditsBack())) {
+    gotoState(g, GAMESTATE_MENU);
+    sfxSelect();
   }
 }
 
@@ -218,6 +234,9 @@ static void updatePlaying(Game *g) {
       if (score > g->highScore) {
         g->highScore = score;
         saveHighScore(g->highScore);
+        sfxLevelUp(); // new best: celebratory jingle
+      } else {
+        sfxGameOver(); // ordinary death: sad tone
       }
       gotoState(g, GAMESTATE_GAMEOVER);
       return;
@@ -261,11 +280,45 @@ static void drawMenu(Game *g) {
                    24, COIN_LO);
   uiButton(rMenuPlay(), "PLAY", ICON_PLAY);
   uiButton(rMenuSettings(), "SETTINGS", ICON_GEAR);
+  uiButton(rMenuCredits(), "CREDITS", ICON_HEART);
   uiButton(rMenuExit(), "EXIT", ICON_EXIT);
   uiButton(rHelpBtn(), "?", ICON_NONE);
   if (g->showHelp) {
     drawHelpOverlay();
   }
+}
+
+// Static credits/acknowledgements — homage credit, not a claim of association.
+static const char *CREDITS_LINES[] = {
+    "A game by Jihoon Lee",
+    "",
+    "Built with raylib  (raylib.com)",
+    "",
+    "Inspired by Mega Jump (Halfbrick)",
+    "homage only, not affiliated",
+    "",
+    "2PG Arcade 1.44MB contest",
+};
+#define CREDITS_LINE_COUNT                                                      \
+  ((int)(sizeof(CREDITS_LINES) / sizeof(CREDITS_LINES[0])))
+
+static void drawCredits(Game *g) {
+  drawMenuBackground();
+  drawGround();
+  drawPlayer(&g->player);
+  // Dim the scene + a rounded panel behind the text, like the help overlay.
+  DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.55f));
+  Rectangle panel = {SCREEN_WIDTH / 2.0f - 300, 120, 600, 540};
+  DrawRectangleRounded(panel, 0.08f, 12, Fade(BLACK, 0.55f));
+  DrawRectangleRoundedLines(panel, 0.08f, 12, CANDY_PINK);
+  int bob = (int)(sinf((float)GetTime() * 2.0f) * 8.0f);
+  drawCenteredText("CREDITS", 170 + bob, 64, CANDY_PINK);
+  int y = 300;
+  for (int i = 0; i < CREDITS_LINE_COUNT; i++) {
+    drawCenteredText(CREDITS_LINES[i], y, 24, RAYWHITE);
+    y += 38;
+  }
+  uiButton(rCreditsBack(), "BACK", ICON_BACK);
 }
 
 // Shared by PLAYING / PAUSED / GAMEOVER: the world, then state-specific
@@ -327,6 +380,7 @@ static const struct {
     [GAMESTATE_PLAYING] = {updatePlaying, drawPlay},
     [GAMESTATE_PAUSED] = {updatePaused, drawPlay},
     [GAMESTATE_GAMEOVER] = {updateGameover, drawPlay},
+    [GAMESTATE_CREDITS] = {updateCredits, drawCredits},
 };
 
 int main(void) {
