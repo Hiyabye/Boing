@@ -7,15 +7,10 @@
 // volume. Persisted to a plain text file beside the exe (like the highscore),
 // so it's runtime-generated and doesn't count against the 1.44MB budget.
 typedef struct {
-  int fpsIndex; // index into FPS_OPTIONS
-  int resIndex; // index into RES_OPTIONS (square window sizes)
+  int fpsIndex; // index into the framerate options (see settings.c)
+  int resIndex; // index into the resolution options (square window sizes)
   float volume; // 0..1, master volume
 } Settings;
-
-extern const int FPS_OPTIONS[];
-extern const int FPS_COUNT;
-extern const int RES_OPTIONS[];
-extern const int RES_COUNT;
 
 Settings loadSettings(void);
 void saveSettings(const Settings *s);

@@ -6,18 +6,29 @@
 #include "theme.h"
 #include "ui.h"
 
-const int FPS_OPTIONS[] = {30, 60, 120, 144};
-const int FPS_COUNT = 4;
+static const int FPS_OPTIONS[] = {30, 60, 120, 144};
 // Square window sizes — game renders at a fixed SCREEN_WIDTH x SCREEN_HEIGHT
 // target and is blitted scaled to the window, so any square size works.
-const int RES_OPTIONS[] = {600, 800, 1000, 1200};
-const int RES_COUNT = 4;
+static const int RES_OPTIONS[] = {600, 800, 1000, 1200};
+#define FPS_COUNT ((int)(sizeof(FPS_OPTIONS) / sizeof(FPS_OPTIONS[0])))
+#define RES_COUNT ((int)(sizeof(RES_OPTIONS) / sizeof(RES_OPTIONS[0])))
 
-#define ROW_COUNT 3
+// The settings screen is one row per option. Adding a row = a new RowKind, a
+// table entry, and a case in changeRow()/formatValue() below.
+typedef enum { ROW_FPS, ROW_RES, ROW_VOLUME } RowKind;
+static const char *const ROW_LABELS[] = {
+    [ROW_FPS] = "FRAMERATE",
+    [ROW_RES] = "RESOLUTION",
+    [ROW_VOLUME] = "VOLUME",
+};
+#define ROW_COUNT ((int)(sizeof(ROW_LABELS) / sizeof(ROW_LABELS[0])))
 
 static int selRow = 0;
 
 static int wrapi(int v, int n) { return ((v % n) + n) % n; }
+
+// Volume is persisted/displayed as a rounded int percent.
+static int volumePercent(float volume) { return (int)(volume * 100.0f + 0.5f); }
 
 // Shared hit/draw geometry so update (click) and draw (render) agree.
 #define ROW_Y(row) (SCREEN_HEIGHT / 2 - 60 + (row) * 60)
@@ -33,19 +44,32 @@ static Rectangle backRect(void) {
 
 static void changeRow(Settings *s, int row, int dir) {
   switch (row) {
-  case 0:
+  case ROW_FPS:
     s->fpsIndex = wrapi(s->fpsIndex + dir, FPS_COUNT);
     break;
-  case 1:
+  case ROW_RES:
     s->resIndex = wrapi(s->resIndex + dir, RES_COUNT);
     break;
-  case 2:
+  case ROW_VOLUME:
     s->volume = clampf(s->volume + dir * 0.1f, 0.0f, 1.0f);
     break;
   }
   applySettings(s);
   saveSettings(s);
   sfxSelect();
+}
+
+// Current value of a row, formatted for display.
+static const char *formatValue(const Settings *s, int row) {
+  switch (row) {
+  case ROW_FPS:
+    return TextFormat("%d FPS", FPS_OPTIONS[s->fpsIndex]);
+  case ROW_RES:
+    return TextFormat("%dx%d", RES_OPTIONS[s->resIndex], RES_OPTIONS[s->resIndex]);
+  case ROW_VOLUME:
+    return TextFormat("%d%%", volumePercent(s->volume));
+  }
+  return "";
 }
 
 Settings loadSettings(void) {
@@ -64,7 +88,7 @@ Settings loadSettings(void) {
 }
 
 void saveSettings(const Settings *s) {
-  int buf[3] = {s->fpsIndex, s->resIndex, (int)(s->volume * 100.0f + 0.5f)};
+  int buf[3] = {s->fpsIndex, s->resIndex, volumePercent(s->volume)};
   writeInts("settings", buf, 3);
 }
 
@@ -145,11 +169,9 @@ void drawSettingsMenu(const Settings *s) {
 
   drawCenteredText("SETTINGS", SCREEN_HEIGHT / 5, 60, CANDY_PINK);
 
-  drawRow(0, "FRAMERATE", TextFormat("%d FPS", FPS_OPTIONS[s->fpsIndex]));
-  drawRow(
-      1, "RESOLUTION",
-      TextFormat("%dx%d", RES_OPTIONS[s->resIndex], RES_OPTIONS[s->resIndex]));
-  drawRow(2, "VOLUME", TextFormat("%d%%", (int)(s->volume * 100.0f + 0.5f)));
+  for (int r = 0; r < ROW_COUNT; r++) {
+    drawRow(r, ROW_LABELS[r], formatValue(s, r));
+  }
 
   uiButton(backRect(), "BACK", ICON_BACK);
 }
