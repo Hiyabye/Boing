@@ -48,5 +48,5 @@ OpenGL 프레임워크가 자동으로 링크된다.
 기본 빌드가 `MinSizeRel` + strip이라 `build/Boing`이 곧 배포 크기다:
 
 ```sh
-ls -l build/Boing   # stripped ~468KB (478,664 B), 한도 1,474,560 B
+ls -l build/Boing   # stripped ~468KB (478,728 B), 한도 1,474,560 B
 ```
