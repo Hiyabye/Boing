@@ -37,7 +37,10 @@ This project targets the [2PG Arcade 1.44MB contest](https://2pgarcade.com/conte
   ```sh
   ls -l build/Boing
   ```
-  As of 2026-07: ~1.05MB stripped (1,047,608 bytes), ~427KB headroom.
+  As of 2026-07: ~468KB stripped (478,664 bytes), ~973KB headroom. The build
+  also link-time dead-strips (`-Wl,-dead_strip` on macOS / `--gc-sections`
+  elsewhere, `CMakeLists.txt`), dropping raylib's unused audio/image/font-format
+  decoders the pure-2D game never calls (~585KB off the pre-dead-strip binary).
 - Prefer procedural generation (like the existing chiptune) over asset files; every asset counts against the budget.
 
 ## Build & run

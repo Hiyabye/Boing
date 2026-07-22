@@ -23,6 +23,17 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     lib/raylib/src
 )
 
+# Drop unreferenced code/data at link time (removes raylib's unused audio/image/
+# font-format decoders the game never calls). macOS ld64 uses -dead_strip;
+# GNU ld uses --gc-sections. Compile with per-function/data sections so the
+# linker can strip at that granularity.
+target_compile_options(${PROJECT_NAME} PRIVATE -ffunction-sections -fdata-sections)
+if(APPLE)
+    target_link_options(${PROJECT_NAME} PRIVATE -Wl,-dead_strip)
+else()
+    target_link_options(${PROJECT_NAME} PRIVATE -Wl,--gc-sections)
+endif()
+
 # 4. Link raylib and macOS-specific system frameworks
 target_link_libraries(${PROJECT_NAME} PRIVATE raylib)
 
