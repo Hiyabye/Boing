@@ -82,8 +82,6 @@ static Rectangle rRetry(void) {
   return centeredBtn(SCREEN_HEIGHT * 2.0f / 3, 200, 60);
 }
 
-// clicked(), drawTextShadow(), drawCenteredText() now live in the ui module.
-
 // Score badge + power-up timer bar, in screen space (outside BeginMode2D).
 static void drawHud(const World *world) {
   const char *scoreStr = TextFormat("SCORE %d", getScore(world));
@@ -258,7 +256,7 @@ static void updatePlaying(Game *g) {
     handlePlayerInput(&g->player, mouseX);
     updatePlayer(&g->player);
     updateWorld(&g->world, &g->player);
-    if (isPlayerFallen(&g->world, &g->player) || worldDead(&g->world)) {
+    if (isPlayerFallen(&g->world, &g->player)) {
       g->player.expression = EXPR_SAD; // sad face through the game-over screen
       int score = getScore(&g->world);
       if (score > g->highScore) {
@@ -517,6 +515,8 @@ static const struct {
     [GAMESTATE_GAMEOVER] = {updateGameover, drawPlay},
     [GAMESTATE_CREDITS] = {updateCredits, drawCredits},
 };
+// Every state must have a handler — a NULL slot would crash the dispatch below.
+STATIC_ASSERT(sizeof(STATES) / sizeof(STATES[0]) == GAMESTATE_COUNT, states_full);
 
 int main(void) {
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Boing!");

@@ -47,7 +47,8 @@ void themeUpdate(float ascent);
 void themeBlend(int *lo, int *hi, float *f);
 // The music/SFX track for the current blend (switches at the band midpoint).
 int themeTrack(void);
-// 0-based level fully entered at `ascent` (see theme.c); saturates at the top.
+// 0-based level fully entered at `ascent` (see theme.c); unbounded — themes
+// loop once past the last band (nature->arcade->nature->…).
 int themeLevelAt(float ascent);
 
 // Color macros read the runtime blended palette — call sites are unchanged.

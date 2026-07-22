@@ -421,11 +421,10 @@ static const struct Note NOTES0[] = {
     {A3, 47.75f, 0.25f},
 };
 
-// Track 1 — Arcade theme. PLACEHOLDER: add the melody here, same
-// {frequency, start, duration} form as NOTES0 above (start/duration in seconds
-// within the 48s loop). The A2 tonic-pedal pad plays under every track, so this
-// is not silent while empty. Keep the loop length at LOOP_DURATION (48s) so the
-// shared pedal stays seamless.
+// Track 1 — Arcade theme. Same {frequency, start, duration} form as NOTES0
+// (start/duration in seconds within the 48s loop). The shared A2 tonic-pedal
+// pad plays under every track; keep the loop length at LOOP_DURATION (48s) so
+// that pedal stays seamless.
 static const struct Note NOTES1[] = {
     // RIGHT HAND
     {E5, 0.0f, 0.45f},
@@ -764,6 +763,9 @@ static void buildLoop(int track) {
 
   loopBuffer[track] = malloc(LOOP_SAMPLES * sizeof(float));
   float *buf = loopBuffer[track];
+  if (buf == NULL) {
+    return; // out of memory: leave the slot NULL; updateAudio plays it silent
+  }
   float peak = 0.0001f;
   for (int i = 0; i < LOOP_SAMPLES; i++) {
     float t = (float)i / SAMPLE_RATE;
@@ -960,8 +962,10 @@ void updateAudio(AudioStream *stream) {
   float buffer[BUFFER_SIZE];
   for (int i = 0; i < BUFFER_SIZE; i++) {
     // Crossfade the outgoing and incoming tracks (both share loopPos/length).
-    float music = fade * loopBuffer[curTrack][loopPos] +
-                  (1.0f - fade) * loopBuffer[prevTrack][loopPos];
+    // A track whose loop failed to allocate is NULL — treat it as silence.
+    float cur = loopBuffer[curTrack] ? loopBuffer[curTrack][loopPos] : 0.0f;
+    float prev = loopBuffer[prevTrack] ? loopBuffer[prevTrack][loopPos] : 0.0f;
+    float music = fade * cur + (1.0f - fade) * prev;
     loopPos = (loopPos + 1) % LOOP_SAMPLES;
     if (fade < 1.0f) {
       fade += 1.0f / FADE_SAMPLES;

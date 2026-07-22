@@ -56,7 +56,6 @@ const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
 
 float worldCameraY(const World *world) { return world->cameraY; }
 float worldShake(const World *world) { return world->shake; }
-bool worldDead(const World *world) { return world->dead; }
 int worldLevel(const World *world) { return world->level; } // 0-based band
 
 float worldPowerTimer(const World *world, PowerUpType type) {

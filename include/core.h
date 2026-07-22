@@ -11,8 +11,13 @@ typedef enum {
   GAMESTATE_PLAYING,
   GAMESTATE_PAUSED,
   GAMESTATE_GAMEOVER,
-  GAMESTATE_CREDITS
+  GAMESTATE_CREDITS,
+  GAMESTATE_COUNT // sentinel: sizes the STATES[] dispatch table in main.c
 } GameState;
+
+// Compile-time assertion for C99 (no _Static_assert until C11): a false
+// condition makes an illegal negative-sized array and fails the build.
+#define STATIC_ASSERT(cond, name) typedef char static_assert_##name[(cond) ? 1 : -1]
 
 static inline float clampf(float v, float lo, float hi) {
   return v < lo ? lo : (v > hi ? hi : v);

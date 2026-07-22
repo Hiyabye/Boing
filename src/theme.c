@@ -90,6 +90,11 @@ Theme gTheme;
 static int gLo = 0, gHi = 1;
 static float gF = 0.0f;
 
+// lerpTheme walks the leading Color run as a raw Color[] up to `backdrop`, so
+// that offset must land on a whole number of Colors — i.e. no non-Color field
+// may sneak in before `backdrop`. A reordered struct trips this at compile time.
+STATIC_ASSERT(offsetof(Theme, backdrop) % sizeof(Color) == 0, theme_color_run);
+
 // Blend every Color field (the whole leading run of the struct) from a->b by f.
 static Theme lerpTheme(const Theme *a, const Theme *b, float f) {
   Theme r = *a;
