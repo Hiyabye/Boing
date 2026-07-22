@@ -89,12 +89,25 @@ static Rectangle rRetry(void) {
   return centeredBtn(SCREEN_HEIGHT * 2.0f / 3, 200, 60);
 }
 
-// Score badge + power-up timer bar, in screen space (outside BeginMode2D).
+// Score badge + coin tally + level bar + power-up timer bars, in screen space
+// (drawn after the world's rlPopMatrix, in the frame's scaled 800x800 space).
 static void drawHud(const World *world) {
   const char *scoreStr = TextFormat("SCORE %d", getScore(world));
   DrawRectangleRounded((Rectangle){8, 8, MeasureText(scoreStr, 30) + 24, 40},
                        0.4f, 8, Fade(BLACK, 0.28f));
   drawTextShadow(scoreStr, 20, 13, 30, RAYWHITE);
+
+  // Coin tally: a mini coin glyph + count, tucked below the score badge on the
+  // left so the top-right pause button doesn't hide it.
+  const char *coinStr = TextFormat("%d", world->coinsCollected);
+  float cbx = 8, cby = 52;
+  float cbw = 24 + 8 + MeasureText(coinStr, 30) + 20;
+  DrawRectangleRounded((Rectangle){cbx, cby, cbw, 40}, 0.4f, 8,
+                       Fade(BLACK, 0.28f));
+  float gcx = cbx + 20, gcy = cby + 20;
+  DrawEllipse(gcx, gcy, 11, 13, COIN_LO);
+  DrawEllipse(gcx, gcy, 7.5f, 9, COIN_HI);
+  drawTextShadow(coinStr, (int)gcx + 16, (int)cby + 5, 30, RAYWHITE);
 
   // Level progress bar (top-center): how far into the current theme band the
   // climb has reached (f = blend toward the next theme).
@@ -110,7 +123,7 @@ static void drawHud(const World *world) {
                        Fade(COIN_HI, 0.9f));
 
   // One timer bar per active power-up, stacked (magnet + rocket can overlap).
-  int bx = 12, by = 56, bw = 150;
+  int bx = 12, by = 98, bw = 150; // below the score + coin badges
   for (PowerUpType t = 0; t < POWERUP_COUNT; t++) {
     float timer = worldPowerTimer(world, t);
     if (timer <= 0.0f) {
@@ -475,11 +488,16 @@ static void drawPlay(Game *g) {
     sx = GetRandomValue(-100, 100) / 100.0f * shake;
     sy = GetRandomValue(-100, 100) / 100.0f * shake;
   }
-  Camera2D camera = {.target = {sx, cameraY + sy}, .zoom = 1.0f};
-  BeginMode2D(camera);
+  // Camera is a plain translation (zoom 1, no rotation): apply it as a
+  // translate *inside* the frame's scale matrix instead of BeginMode2D, which
+  // does rlLoadIdentity (discarding our scale) and whose EndMode2D restores
+  // raylib's HiDPI screenScale — that left every screen-space draw after it
+  // (HUD, pause overlay) doubled on Retina.
+  rlPushMatrix();
+  rlTranslatef(-sx, -(cameraY + sy), 0.0f);
   drawWorld(&g->world);
   drawPlayer(&g->player);
-  EndMode2D();
+  rlPopMatrix();
 
   drawHud(&g->world);
 
