@@ -24,39 +24,77 @@ static const char *const ROW_LABELS[] = {
 #define ROW_COUNT ((int)(sizeof(ROW_LABELS) / sizeof(ROW_LABELS[0])))
 
 static int selRow = 0;
+static int dragRow = -1;             // row whose slider is being dragged, -1 = none
+static bool suppressResize = false;  // hold the window size steady mid res-drag
 
 static int wrapi(int v, int n) { return ((v % n) + n) % n; }
 
 // Volume is persisted/displayed as a rounded int percent.
 static int volumePercent(float volume) { return (int)(volume * 100.0f + 0.5f); }
 
-// Shared hit/draw geometry so update (click) and draw (render) agree.
+// Shared hit/draw geometry so update (drag) and draw (render) agree. Each row is
+// a horizontal slider: a full-width track with a knob at the current stop.
 #define ROW_Y(row) (SCREEN_HEIGHT / 2 - 60 + (row) * 60)
+#define TRACK_X0 180
+#define TRACK_X1 620
+#define TRACK_W (TRACK_X1 - TRACK_X0)
 static Rectangle rowRect(int row) {
-  return (Rectangle){160, ROW_Y(row) - 6, 480, 44};
+  return (Rectangle){160, ROW_Y(row) - 6, 480, 54};
 }
-static Rectangle arrowRect(int row, int side) { // side: -1 left, +1 right
-  return (Rectangle){side < 0 ? 400 : 560, ROW_Y(row) - 6, 52, 44};
+static float trackY(int row) { return ROW_Y(row) + 38.0f; }
+static Rectangle trackHitRect(int row) { // fat grab band around the thin bar
+  return (Rectangle){TRACK_X0 - 12, trackY(row) - 15, TRACK_W + 24, 30};
 }
 static Rectangle backRect(void) {
   return (Rectangle){SCREEN_WIDTH / 2.0f - 80, 700, 160, 52};
 }
 
-static void changeRow(Settings *s, int row, int dir) {
+// Each row is a slider with a fixed number of discrete stops: one per option for
+// fps/res, 21 stops (5% steps) for volume.
+#define VOLUME_STOPS 21
+static int rowStops(int row) {
   switch (row) {
   case ROW_FPS:
-    s->fpsIndex = wrapi(s->fpsIndex + dir, FPS_COUNT);
+    return FPS_COUNT;
+  case ROW_RES:
+    return RES_COUNT;
+  case ROW_VOLUME:
+    return VOLUME_STOPS;
+  }
+  return 1;
+}
+static int rowStop(const Settings *s, int row) {
+  switch (row) {
+  case ROW_FPS:
+    return s->fpsIndex;
+  case ROW_RES:
+    return s->resIndex;
+  case ROW_VOLUME:
+    return (int)(s->volume * (VOLUME_STOPS - 1) + 0.5f);
+  }
+  return 0;
+}
+static void setRowStop(Settings *s, int row, int stop) {
+  stop = stop < 0 ? 0 : (stop >= rowStops(row) ? rowStops(row) - 1 : stop);
+  switch (row) {
+  case ROW_FPS:
+    s->fpsIndex = stop;
     break;
   case ROW_RES:
-    s->resIndex = wrapi(s->resIndex + dir, RES_COUNT);
+    s->resIndex = stop;
     break;
   case ROW_VOLUME:
-    s->volume = clampf(s->volume + dir * 0.1f, 0.0f, 1.0f);
+    s->volume = stop / (float)(VOLUME_STOPS - 1);
     break;
   }
   applySettings(s);
   saveSettings(s);
   sfx(SFX_SELECT);
+}
+
+// Keyboard nudge: move one stop (clamped, no wrap — it's a slider now).
+static void changeRow(Settings *s, int row, int dir) {
+  setRowStop(s, row, rowStop(s, row) + dir);
 }
 
 // Current value of a row, formatted for display.
@@ -95,8 +133,10 @@ void saveSettings(const Settings *s) {
 void applySettings(const Settings *s) {
   SetTargetFPS(FPS_OPTIONS[s->fpsIndex]);
   SetMasterVolume(s->volume);
-  int size = RES_OPTIONS[s->resIndex];
-  SetWindowSize(size, size);
+  if (!suppressResize) {
+    int size = RES_OPTIONS[s->resIndex];
+    SetWindowSize(size, size);
+  }
 }
 
 void updateSettingsMenu(Settings *s, GameState *state, GameState returnTo) {
@@ -110,9 +150,11 @@ void updateSettingsMenu(Settings *s, GameState *state, GameState returnTo) {
   }
 
   int dir = IsKeyPressed(KEY_RIGHT) ? 1 : (IsKeyPressed(KEY_LEFT) ? -1 : 0);
+  if (dir != 0) {
+    changeRow(s, selRow, dir);
+  }
 
-  // Mouse: click a row to select it, click its < / > to change it, Back to
-  // exit.
+  // Mouse: Back to exit, else grab a row's slider and drag the knob to its stop.
   if (clicked(backRect())) {
     *state = returnTo;
     sfx(SFX_SELECT);
@@ -120,21 +162,25 @@ void updateSettingsMenu(Settings *s, GameState *state, GameState returnTo) {
   }
   if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
     for (int r = 0; r < ROW_COUNT; r++) {
-      if (mouseInRect(arrowRect(r, -1))) {
+      if (mouseInRect(trackHitRect(r))) {
+        dragRow = r;
         selRow = r;
-        dir = -1;
-      } else if (mouseInRect(arrowRect(r, 1))) {
-        selRow = r;
-        dir = 1;
-      } else if (mouseInRect(rowRect(r))) {
-        selRow = r;
-        sfx(SFX_SELECT);
       }
     }
   }
-
-  if (dir != 0) {
-    changeRow(s, selRow, dir);
+  if (dragRow >= 0 && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+    // Resolution resizes the window, which moves the cursor's slider fraction
+    // under us and fights the drag — hold the size steady until release.
+    suppressResize = (dragRow == ROW_RES);
+    float frac = clampf((virtualMouse().x - TRACK_X0) / (float)TRACK_W, 0.0f, 1.0f);
+    int stop = (int)(frac * (rowStops(dragRow) - 1) + 0.5f);
+    if (stop != rowStop(s, dragRow)) {
+      setRowStop(s, dragRow, stop);
+    }
+  } else if (dragRow >= 0) { // released: commit any deferred window resize
+    suppressResize = false;
+    applySettings(s);
+    dragRow = -1;
   }
 
   if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE)) {
@@ -143,25 +189,31 @@ void updateSettingsMenu(Settings *s, GameState *state, GameState returnTo) {
   }
 }
 
-static void drawRow(int row, const char *label, const char *value) {
+static void drawRow(const Settings *s, int row, const char *label,
+                    const char *value) {
   bool sel = (row == selRow);
   int y = ROW_Y(row);
   Color col = sel ? COIN_HI : RAYWHITE;
-  int fs = 30;
+  int fs = 28;
   if (sel) {
-    DrawRectangleRounded(rowRect(row), 0.5f, 8, Fade(BLACK, 0.25f));
+    DrawRectangleRounded(rowRect(row), 0.4f, 8, Fade(BLACK, 0.25f));
   }
   DrawText(label, 180, y, fs, col);
-
-  // Value centered between the two clickable arrows (highlight on hover).
-  Rectangle la = arrowRect(row, -1), ra = arrowRect(row, 1);
-  float lcx = la.x + la.width / 2, rcx = ra.x + ra.width / 2;
   int vw = MeasureText(value, fs);
-  DrawText(value, (int)((lcx + rcx) / 2) - vw / 2, y, fs, col);
-  drawIcon(ICON_ARROW_L, lcx, la.y + la.height / 2, 20,
-           mouseInRect(la) ? COIN_HI : col);
-  drawIcon(ICON_ARROW_R, rcx, ra.y + ra.height / 2, 20,
-           mouseInRect(ra) ? COIN_HI : col);
+  DrawText(value, TRACK_X1 - vw, y, fs, col); // right-aligned over the track end
+
+  // Slider: dim full track, bright fill up to the knob, round knob on top.
+  float ty = trackY(row);
+  float frac = rowStop(s, row) / (float)(rowStops(row) - 1);
+  float knobX = TRACK_X0 + frac * TRACK_W;
+  DrawRectangleRounded((Rectangle){TRACK_X0, ty - 3, TRACK_W, 6}, 1.0f, 4,
+                       Fade(RAYWHITE, 0.25f));
+  if (knobX > TRACK_X0) {
+    DrawRectangleRounded((Rectangle){TRACK_X0, ty - 3, knobX - TRACK_X0, 6}, 1.0f,
+                         4, COIN_HI);
+  }
+  DrawCircle((int)knobX, (int)ty, sel ? 11 : 9, col);
+  DrawCircle((int)knobX, (int)ty, sel ? 5 : 4, Fade(BLACK, 0.35f));
 }
 
 void drawSettingsMenu(const Settings *s) {
@@ -170,7 +222,7 @@ void drawSettingsMenu(const Settings *s) {
   drawCenteredText("SETTINGS", SCREEN_HEIGHT / 5, 60, CANDY_PINK);
 
   for (int r = 0; r < ROW_COUNT; r++) {
-    drawRow(r, ROW_LABELS[r], formatValue(s, r));
+    drawRow(s, r, ROW_LABELS[r], formatValue(s, r));
   }
 
   uiButton(backRect(), "BACK", ICON_BACK);

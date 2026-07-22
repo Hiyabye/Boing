@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include "rlgl.h"
 
 #include "background.h"
 #include "core.h"
@@ -438,7 +439,11 @@ static void drawCredits(Game *g) {
     drawCrtCabinet(tube, e);
   }
 
-  BeginScissorMode((int)tube.x, (int)tube.y, (int)tube.width, (int)tube.height);
+  // Scissor is GL screen-space (the scale matrix doesn't touch it), so pre-scale
+  // the 800-space tube rect to native window pixels here only.
+  float s = GetScreenWidth() / (float)SCREEN_WIDTH;
+  BeginScissorMode((int)(tube.x * s), (int)(tube.y * s), (int)(tube.width * s),
+                   (int)(tube.height * s));
   if (a < 1.0f) {
     // Frozen menu on the tube while zooming (src y-flipped, like the main blit).
     DrawTexturePro(gMenuSnap.texture,
@@ -525,6 +530,11 @@ static const struct {
 STATIC_ASSERT(sizeof(STATES) / sizeof(STATES[0]) == GAMESTATE_COUNT, states_full);
 
 int main(void) {
+  // HighDPI: render at the display's true pixel density (crisp on Retina) and,
+  // crucially, keep GetScreenWidth/mouse/scissor all in logical *points* so the
+  // draw scale below is correct. Without it, macOS reports doubled pixels for a
+  // resized window while the GL drawable stays point-sized — content overflows.
+  SetConfigFlags(FLAG_WINDOW_HIGHDPI);
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Boing!");
   SetExitKey(KEY_NULL); // Esc leaves the settings menu, it doesn't quit
 
@@ -543,10 +553,9 @@ int main(void) {
   };
   applySettings(&game.settings); // target FPS, window size, master volume
 
-  // Render to a fixed-size target, then blit scaled to the window so the
-  // resolution setting can resize the window without touching draw code.
-  RenderTexture2D target = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
-  SetTextureFilter(target.texture, TEXTURE_FILTER_BILINEAR);
+  // Draw runs in fixed 800x800 logical coords; a GPU scale matrix maps them to
+  // the actual window each frame, so the resolution setting resizes the window
+  // and everything rasterizes natively (no upscaled-image blur) untouched.
   gMenuSnap = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT); // CRT freeze-frame
   SetTextureFilter(gMenuSnap.texture, TEXTURE_FILTER_BILINEAR);
 
@@ -555,22 +564,17 @@ int main(void) {
     STATES[game.state].update(&game);
     setTrack(themeTrack()); // music follows the theme the draw pass resolved
 
-    BeginTextureMode(target);
-    STATES[game.state].draw(&game);
-    EndTextureMode();
-
-    // Blit the target scaled to the actual window (src y flipped for GL).
+    // Draw 800-space, scaled to the native window (square, so width == scale).
+    float scale = GetScreenWidth() / (float)SCREEN_WIDTH;
     BeginDrawing();
     ClearBackground(BLACK);
-    DrawTexturePro(
-        target.texture,
-        (Rectangle){0, 0, (float)SCREEN_WIDTH, -(float)SCREEN_HEIGHT},
-        (Rectangle){0, 0, (float)GetScreenWidth(), (float)GetScreenHeight()},
-        (Vector2){0, 0}, 0.0f, WHITE);
+    rlPushMatrix();
+    rlScalef(scale, scale, 1.0f);
+    STATES[game.state].draw(&game);
+    rlPopMatrix();
     EndDrawing();
   }
 
-  UnloadRenderTexture(target);
   UnloadRenderTexture(gMenuSnap);
   deinitAudio(&stream);
   CloseWindow();
