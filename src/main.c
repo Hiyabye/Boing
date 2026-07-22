@@ -26,9 +26,17 @@ typedef struct {
   bool mouseControl; // true once the mouse moves; arrows reclaim control
   bool quit;         // set by the menu EXIT button to end the loop
   bool showHelp;     // menu "How to Play" overlay toggled by the ? button
+  float creditsAnim;   // 0 = fullscreen picture, 1 = zoomed out to the CRT
+  float creditsStatic; // "change channel" static timer, runs once zoomed out
+  bool creditsExiting; // BACK pressed: ramp creditsAnim back to 0, then MENU
 } Game;
 
 #define FIXED_DT (1.0f / 60.0f)
+
+// The menu, frozen the instant CREDITS is pressed, shown on the CRT tube while
+// the camera pulls back. Loaded beside the main render target in main().
+static RenderTexture2D gMenuSnap;
+static void drawMenu(Game *g); // defined below; captured into gMenuSnap on enter
 
 // Every state transition goes through here so `prevState` is always the screen
 // we came from — that's what SETTINGS returns to, replacing a hand-threaded
@@ -187,6 +195,13 @@ static void updateMenu(Game *g) {
     gotoState(g, GAMESTATE_SETTINGS);
     sfxSelect();
   } else if (clicked(rMenuCredits())) {
+    // Freeze the current menu onto the tube, then start the zoom-out.
+    BeginTextureMode(gMenuSnap);
+    drawMenu(g);
+    EndTextureMode();
+    g->creditsAnim = 0.0f;
+    g->creditsStatic = 0.5f; // static burst plays when the zoom-out finishes
+    g->creditsExiting = false;
     gotoState(g, GAMESTATE_CREDITS);
     sfxSelect();
   } else if (clicked(rMenuExit())) {
@@ -195,10 +210,25 @@ static void updateMenu(Game *g) {
 }
 
 static void updateCredits(Game *g) {
-  updateAttract(&g->player); // keep the blob wandering behind the credits
-  if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
-      clicked(rCreditsBack())) {
-    gotoState(g, GAMESTATE_MENU);
+  float step = 2.0f * GetFrameTime(); // ~0.5s zoom either direction
+  if (g->creditsExiting) {
+    g->creditsAnim = clampf(g->creditsAnim - step, 0.0f, 1.0f);
+    if (g->creditsAnim <= 0.0f) {
+      g->creditsExiting = false;
+      g->player = createPlayer(); // resume the menu's attract demo
+      gotoState(g, GAMESTATE_MENU);
+    }
+    return;
+  }
+  g->creditsAnim = clampf(g->creditsAnim + step, 0.0f, 1.0f);
+  if (g->creditsAnim >= 1.0f) { // count down the channel-change static
+    g->creditsStatic = clampf(g->creditsStatic - GetFrameTime(), 0.0f, 1.0f);
+  }
+  // BACK only after the tube has fully zoomed out (don't interrupt the intro).
+  if (g->creditsAnim >= 1.0f &&
+      (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
+       clicked(rCreditsBack()))) {
+    g->creditsExiting = true;
     sfxSelect();
   }
 }
@@ -288,37 +318,142 @@ static void drawMenu(Game *g) {
   }
 }
 
-// Static credits/acknowledgements — homage credit, not a claim of association.
-static const char *CREDITS_LINES[] = {
-    "A game by Jihoon Lee",
-    "",
-    "Built with raylib  (raylib.com)",
-    "",
-    "Inspired by Mega Jump (Halfbrick)",
+// Theater-style credits reel scrolled up the tube — homage credit, not a claim
+// of association. Lines starting with '-' render as pink section headers; blank
+// lines are spacers, and the leading/trailing ones pad the seamless loop wrap.
+static const char *REEL_LINES[] = {
+    "",  "",  "",
+    "- A GAME BY -",           "Jihoon Lee",
+    "",  "",
+    "- BUILT WITH -",          "raylib  (raylib.com)",
+    "",  "",
+    "- INSPIRED BY -",         "Mega Jump  (Halfbrick)",
     "homage only, not affiliated",
-    "",
-    "2PG Arcade 1.44MB contest",
+    "",  "",
+    "- SHOWN AT -",            "2PG Arcade 1.44MB contest",
+    "",  "",
+    "- THANK YOU FOR PLAYING -",
+    "",  "",  "",
 };
-#define CREDITS_LINE_COUNT                                                      \
-  ((int)(sizeof(CREDITS_LINES) / sizeof(CREDITS_LINES[0])))
+#define REEL_LINE_COUNT ((int)(sizeof(REEL_LINES) / sizeof(REEL_LINES[0])))
+#define REEL_LINE_H 34
+
+// The retro CRT shell around the tube: wood body, control column with dials +
+// power LED, bezel bevel, and rabbit-ear antennae. Everything fades/scales in
+// with `e` (the eased zoom-out amount) so it grows out of the fullscreen picture.
+static void drawCrtCabinet(Rectangle tube, float e) {
+  Color shell = Fade((Color){74, 60, 48, 255}, e);
+  Color shellHi = Fade((Color){104, 86, 68, 255}, e);
+  Color metal = Fade((Color){150, 150, 160, 255}, e);
+  Color knob = Fade((Color){40, 34, 30, 255}, e);
+
+  // Symmetric side margins (s) so the shell stays centered on the tube; the
+  // left margin holds a speaker grille, the right one the control column.
+  float m = 30 * e, s = 130 * e;
+  Rectangle body = {tube.x - s, tube.y - m, tube.width + 2 * s,
+                    tube.height + 2 * m};
+
+  // Rabbit-ear antennae poking up from the top center of the shell.
+  Vector2 base = {body.x + body.width * 0.5f, body.y};
+  Vector2 ltip = {base.x - 55 * e, base.y - 75 * e};
+  Vector2 rtip = {base.x + 55 * e, base.y - 95 * e};
+  DrawLineEx(base, ltip, 4 * e, metal);
+  DrawLineEx(base, rtip, 4 * e, metal);
+  DrawCircleV(ltip, 4 * e, metal);
+  DrawCircleV(rtip, 4 * e, metal);
+
+  DrawRectangleRounded(body, 0.10f, 10, shell);
+  DrawRectangleRoundedLines(body, 0.10f, 10, shellHi);
+
+  // Beveled bezel right around the glass.
+  Rectangle bezel = {tube.x - 8 * e, tube.y - 8 * e, tube.width + 16 * e,
+                     tube.height + 16 * e};
+  DrawRectangleRoundedLines(bezel, 0.06f, 8, knob);
+
+  // Left speaker grille, centered in the left margin.
+  float gx = tube.x - s * 0.5f;
+  for (int i = -2; i <= 2; i++) {
+    float gy = tube.y + tube.height * 0.5f + i * 16 * e;
+    DrawLineEx((Vector2){gx - 34 * e, gy}, (Vector2){gx + 34 * e, gy}, 3 * e,
+               knob);
+  }
+
+  // Right control column: two dials + a power LED.
+  float cx = tube.x + tube.width + s * 0.5f;
+  DrawCircle((int)cx, (int)(tube.y + tube.height * 0.28f), 22 * e, knob);
+  DrawCircle((int)cx, (int)(tube.y + tube.height * 0.28f), 14 * e, metal);
+  DrawCircle((int)cx, (int)(tube.y + tube.height * 0.55f), 22 * e, knob);
+  DrawCircle((int)cx, (int)(tube.y + tube.height * 0.55f), 14 * e, metal);
+  DrawCircle((int)cx, (int)(tube.y + tube.height * 0.80f), 6 * e, Fade(RED, e));
+}
+
+// A frame of TV snow: random bright bars over near-black. Hides the hard cut
+// from the frozen menu to the reel.
+static void drawStatic(Rectangle r) {
+  DrawRectangleRec(r, (Color){20, 20, 20, 255});
+  for (int i = 0; i < 220; i++) {
+    int x = (int)r.x + GetRandomValue(0, (int)r.width - 1);
+    int y = (int)r.y + GetRandomValue(0, (int)r.height - 1);
+    unsigned char v = (unsigned char)GetRandomValue(90, 255);
+    DrawRectangle(x, y, GetRandomValue(2, 10), 2, (Color){v, v, v, 255});
+  }
+}
+
+// The looping end-credits reel, centered on the tube (== SCREEN_WIDTH center).
+static void drawReel(Rectangle r) {
+  DrawRectangleRec(r, (Color){10, 10, 20, 255});
+  float total = REEL_LINE_COUNT * REEL_LINE_H;
+  float scroll = fmodf((float)GetTime() * 34.0f, total);
+  for (int i = 0; i < REEL_LINE_COUNT; i++) {
+    float y = r.y + r.height - scroll + i * REEL_LINE_H;
+    if (y < r.y - REEL_LINE_H) {
+      y += total; // wrapped past the top: reappear from the bottom
+    }
+    Color c = REEL_LINES[i][0] == '-' ? CANDY_PINK : RAYWHITE;
+    drawCenteredText(REEL_LINES[i], (int)y, 22, c);
+  }
+}
 
 static void drawCredits(Game *g) {
-  drawMenuBackground();
-  drawGround();
-  drawPlayer(&g->player);
-  // Dim the scene + a rounded panel behind the text, like the help overlay.
-  DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.55f));
-  Rectangle panel = {SCREEN_WIDTH / 2.0f - 300, 120, 600, 540};
-  DrawRectangleRounded(panel, 0.08f, 12, Fade(BLACK, 0.55f));
-  DrawRectangleRoundedLines(panel, 0.08f, 12, CANDY_PINK);
-  int bob = (int)(sinf((float)GetTime() * 2.0f) * 8.0f);
-  drawCenteredText("CREDITS", 170 + bob, 64, CANDY_PINK);
-  int y = 300;
-  for (int i = 0; i < CREDITS_LINE_COUNT; i++) {
-    drawCenteredText(CREDITS_LINES[i], y, 24, RAYWHITE);
-    y += 38;
+  float a = g->creditsAnim;
+  float e = a * a * (3.0f - 2.0f * a); // smoothstep the zoom-out
+
+  // Dark room the picture pulls back into.
+  DrawRectangleGradientV(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT,
+                         (Color){18, 16, 26, 255}, (Color){6, 5, 10, 255});
+
+  // Tube face: fullscreen at a=0, inset CRT glass at a=1. Centered on screen
+  // (tube center 400,400) so the cabinet is centered and the reel text (drawn at
+  // SCREEN_WIDTH center) lands centered on the glass.
+  Rectangle inset = {190, 240, 420, 320};
+  Rectangle tube = {inset.x * e, inset.y * e,
+                    SCREEN_WIDTH + (inset.width - SCREEN_WIDTH) * e,
+                    SCREEN_HEIGHT + (inset.height - SCREEN_HEIGHT) * e};
+
+  if (e > 0.01f) {
+    drawCrtCabinet(tube, e);
   }
-  uiButton(rCreditsBack(), "BACK", ICON_BACK);
+
+  BeginScissorMode((int)tube.x, (int)tube.y, (int)tube.width, (int)tube.height);
+  if (a < 1.0f) {
+    // Frozen menu on the tube while zooming (src y-flipped, like the main blit).
+    DrawTexturePro(gMenuSnap.texture,
+                   (Rectangle){0, 0, SCREEN_WIDTH, -SCREEN_HEIGHT}, tube,
+                   (Vector2){0, 0}, 0.0f, WHITE);
+  } else if (g->creditsStatic > 0.0f) {
+    drawStatic(tube);
+  } else {
+    drawReel(tube);
+  }
+  // CRT scanlines over whatever the tube is showing.
+  for (int y = (int)tube.y; y < tube.y + tube.height; y += 4) {
+    DrawLine((int)tube.x, y, (int)(tube.x + tube.width), y, Fade(BLACK, 0.12f));
+  }
+  EndScissorMode();
+
+  if (a >= 1.0f && !g->creditsExiting) {
+    uiButton(rCreditsBack(), "BACK", ICON_BACK);
+  }
 }
 
 // Shared by PLAYING / PAUSED / GAMEOVER: the world, then state-specific
@@ -406,6 +541,8 @@ int main(void) {
   // resolution setting can resize the window without touching draw code.
   RenderTexture2D target = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
   SetTextureFilter(target.texture, TEXTURE_FILTER_BILINEAR);
+  gMenuSnap = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT); // CRT freeze-frame
+  SetTextureFilter(gMenuSnap.texture, TEXTURE_FILTER_BILINEAR);
 
   while (!WindowShouldClose() && !game.quit) {
     updateAudio(&stream);
@@ -428,6 +565,7 @@ int main(void) {
   }
 
   UnloadRenderTexture(target);
+  UnloadRenderTexture(gMenuSnap);
   deinitAudio(&stream);
   CloseWindow();
   return 0;
