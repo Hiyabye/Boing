@@ -24,6 +24,9 @@
 #define MONSTER_SPACING 900.0f // vertical distance between monster bands
 #define MONSTER_DRIFT 1.5f     // horizontal speed
 #define MONSTER_COIN_LOSS 5    // coins scattered/lost on a monster hit
+#define COIN_SCATTER_R 60.0f     // ring radius knocked-off coins start at (> collect dist)
+#define COIN_SCATTER_SPEED 5.0f  // outward px/frame at launch
+#define COIN_DAMP 0.92f          // scattered coins decelerate to a rest
 #define POWERUP_RADIUS 18.0f
 #define POWERUP_SPACING 1500.0f // rare
 #define MAGNET_RADIUS 260.0f    // coins within this get pulled
@@ -170,6 +173,25 @@ static void spawnParticles(World *world, Vector2 at, Color color, int count,
   }
 }
 
+// Knock `count` real coins off in an even ring around `at`, flung outward so
+// they scatter clear of the player and can be chased down and re-collected.
+// Started just past the collect radius so they don't get instantly re-grabbed.
+static void scatterCoins(World *world, Vector2 at, int count) {
+  int made = 0;
+  for (int i = 0; i < MAX_COINS && made < count; i++) {
+    if (world->coins[i].active) {
+      continue;
+    }
+    float a = (float)made / (float)count * 6.2832f; // even wedge per coin
+    Vector2 dir = {cosf(a), sinf(a)};
+    world->coins[i] = (Coin){
+        {at.x + dir.x * COIN_SCATTER_R, at.y + dir.y * COIN_SCATTER_R},
+        true,
+        {dir.x * COIN_SCATTER_SPEED, dir.y * COIN_SCATTER_SPEED}};
+    made++;
+  }
+}
+
 // Deactivate any element of world->arr[] that has dropped `margin` past the
 // bottom cull line. Assumes locals `world` and `cullY`.
 #define CULL(arr, count, margin)                                               \
@@ -204,6 +226,20 @@ static void collectCoins(World *world, Player *player) {
       player->expression = EXPR_HAPPY;
       sfxCoin();
     }
+  }
+}
+
+// Integrate + damp coin velocity. Normal coins sit at {0} velocity and don't
+// move; only ones knocked off by a hit drift outward and settle.
+static void moveCoins(World *world) {
+  for (int i = 0; i < MAX_COINS; i++) {
+    if (!world->coins[i].active) {
+      continue;
+    }
+    world->coins[i].position.x += world->coins[i].velocity.x;
+    world->coins[i].position.y += world->coins[i].velocity.y;
+    world->coins[i].velocity.x *= COIN_DAMP;
+    world->coins[i].velocity.y *= COIN_DAMP;
   }
 }
 
@@ -273,8 +309,7 @@ static void updateMonsters(World *world, Player *player) {
                        ? world->coinsCollected
                        : MONSTER_COIN_LOSS;
         world->coinsCollected -= lost;
-        spawnParticles(world, player->position, COIN_HI, lost > 0 ? lost : 4,
-                       false);
+        scatterCoins(world, player->position, lost); // only the coins actually lost
         m->active = false;
         world->shake = SHAKE_HIT;
         player->velocity.y = 12.0f;    // knocked downward
@@ -341,6 +376,7 @@ void updateWorld(World *world, Player *player) {
   if (world->powerTimer[POWERUP_MAGNET] > 0.0f) {
     applyMagnet(world, player);
   }
+  moveCoins(world);
   collectCoins(world, player);
   if (world->powerTimer[POWERUP_ROCKET] > 0.0f) {
     player->velocity.y = ROCKET_VELOCITY;

@@ -15,6 +15,7 @@
 typedef struct Coin {
   Vector2 position;
   bool active;
+  Vector2 velocity; // usually {0}; set when knocked off by a monster hit
 } Coin;
 
 typedef struct Platform {
