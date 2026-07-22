@@ -812,7 +812,17 @@ void setTrack(int track) {
 // A small pool of voices synthesized on the fly and summed into the music
 // stream. No sample files: every effect is math over its sample index.
 
-enum { SFX_COIN, SFX_BOUNCE, SFX_POWERUP, SFX_HIT, SFX_SELECT, SFX_LEVELUP };
+enum {
+  SFX_COIN,
+  SFX_BOUNCE,
+  SFX_POWERUP,
+  SFX_HIT,
+  SFX_SELECT,
+  SFX_LEVELUP,
+  SFX_GAMEOVER,
+  SFX_SPLAT,
+  SFX_POWERUP2
+};
 
 // Effect lengths in samples.
 static const int sfxLen[] = {
@@ -822,6 +832,9 @@ static const int sfxLen[] = {
     [SFX_HIT] = (int)(0.40f * SAMPLE_RATE),
     [SFX_SELECT] = (int)(0.08f * SAMPLE_RATE),
     [SFX_LEVELUP] = (int)(0.70f * SAMPLE_RATE),
+    [SFX_GAMEOVER] = (int)(0.50f * SAMPLE_RATE),
+    [SFX_SPLAT] = (int)(0.18f * SAMPLE_RATE),
+    [SFX_POWERUP2] = (int)(0.22f * SAMPLE_RATE),
 };
 
 // ponytail: fixed 8 voices; overlapping triggers past 8 drop silently — grow
@@ -849,6 +862,9 @@ void sfxPowerup(void) { trigger(SFX_POWERUP); }
 void sfxHit(void) { trigger(SFX_HIT); }
 void sfxSelect(void) { trigger(SFX_SELECT); }
 void sfxLevelUp(void) { trigger(SFX_LEVELUP); }
+void sfxGameOver(void) { trigger(SFX_GAMEOVER); }
+void sfxSplat(void) { trigger(SFX_SPLAT); }
+void sfxPowerup2(void) { trigger(SFX_POWERUP2); }
 
 static float square(float freq, float t) {
   return fmodf(freq * t, 1.0f) < 0.5f ? 1.0f : -1.0f;
@@ -898,6 +914,26 @@ static float renderVoice(int type, int pos) {
     static const float notes[4] = {C5, E5, G5, C6};
     int k = pos * 4 / len;
     s = square(notes[k > 3 ? 3 : k], t);
+    break;
+  }
+  case SFX_GAMEOVER: { // sad descending sweep
+    float f = 400.0f - 320.0f * (float)pos / len;
+    s = arc ? square(f, t) : sinf(2.0f * PI * f * t);
+    break;
+  }
+  case SFX_SPLAT: { // short wet squish: low saw + noise
+    float f = 180.0f - 120.0f * (float)pos / len;
+    float saw = 2.0f * (f * t - floorf(0.5f + f * t));
+    float noise = (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
+    s = 0.5f * saw + 0.5f * noise;
+    break;
+  }
+  case SFX_POWERUP2: { // brighter/higher arpeggio (Balloon/Shield)
+    static const float natNotes[3] = {G5, C6, E6};
+    static const float arcNotes[3] = {B5, E6, B6};
+    const float *notes = arc ? arcNotes : natNotes;
+    int k = pos * 3 / len;
+    s = square(notes[k > 2 ? 2 : k], t);
     break;
   }
   }

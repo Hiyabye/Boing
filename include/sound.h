@@ -17,6 +17,9 @@ void sfxBounce(void);
 void sfxPowerup(void);
 void sfxHit(void);
 void sfxSelect(void);
-void sfxLevelUp(void); // arrival at a new level/theme band
+void sfxLevelUp(void);  // arrival at a new level/theme band
+void sfxGameOver(void); // sad tone on a normal death
+void sfxSplat(void);    // monster splattered (invincible plow-through)
+void sfxPowerup2(void); // Balloon/Shield pickup variant
 
 #endif // SOUND_H

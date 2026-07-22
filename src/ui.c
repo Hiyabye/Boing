@@ -81,6 +81,12 @@ void drawIcon(IconKind kind, float cx, float cy, float s, Color c) {
     DrawLineEx((Vector2){cx - s * 0.5f, cy + s * 0.5f},
                (Vector2){cx + s * 0.5f, cy - s * 0.5f}, s * 0.24f, c);
     break;
+  case ICON_HEART:
+    DrawCircle(cx - s * 0.3f, cy - s * 0.18f, s * 0.36f, c); // left lobe
+    DrawCircle(cx + s * 0.3f, cy - s * 0.18f, s * 0.36f, c); // right lobe
+    DrawTriangle((Vector2){cx, cy + s * 0.7f}, (Vector2){cx + 0.62f * s, cy},
+                 (Vector2){cx - 0.62f * s, cy}, c); // point
+    break;
   case ICON_NONE:
     break;
   }

@@ -10,7 +10,8 @@ typedef enum {
   GAMESTATE_SETTINGS,
   GAMESTATE_PLAYING,
   GAMESTATE_PAUSED,
-  GAMESTATE_GAMEOVER
+  GAMESTATE_GAMEOVER,
+  GAMESTATE_CREDITS
 } GameState;
 
 static inline float clampf(float v, float lo, float hi) {

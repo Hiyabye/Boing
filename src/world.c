@@ -32,6 +32,7 @@
 #define MAGNET_RADIUS 260.0f    // coins within this get pulled
 #define MAGNET_PULL 6.0f        // px/frame toward the player
 #define ROCKET_VELOCITY -34.0f  // upward thrust while active
+#define BALLOON_LIFT -8.0f      // gentle guaranteed rise while active
 #define PARTICLE_GRAVITY 0.3f
 #define PARTICLE_DECAY 0.03f
 #define SHAKE_HIT 14.0f   // screen shake on a monster hit
@@ -49,6 +50,8 @@ const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
     // HUD timer-bar colors are fixed (not themed): the table is static config.
     [POWERUP_MAGNET] = {600.0f, SKYBLUE, "MAGNET", 1, 0.0f, false}, // ~10s
     [POWERUP_ROCKET] = {120.0f, ORANGE, "ROCKET", 1, SHAKE_LAUNCH, true}, // ~2s
+    [POWERUP_BALLOON] = {300.0f, LIME, "BALLOON", 1, 0.0f, false},        // ~5s
+    [POWERUP_SHIELD] = {360.0f, GOLD, "SHIELD", 1, SHAKE_LAUNCH, true},   // ~6s
 };
 
 float worldCameraY(const World *world) { return world->cameraY; }
@@ -283,7 +286,11 @@ static void collectPowerups(World *world, Player *player) {
       world->shake = fmaxf(world->shake, POWERUP_DEFS[t].pickupShake);
       player->velocity.y = COIN_BOOST;
       player->expression = EXPR_HAPPY;
-      sfxPowerup();
+      if (t == POWERUP_BALLOON || t == POWERUP_SHIELD) {
+        sfxPowerup2();
+      } else {
+        sfxPowerup();
+      }
     }
   }
 }
@@ -305,7 +312,7 @@ static void updateMonsters(World *world, Player *player) {
         // Invincible (rocket etc.): plow through, splatter the monster.
         spawnParticles(world, m->position, GRAPE, 12, false);
         m->active = false;
-        sfxBounce();
+        sfxSplat();
       } else {
         // Mega-Jump-style: a hit costs coins (they scatter out) and knocks you
         // down + pops the monster, but does NOT kill — only a fall ends the
@@ -385,6 +392,10 @@ void updateWorld(World *world, Player *player) {
   collectCoins(world, player);
   if (world->powerTimer[POWERUP_ROCKET] > 0.0f) {
     player->velocity.y = ROCKET_VELOCITY;
+  }
+  if (world->powerTimer[POWERUP_BALLOON] > 0.0f &&
+      player->velocity.y > BALLOON_LIFT) {
+    player->velocity.y = BALLOON_LIFT; // never plummet; faster coin boosts win
   }
   // ...then tick every power-up timer down uniformly.
   for (int t = 0; t < POWERUP_COUNT; t++) {
@@ -481,16 +492,35 @@ static void drawPowerUp(const PowerUp *pu, float t) {
                pu->position.y + sinf(t * 3.0f + pu->position.x * 0.1f) * 4.0f};
   float R = POWERUP_RADIUS;
   DrawCircle(c.x, c.y, R * 1.6f, Fade(RAYWHITE, 0.3f)); // glow
-  if (pu->type == POWERUP_MAGNET) {
+  switch (pu->type) {
+  case POWERUP_MAGNET:
     DrawRing(c, R * 0.5f, R, 0, 360, 32, MAGNET_RED);
     DrawCircle(c.x - R * 0.72f, c.y + R * 0.55f, 4, LIGHTGRAY); // pole tips
     DrawCircle(c.x + R * 0.72f, c.y + R * 0.55f, 4, LIGHTGRAY);
-  } else {
+    break;
+  case POWERUP_BALLOON: {
+    Vector2 knot = {c.x, c.y + R * 0.9f};
+    DrawLineEx(knot, (Vector2){c.x, c.y + R * 1.8f}, 2, DARKGRAY); // string
+    DrawEllipse(c.x, c.y, R * 0.85f, R, LIME);                     // balloon
+    DrawCircle(c.x - R * 0.3f, c.y - R * 0.3f, R * 0.18f,
+               Fade(RAYWHITE, 0.6f)); // highlight
+    DrawTriangle((Vector2){c.x - 3, knot.y}, (Vector2){c.x + 3, knot.y},
+                 (Vector2){c.x, knot.y + 5}, LIME); // knot
+    break;
+  }
+  case POWERUP_SHIELD:
+    DrawPoly(c, 6, R, 0, GOLD);                     // hex badge
+    DrawPolyLines(c, 6, R, 0, ORANGE);              // rim
+    DrawPoly(c, 6, R * 0.55f, 0, SKYBLUE);          // inner crest
+    break;
+  default: { // POWERUP_ROCKET
     float fl = R * (0.6f + 0.35f * sinf(t * 22.0f)); // flame flicker
     DrawPoly((Vector2){c.x, c.y + R * 0.9f + fl * 0.4f}, 3, fl, 90, FLAME);
     DrawEllipse(c.x, c.y, R * 0.5f, R * 0.9f, ROCKET_BODY);
     DrawPoly((Vector2){c.x, c.y - R * 0.6f}, 3, R * 0.5f, -90, ROCKET_FIN);
     DrawCircle(c.x, c.y - R * 0.1f, R * 0.24f, SKYBLUE); // window
+    break;
+  }
   }
 }
 
