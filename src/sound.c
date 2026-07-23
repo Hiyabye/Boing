@@ -8,8 +8,6 @@
 
 #define BUFFER_SIZE 4096
 #define SAMPLE_RATE 44100
-#define LOOP_DURATION 48.0f
-#define LOOP_SAMPLES ((int)(LOOP_DURATION * SAMPLE_RATE))
 
 // Note frequencies (Hz), scientific pitch notation.
 static const float C0 = 16.35f;
@@ -422,9 +420,9 @@ static const struct Note NOTES0[] = {
 };
 
 // Track 1 — Arcade theme. Same {frequency, start, duration} form as NOTES0
-// (start/duration in seconds within the 48s loop). The shared A2 tonic-pedal
-// pad plays under every track; keep the loop length at LOOP_DURATION (48s) so
-// that pedal stays seamless.
+// (start/duration in seconds within this track's loop). The shared A2
+// tonic-pedal pad plays under every track; keep each track's loop length a
+// whole number of seconds so that pedal stays seamless.
 static const struct Note NOTES1[] = {
     // RIGHT HAND (melody + one harmony tone per chord beat)
     {E5, 0.0f, 0.45f},
@@ -846,7 +844,8 @@ static const struct Note NOTES1[] = {
     {A3, 63.75f, 0.25f},
 };
 
-// A track is just its note list; all tracks share LOOP_DURATION and the pedal.
+// A track is its note list plus its own loop length; the A2 pedal underlies
+// every track and stays seamless for any whole-second `duration`.
 struct Track {
   const struct Note *notes;
   int count;
@@ -857,7 +856,7 @@ enum { TRACK_NATURE, TRACK_ARCADE }; // indices into TRACKS[]
 // Each track's duration must give the A2 pedal whole cycles (110Hz * seconds
 // integer) for a seamless seam — 48s and 64s both qualify.
 static const struct Track TRACKS[] = {
-    [TRACK_NATURE] = TRACK(NOTES0, LOOP_DURATION),
+    [TRACK_NATURE] = TRACK(NOTES0, 48.0f),
     [TRACK_ARCADE] = TRACK(NOTES1, 64.0f),
 };
 #define TRACK_COUNT ((int)(sizeof(TRACKS) / sizeof(TRACKS[0])))
