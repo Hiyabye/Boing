@@ -3,13 +3,14 @@
 
 #include "core.h"
 
-// Player-adjustable options: target framerate, window resolution, master
-// volume. Persisted to a plain text file beside the exe (like the highscore),
-// so it's runtime-generated and doesn't count against the 1.44MB budget.
+// Player-adjustable options: target framerate, window resolution, and separate
+// music / SFX volumes. Persisted to a plain text file beside the exe (like the
+// highscore), so it's runtime-generated and doesn't count against the budget.
 typedef struct {
-  int fpsIndex; // index into the framerate options (see settings.c)
-  int resIndex; // index into the resolution options (square window sizes)
-  float volume; // 0..1, master volume
+  int fpsIndex;      // index into the framerate options (see settings.c)
+  int resIndex;      // index into the resolution options (square window sizes)
+  float musicVolume; // 0..1, background music level
+  float sfxVolume;   // 0..1, sound-effects level
 } Settings;
 
 Settings loadSettings(void);

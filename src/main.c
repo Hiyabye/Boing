@@ -580,7 +580,24 @@ int main(void) {
   while (!WindowShouldClose() && !game.quit) {
     updateAudio(&stream);
     STATES[game.state].update(&game);
-    setTrack(themeTrack()); // music follows the theme the draw pass resolved
+    // Music follows the FSM state: menu/credits/settings share the menu track,
+    // game over has its own; gameplay follows the theme the draw pass resolved.
+    // setTrack cuts instantly across these UI boundaries and only crossfades
+    // between the two gameplay tracks as the theme morphs mid-climb.
+    int track;
+    switch (game.state) {
+    case GAMESTATE_MENU:
+    case GAMESTATE_CREDITS:
+    case GAMESTATE_SETTINGS:
+      track = TRACK_MENU;
+      break;
+    case GAMESTATE_GAMEOVER:
+      track = TRACK_GAMEOVER;
+      break;
+    default:
+      track = themeTrack();
+    }
+    setTrack(track);
 
     // Draw 800-space, scaled to the native window (square, so width == scale).
     float scale = GetScreenWidth() / (float)SCREEN_WIDTH;

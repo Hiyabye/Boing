@@ -15,11 +15,12 @@ static const int RES_OPTIONS[] = {600, 800, 1000, 1200};
 
 // The settings screen is one row per option. Adding a row = a new RowKind, a
 // table entry, and a case in changeRow()/formatValue() below.
-typedef enum { ROW_FPS, ROW_RES, ROW_VOLUME } RowKind;
+typedef enum { ROW_FPS, ROW_RES, ROW_MUSIC, ROW_SFX } RowKind;
 static const char *const ROW_LABELS[] = {
     [ROW_FPS] = "FRAMERATE",
     [ROW_RES] = "RESOLUTION",
-    [ROW_VOLUME] = "VOLUME",
+    [ROW_MUSIC] = "MUSIC",
+    [ROW_SFX] = "SFX",
 };
 #define ROW_COUNT ((int)(sizeof(ROW_LABELS) / sizeof(ROW_LABELS[0])))
 
@@ -58,7 +59,8 @@ static int rowStops(int row) {
     return FPS_COUNT;
   case ROW_RES:
     return RES_COUNT;
-  case ROW_VOLUME:
+  case ROW_MUSIC:
+  case ROW_SFX:
     return VOLUME_STOPS;
   }
   return 1;
@@ -69,8 +71,10 @@ static int rowStop(const Settings *s, int row) {
     return s->fpsIndex;
   case ROW_RES:
     return s->resIndex;
-  case ROW_VOLUME:
-    return (int)(s->volume * (VOLUME_STOPS - 1) + 0.5f);
+  case ROW_MUSIC:
+    return (int)(s->musicVolume * (VOLUME_STOPS - 1) + 0.5f);
+  case ROW_SFX:
+    return (int)(s->sfxVolume * (VOLUME_STOPS - 1) + 0.5f);
   }
   return 0;
 }
@@ -83,8 +87,11 @@ static void setRowStop(Settings *s, int row, int stop) {
   case ROW_RES:
     s->resIndex = stop;
     break;
-  case ROW_VOLUME:
-    s->volume = stop / (float)(VOLUME_STOPS - 1);
+  case ROW_MUSIC:
+    s->musicVolume = stop / (float)(VOLUME_STOPS - 1);
+    break;
+  case ROW_SFX:
+    s->sfxVolume = stop / (float)(VOLUME_STOPS - 1);
     break;
   }
   applySettings(s);
@@ -104,35 +111,42 @@ static const char *formatValue(const Settings *s, int row) {
     return TextFormat("%d FPS", FPS_OPTIONS[s->fpsIndex]);
   case ROW_RES:
     return TextFormat("%dx%d", RES_OPTIONS[s->resIndex], RES_OPTIONS[s->resIndex]);
-  case ROW_VOLUME:
-    return TextFormat("%d%%", volumePercent(s->volume));
+  case ROW_MUSIC:
+    return TextFormat("%d%%", volumePercent(s->musicVolume));
+  case ROW_SFX:
+    return TextFormat("%d%%", volumePercent(s->sfxVolume));
   }
   return "";
 }
 
 Settings loadSettings(void) {
-  Settings s = {
-      .fpsIndex = 1, .resIndex = 1, .volume = 1.0f}; // 60fps, 800, max
-  int buf[3];
-  if (readInts("settings", buf, 3)) {
+  Settings s = {.fpsIndex = 1,
+                .resIndex = 1,
+                .musicVolume = 1.0f,
+                .sfxVolume = 1.0f}; // 60fps, 800, both max
+  int buf[4];
+  if (readInts("settings", buf, 4)) {
     s.fpsIndex = buf[0];
     s.resIndex = buf[1];
-    s.volume = buf[2] / 100.0f; // stored as an int percent
+    s.musicVolume = buf[2] / 100.0f; // stored as int percents
+    s.sfxVolume = buf[3] / 100.0f;
   }
   s.fpsIndex = wrapi(s.fpsIndex, FPS_COUNT);
   s.resIndex = wrapi(s.resIndex, RES_COUNT);
-  s.volume = clampf(s.volume, 0.0f, 1.0f);
+  s.musicVolume = clampf(s.musicVolume, 0.0f, 1.0f);
+  s.sfxVolume = clampf(s.sfxVolume, 0.0f, 1.0f);
   return s;
 }
 
 void saveSettings(const Settings *s) {
-  int buf[3] = {s->fpsIndex, s->resIndex, volumePercent(s->volume)};
-  writeInts("settings", buf, 3);
+  int buf[4] = {s->fpsIndex, s->resIndex, volumePercent(s->musicVolume),
+                volumePercent(s->sfxVolume)};
+  writeInts("settings", buf, 4);
 }
 
 void applySettings(const Settings *s) {
   SetTargetFPS(FPS_OPTIONS[s->fpsIndex]);
-  SetMasterVolume(s->volume);
+  setVolumes(s->musicVolume, s->sfxVolume);
   if (!suppressResize) {
     int size = RES_OPTIONS[s->resIndex];
     SetWindowSize(size, size);
