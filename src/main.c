@@ -86,7 +86,10 @@ static Rectangle rPauseHome(void) {
   return centeredBtn(SCREEN_HEIGHT / 2.0f + 108, 160, 56);
 }
 static Rectangle rRetry(void) {
-  return centeredBtn(SCREEN_HEIGHT * 2.0f / 3, 200, 60);
+  return centeredRow(SCREEN_HEIGHT * 2.0f / 3, 200, 60, 0, 2);
+}
+static Rectangle rGameoverHome(void) {
+  return centeredRow(SCREEN_HEIGHT * 2.0f / 3, 200, 60, 1, 2);
 }
 
 // Score badge + coin tally + level bar + power-up timer bars, in screen space
@@ -308,6 +311,10 @@ static void updatePaused(Game *g) {
 static void updateGameover(Game *g) {
   if (IsKeyPressed(KEY_SPACE) || clicked(rRetry())) {
     startGame(g, false);
+  } else if (clicked(rGameoverHome())) {
+    g->player = createPlayer(); // back to the menu's attract demo
+    gotoState(g, GAMESTATE_MENU);
+    sfx(SFX_SELECT);
   }
 }
 
@@ -517,6 +524,7 @@ static void drawPlay(Game *g) {
     drawCenteredText(TextFormat("BEST %d", g->highScore),
                      SCREEN_HEIGHT / 2 + 25, 28, GOLD);
     uiButton(rRetry(), "RETRY", ICON_RETRY);
+    uiButton(rGameoverHome(), "HOME", ICON_HOME);
   }
 }
 

@@ -6,7 +6,7 @@
 
 // Ascent (world-units of climb) that one theme spans before it has fully
 // morphed into the next. ~16000 matches the old single-theme dusk scale.
-#define BAND_HEIGHT 16000.0f
+#define BAND_HEIGHT 32000.0f
 
 // The theme table. A new level is one more row here (and, for a distinct
 // backdrop shape, a case in background.c). Row order = climb order.
@@ -108,7 +108,9 @@ static Theme lerpTheme(const Theme *a, const Theme *b, float f) {
   // Discrete fields switch at the midpoint; the background reads themeBlend()
   // directly for a crossfade, so this only feeds themeTrack().
   r.backdrop = f < 0.5f ? a->backdrop : b->backdrop;
-  r.track = f < 0.5f ? a->track : b->track;
+  // Hold the current-level (low) track for the whole band so the song only
+  // crossfades at the level boundary, in step with the LEVEL indicator.
+  r.track = a->track;
   return r;
 }
 
