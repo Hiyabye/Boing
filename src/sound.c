@@ -2,9 +2,11 @@
 
 #include "raylib.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define BUFFER_SIZE 4096
 #define SAMPLE_RATE 44100
@@ -132,6 +134,22 @@ typedef struct {
   float start;    // start time within the loop (seconds)
   float duration; // length of the note (seconds)
 } Note;
+
+// Per-track lead instrument voice (harmonic content of tone()). Bass-register
+// notes ignore this and always play a rounded warm shape (see tone()).
+typedef enum {
+  TIMBRE_WARM,   // sine + soft harmonics + vibrato (the original voice)
+  TIMBRE_SOFT,   // near-pure sine, gentle slow vibrato — calm/night
+  TIMBRE_PULSE,  // narrow ~30% duty pulse, gritty — neon maze
+  TIMBRE_SQUARE, // bright 50% square with fundamental body — arcade
+} Timbre;
+
+// Per-track baked percussion pattern (laid on a 0.5s beat grid in buildLoop).
+typedef enum {
+  DRUMS_NONE,
+  DRUMS_FOUR,    // kick every beat, hat offbeat, snare on beats 2 & 4
+  DRUMS_DRIVING, // FOUR + extra offbeat hats (busier, energetic)
+} DrumStyle;
 
 // Track L1 — Sunny Hills: upbeat, bouncy day melody (A major, 32s loop).
 static const Note NOTES_NATURE[] = {
@@ -734,20 +752,24 @@ static const Note NOTES_GAMEOVER[] = {
 typedef struct {
   const Note *notes;
   int count;
-  float duration; // loop length (s); per-track so a longer arrangement fits
+  float duration;  // loop length (s); per-track so a longer arrangement fits
+  Timbre timbre;   // lead instrument voice
+  DrumStyle drums; // baked percussion pattern
+  float echo;      // 0..1 wet mix of the seam-safe 2-tap delay
 } Track;
-#define TRACK(a, dur) {(a), (int)(sizeof(a) / sizeof((a)[0])), (dur)}
+#define TRACK(a, dur, tb, dr, ec)                                              \
+  {(a), (int)(sizeof(a) / sizeof((a)[0])), (dur), (tb), (dr), (ec)}
 // TRACK_L1..L4/MENU/GAMEOVER live in sound.h (themes select L1..L4 by climb
 // band; main.c hard-cuts to MENU/GAMEOVER by state). Each track's duration must
 // give the A2 pedal whole cycles (110Hz * integer seconds) for a seamless seam
 // — 16/32/64/8s all qualify.
 static const Track TRACKS[] = {
-    [TRACK_L1] = TRACK(NOTES_NATURE, 32.0f),
-    [TRACK_L2] = TRACK(NOTES_NIGHT, 32.0f),
-    [TRACK_L3] = TRACK(NOTES_MAZE, 16.0f),
-    [TRACK_L4] = TRACK(NOTES_ARCADE, 64.0f),
-    [TRACK_MENU] = TRACK(NOTES_MENU, 32.0f),
-    [TRACK_GAMEOVER] = TRACK(NOTES_GAMEOVER, 8.0f),
+    [TRACK_L1] = TRACK(NOTES_NATURE, 32.0f, TIMBRE_WARM, DRUMS_FOUR, 0.2f),
+    [TRACK_L2] = TRACK(NOTES_NIGHT, 32.0f, TIMBRE_SOFT, DRUMS_NONE, 0.35f),
+    [TRACK_L3] = TRACK(NOTES_MAZE, 16.0f, TIMBRE_PULSE, DRUMS_DRIVING, 0.15f),
+    [TRACK_L4] = TRACK(NOTES_ARCADE, 64.0f, TIMBRE_SQUARE, DRUMS_DRIVING, 0.15f),
+    [TRACK_MENU] = TRACK(NOTES_MENU, 32.0f, TIMBRE_WARM, DRUMS_NONE, 0.2f),
+    [TRACK_GAMEOVER] = TRACK(NOTES_GAMEOVER, 8.0f, TIMBRE_SOFT, DRUMS_NONE, 0.2f),
 };
 #define TRACK_COUNT ((int)(sizeof(TRACKS) / sizeof(TRACKS[0])))
 
@@ -782,11 +804,135 @@ static float adsr(float local, float dur) {
   return 1.0f;
 }
 
-// Warmer timbre: fundamental + two quieter harmonics, with a gentle vibrato.
-static float tone(float freq, float local) {
-  float vib = 1.0f + 0.004f * sinf(2.0f * PI * 5.5f * local);
-  float ph = 2.0f * PI * freq * vib * local;
-  return sinf(ph) + 0.45f * sinf(2.0f * ph) + 0.2f * sinf(3.0f * ph);
+// A pulse wave of the given duty cycle from a (possibly >1) phase in cycles.
+static float pulseWave(float cycles, float duty) {
+  float f = cycles - floorf(cycles);
+  return f < duty ? 1.0f : -1.0f;
+}
+
+// Lead instrument voice (harmonic content selected by the track's Timbre).
+// Bass-register notes (< C3, 130Hz) always use the rounded warm shape so the
+// oom-pah bass never buzzes under a bright pulse/square lead.
+static float tone(float freq, float local, Timbre tb) {
+  if (freq < 130.0f) {
+    tb = TIMBRE_WARM;
+  }
+  switch (tb) {
+  case TIMBRE_SOFT: {
+    float vib = 1.0f + 0.003f * sinf(2.0f * PI * 4.0f * local);
+    float ph = 2.0f * PI * freq * vib * local;
+    return sinf(ph) + 0.15f * sinf(2.0f * ph);
+  }
+  case TIMBRE_PULSE: {
+    float vib = 1.0f + 0.004f * sinf(2.0f * PI * 5.5f * local);
+    float p = freq * vib * local;
+    return 0.85f * pulseWave(p, 0.30f) + 0.15f * sinf(2.0f * PI * p);
+  }
+  case TIMBRE_SQUARE: {
+    float vib = 1.0f + 0.004f * sinf(2.0f * PI * 5.5f * local);
+    float p = freq * vib * local;
+    return 0.8f * pulseWave(p, 0.5f) + 0.2f * sinf(2.0f * PI * p);
+  }
+  case TIMBRE_WARM:
+  default: {
+    float vib = 1.0f + 0.004f * sinf(2.0f * PI * 5.5f * local);
+    float ph = 2.0f * PI * freq * vib * local;
+    return sinf(ph) + 0.45f * sinf(2.0f * ph) + 0.2f * sinf(3.0f * ph);
+  }
+  }
+}
+
+// --- Baked percussion --------------------------------------------------------
+// Drum voices synthesized straight into the loop buffer (no note frequencies).
+static float sweep(float base, float depth, int pos, int len); // defined below
+typedef enum { DRUM_KICK, DRUM_SNARE, DRUM_HAT } DrumType;
+
+// Length of each drum voice in samples.
+static int drumLen(DrumType d) {
+  switch (d) {
+  case DRUM_KICK:
+    return (int)(0.12f * SAMPLE_RATE);
+  case DRUM_SNARE:
+    return (int)(0.12f * SAMPLE_RATE);
+  case DRUM_HAT:
+  default:
+    return (int)(0.03f * SAMPLE_RATE);
+  }
+}
+
+// Add one drum hit at `startSec` into buf, wrapping the tail past the loop seam
+// so a hit near the end stays seamless. Snappy exponential decay.
+static void addDrum(float *buf, int samples, DrumType d, float startSec,
+                    float gain) {
+  int start = (int)(startSec * SAMPLE_RATE);
+  int len = drumLen(d);
+  for (int i = 0; i < len; i++) {
+    float t = (float)i / SAMPLE_RATE;
+    float env = expf(-9.0f * (float)i / len);
+    float s = 0.0f;
+    switch (d) {
+    case DRUM_KICK: { // punchy pitch-swept sine
+      float f = sweep(150.0f, 100.0f, i, len);
+      s = sinf(2.0f * PI * f * t);
+      break;
+    }
+    case DRUM_SNARE: { // noise crack + short tonal body
+      float noise = GetRandomValue(-1000, 1000) / 1000.0f;
+      s = 0.7f * noise + 0.3f * sinf(2.0f * PI * 200.0f * t);
+      break;
+    }
+    case DRUM_HAT: // bright noise tick
+      s = GetRandomValue(-1000, 1000) / 1000.0f;
+      break;
+    }
+    buf[(start + i) % samples] += gain * env * s;
+  }
+}
+
+// Lay a track's beat pattern across the whole loop on a 0.5s grid (a whole
+// number of beats over every integer-second loop length, so the seam aligns).
+static void bakeDrums(float *buf, int samples, DrumStyle style, float duration) {
+  if (style == DRUMS_NONE) {
+    return;
+  }
+  const float beat = 0.5f;
+  int beats = (int)(duration / beat + 0.5f);
+  for (int b = 0; b < beats; b++) {
+    float ts = b * beat;
+    addDrum(buf, samples, DRUM_KICK, ts, 0.9f);               // four-on-the-floor
+    addDrum(buf, samples, DRUM_HAT, ts + beat * 0.5f, 0.35f); // offbeat hat
+    if (b % 2 == 1) {
+      addDrum(buf, samples, DRUM_SNARE, ts, 0.6f); // backbeat (beats 2 & 4)
+    }
+    if (style == DRUMS_DRIVING) {
+      addDrum(buf, samples, DRUM_HAT, ts, 0.25f); // extra on-beat hat
+    }
+  }
+}
+
+// Seam-safe ambience: two fixed delay taps read from a dry copy with modulo
+// wrap, so the echo is continuous across the loop seam and can't blow up (no
+// feedback). `dry` is the buffer before this call; result written into `buf`.
+static void bakeEcho(float *buf, const float *dry, int samples, float mix) {
+  if (mix <= 0.0f) {
+    return;
+  }
+  int d = (int)(0.18f * SAMPLE_RATE);
+  for (int i = 0; i < samples; i++) {
+    float e1 = dry[((i - d) % samples + samples) % samples];
+    float e2 = dry[((i - 2 * d) % samples + samples) % samples];
+    buf[i] = dry[i] + mix * (0.6f * e1 + 0.35f * e2);
+  }
+}
+
+// Downbeat accent: notes on a whole beat hit hardest, half-beats medium, the
+// rest softer — so a flat grid of equal notes breathes with groove.
+static float accent(float start) {
+  float f = start - floorf(start / 0.5f) * 0.5f; // position within a 0.5s beat
+  if (fmodf(start, 1.0f) < 0.01f) {
+    return 1.15f; // strong beat
+  }
+  return f < 0.01f ? 0.95f : 0.8f; // half-beat vs offbeat
 }
 
 // Precompute one full loop of a track's arrangement. Called once per track at
@@ -797,6 +943,7 @@ static void buildLoop(int track) {
   }
   const Note *notes = TRACKS[track].notes;
   int noteCount = TRACKS[track].count;
+  Timbre timbre = TRACKS[track].timbre;
   int samples = (int)(TRACKS[track].duration * SAMPLE_RATE);
   loopSamples[track] = samples;
 
@@ -805,15 +952,15 @@ static void buildLoop(int track) {
   if (buf == NULL) {
     return; // out of memory: leave the slot NULL; updateAudio plays it silent
   }
-  float peak = 0.0001f;
+  // Layered build: (a) notes + pedal, (b) drums, (c) echo, (d) normalize.
   for (int i = 0; i < samples; i++) {
     float t = (float)i / SAMPLE_RATE;
     float sample = 0.0f;
     for (int n = 0; n < noteCount; n++) {
       float local = t - notes[n].start;
       if (local >= 0.0f && local < notes[n].duration) {
-        sample += 0.5f * adsr(local, notes[n].duration) *
-                  tone(notes[n].frequency, local);
+        sample += 0.5f * accent(notes[n].start) * adsr(local, notes[n].duration) *
+                  tone(notes[n].frequency, local, timbre);
       }
     }
     // Soft tonic (A2) pedal pad under everything for warmth, with slow tremolo.
@@ -825,12 +972,30 @@ static void buildLoop(int track) {
         (sinf(2.0f * PI * A2 * t) + 0.5f * sinf(2.0f * PI * A2 * 2.0f * t));
 
     buf[i] = sample;
-    float mag = fabsf(sample);
+  }
+
+  // (b) Percussion, baked straight into the buffer with seam-wrapping tails.
+  bakeDrums(buf, samples, TRACKS[track].drums, TRACKS[track].duration);
+
+  // (c) Ambience: 2-tap delay from a dry copy (seam-safe, no feedback).
+  if (TRACKS[track].echo > 0.0f) {
+    float *dry = malloc(samples * sizeof(float));
+    if (dry != NULL) {
+      memcpy(dry, buf, samples * sizeof(float));
+      bakeEcho(buf, dry, samples, TRACKS[track].echo);
+      free(dry);
+    }
+  }
+
+  // (d) Normalize to a safe headroom peak; the tanh limiter catches SFX on top.
+  float peak = 0.0001f;
+  for (int i = 0; i < samples; i++) {
+    float mag = fabsf(buf[i]);
     if (mag > peak) {
       peak = mag;
     }
   }
-  // Normalize to a safe headroom peak; the tanh limiter catches SFX on top.
+  assert(isfinite(peak)); // synthesis must not produce NaN/Inf
   float gain = 0.9f / peak;
   for (int i = 0; i < samples; i++) {
     buf[i] *= gain;
