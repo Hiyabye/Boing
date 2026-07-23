@@ -25,16 +25,16 @@ static const char *const ROW_LABELS[] = {
 #define ROW_COUNT ((int)(sizeof(ROW_LABELS) / sizeof(ROW_LABELS[0])))
 
 static int selRow = 0;
-static int dragRow = -1;             // row whose slider is being dragged, -1 = none
-static bool suppressResize = false;  // hold the window size steady mid res-drag
+static int dragRow = -1; // row whose slider is being dragged, -1 = none
+static bool suppressResize = false; // hold the window size steady mid res-drag
 
 static int wrapi(int v, int n) { return ((v % n) + n) % n; }
 
 // Volume is persisted/displayed as a rounded int percent.
 static int volumePercent(float volume) { return (int)(volume * 100.0f + 0.5f); }
 
-// Shared hit/draw geometry so update (drag) and draw (render) agree. Each row is
-// a horizontal slider: a full-width track with a knob at the current stop.
+// Shared hit/draw geometry so update (drag) and draw (render) agree. Each row
+// is a horizontal slider: a full-width track with a knob at the current stop.
 #define ROW_Y(row) (SCREEN_HEIGHT / 2 - 60 + (row) * 60)
 #define TRACK_X0 180
 #define TRACK_X1 620
@@ -50,8 +50,8 @@ static Rectangle backRect(void) {
   return (Rectangle){SCREEN_WIDTH / 2.0f - 80, 700, 160, 52};
 }
 
-// Each row is a slider with a fixed number of discrete stops: one per option for
-// fps/res, 21 stops (5% steps) for volume.
+// Each row is a slider with a fixed number of discrete stops: one per option
+// for fps/res, 21 stops (5% steps) for volume.
 #define VOLUME_STOPS 21
 static int rowStops(int row) {
   switch (row) {
@@ -110,7 +110,8 @@ static const char *formatValue(const Settings *s, int row) {
   case ROW_FPS:
     return TextFormat("%d FPS", FPS_OPTIONS[s->fpsIndex]);
   case ROW_RES:
-    return TextFormat("%dx%d", RES_OPTIONS[s->resIndex], RES_OPTIONS[s->resIndex]);
+    return TextFormat("%dx%d", RES_OPTIONS[s->resIndex],
+                      RES_OPTIONS[s->resIndex]);
   case ROW_MUSIC:
     return TextFormat("%d%%", volumePercent(s->musicVolume));
   case ROW_SFX:
@@ -168,7 +169,8 @@ void updateSettingsMenu(Settings *s, GameState *state, GameState returnTo) {
     changeRow(s, selRow, dir);
   }
 
-  // Mouse: Back to exit, else grab a row's slider and drag the knob to its stop.
+  // Mouse: Back to exit, else grab a row's slider and drag the knob to its
+  // stop.
   if (clicked(backRect())) {
     *state = returnTo;
     sfx(SFX_SELECT);
@@ -186,7 +188,8 @@ void updateSettingsMenu(Settings *s, GameState *state, GameState returnTo) {
     // Resolution resizes the window, which moves the cursor's slider fraction
     // under us and fights the drag — hold the size steady until release.
     suppressResize = (dragRow == ROW_RES);
-    float frac = clampf((virtualMouse().x - TRACK_X0) / (float)TRACK_W, 0.0f, 1.0f);
+    float frac =
+        clampf((virtualMouse().x - TRACK_X0) / (float)TRACK_W, 0.0f, 1.0f);
     int stop = (int)(frac * (rowStops(dragRow) - 1) + 0.5f);
     if (stop != rowStop(s, dragRow)) {
       setRowStop(s, dragRow, stop);
@@ -214,7 +217,8 @@ static void drawRow(const Settings *s, int row, const char *label,
   }
   DrawText(label, 180, y, fs, col);
   int vw = MeasureText(value, fs);
-  DrawText(value, TRACK_X1 - vw, y, fs, col); // right-aligned over the track end
+  DrawText(value, TRACK_X1 - vw, y, fs,
+           col); // right-aligned over the track end
 
   // Slider: dim full track, bright fill up to the knob, round knob on top.
   float ty = trackY(row);
@@ -223,8 +227,8 @@ static void drawRow(const Settings *s, int row, const char *label,
   DrawRectangleRounded((Rectangle){TRACK_X0, ty - 3, TRACK_W, 6}, 1.0f, 4,
                        Fade(RAYWHITE, 0.25f));
   if (knobX > TRACK_X0) {
-    DrawRectangleRounded((Rectangle){TRACK_X0, ty - 3, knobX - TRACK_X0, 6}, 1.0f,
-                         4, COIN_HI);
+    DrawRectangleRounded((Rectangle){TRACK_X0, ty - 3, knobX - TRACK_X0, 6},
+                         1.0f, 4, COIN_HI);
   }
   DrawCircle((int)knobX, (int)ty, sel ? 11 : 9, col);
   DrawCircle((int)knobX, (int)ty, sel ? 5 : 4, Fade(BLACK, 0.35f));

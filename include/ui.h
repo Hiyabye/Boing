@@ -13,8 +13,6 @@ typedef enum {
   ICON_PAUSE,
   ICON_GEAR,
   ICON_RETRY,
-  ICON_ARROW_L,
-  ICON_ARROW_R,
   ICON_BACK,
   ICON_HOME,
   ICON_EXIT,

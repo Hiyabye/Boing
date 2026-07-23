@@ -127,239 +127,94 @@ static const float A8 = 7040.00f;
 static const float AS8 = 7458.62f;
 static const float B8 = 7902.13f;
 
-struct Note {
+typedef struct {
   float frequency;
   float start;    // start time within the loop (seconds)
   float duration; // length of the note (seconds)
-};
+} Note;
 
 // Track 0 — Nature: original upbeat, bouncy melody (A major, 32s loop).
-static const struct Note NOTES0[] = {
-    {A4, 0.0f, 0.2f},
-    {CS5, 0.25f, 0.2f},
-    {E5, 0.5f, 0.45f},
-    {E5, 1.0f, 0.2f},
-    {FS5, 1.25f, 0.2f},
-    {E5, 1.5f, 0.45f},
-    {GS4, 2.0f, 0.2f},
-    {B4, 2.25f, 0.2f},
-    {E5, 2.5f, 0.45f},
-    {D5, 3.0f, 0.2f},
-    {B4, 3.25f, 0.2f},
-    {GS4, 3.5f, 0.45f},
-    {A4, 4.0f, 0.2f},
-    {CS5, 4.25f, 0.2f},
-    {FS5, 4.5f, 0.45f},
-    {A5, 5.0f, 0.2f},
-    {FS5, 5.25f, 0.2f},
-    {E5, 5.5f, 0.45f},
-    {D5, 6.0f, 0.2f},
-    {FS5, 6.25f, 0.2f},
-    {A5, 6.5f, 0.45f},
-    {FS5, 7.0f, 0.2f},
-    {D5, 7.25f, 0.2f},
-    {A4, 7.5f, 0.45f},
-    {A4, 8.0f, 0.2f},
-    {CS5, 8.25f, 0.2f},
-    {E5, 8.5f, 0.45f},
-    {A5, 9.0f, 0.45f},
-    {GS5, 9.5f, 0.2f},
-    {FS5, 9.75f, 0.2f},
-    {GS4, 10.0f, 0.2f},
-    {B4, 10.25f, 0.2f},
-    {E5, 10.5f, 0.45f},
-    {GS5, 11.0f, 0.45f},
-    {B4, 11.5f, 0.2f},
-    {E5, 11.75f, 0.2f},
-    {FS5, 12.0f, 0.45f},
-    {D5, 12.5f, 0.2f},
-    {A4, 12.75f, 0.2f},
-    {D5, 13.0f, 0.45f},
-    {FS5, 13.5f, 0.45f},
-    {E5, 14.0f, 0.45f},
-    {GS5, 14.5f, 0.2f},
-    {B5, 14.75f, 0.2f},
-    {E5, 15.0f, 0.95f},
-    {A4, 16.0f, 0.2f},
-    {CS5, 16.25f, 0.2f},
-    {E5, 16.5f, 0.45f},
-    {E5, 17.0f, 0.2f},
-    {FS5, 17.25f, 0.2f},
-    {E5, 17.5f, 0.45f},
-    {GS4, 18.0f, 0.2f},
-    {B4, 18.25f, 0.2f},
-    {E5, 18.5f, 0.45f},
-    {D5, 19.0f, 0.2f},
-    {B4, 19.25f, 0.2f},
-    {GS4, 19.5f, 0.45f},
-    {A4, 20.0f, 0.2f},
-    {CS5, 20.25f, 0.2f},
-    {FS5, 20.5f, 0.45f},
-    {A5, 21.0f, 0.2f},
-    {FS5, 21.25f, 0.2f},
-    {E5, 21.5f, 0.45f},
-    {D5, 22.0f, 0.2f},
-    {FS5, 22.25f, 0.2f},
-    {A5, 22.5f, 0.45f},
-    {FS5, 23.0f, 0.2f},
-    {D5, 23.25f, 0.2f},
-    {A4, 23.5f, 0.45f},
-    {A4, 24.0f, 0.2f},
-    {CS5, 24.25f, 0.2f},
-    {E5, 24.5f, 0.45f},
-    {A5, 25.0f, 0.45f},
-    {GS5, 25.5f, 0.2f},
-    {FS5, 25.75f, 0.2f},
-    {GS4, 26.0f, 0.2f},
-    {B4, 26.25f, 0.2f},
-    {E5, 26.5f, 0.45f},
-    {GS5, 27.0f, 0.45f},
-    {B4, 27.5f, 0.2f},
-    {E5, 27.75f, 0.2f},
-    {FS5, 28.0f, 0.45f},
-    {D5, 28.5f, 0.2f},
-    {A4, 28.75f, 0.2f},
-    {D5, 29.0f, 0.45f},
-    {FS5, 29.5f, 0.45f},
-    {E5, 30.0f, 0.45f},
-    {GS5, 30.5f, 0.2f},
-    {B5, 30.75f, 0.2f},
-    {A5, 31.0f, 0.95f},
-    {A2, 0.0f, 0.25f},
-    {A3, 0.25f, 0.25f},
-    {A2, 0.5f, 0.25f},
-    {A3, 0.75f, 0.25f},
-    {A2, 1.0f, 0.25f},
-    {A3, 1.25f, 0.25f},
-    {A2, 1.5f, 0.25f},
-    {A3, 1.75f, 0.25f},
-    {E2, 2.0f, 0.25f},
-    {E3, 2.25f, 0.25f},
-    {E2, 2.5f, 0.25f},
-    {E3, 2.75f, 0.25f},
-    {E2, 3.0f, 0.25f},
-    {E3, 3.25f, 0.25f},
-    {E2, 3.5f, 0.25f},
-    {E3, 3.75f, 0.25f},
-    {FS2, 4.0f, 0.25f},
-    {FS3, 4.25f, 0.25f},
-    {FS2, 4.5f, 0.25f},
-    {FS3, 4.75f, 0.25f},
-    {FS2, 5.0f, 0.25f},
-    {FS3, 5.25f, 0.25f},
-    {FS2, 5.5f, 0.25f},
-    {FS3, 5.75f, 0.25f},
-    {D2, 6.0f, 0.25f},
-    {D3, 6.25f, 0.25f},
-    {D2, 6.5f, 0.25f},
-    {D3, 6.75f, 0.25f},
-    {D2, 7.0f, 0.25f},
-    {D3, 7.25f, 0.25f},
-    {D2, 7.5f, 0.25f},
-    {D3, 7.75f, 0.25f},
-    {A2, 8.0f, 0.25f},
-    {A3, 8.25f, 0.25f},
-    {A2, 8.5f, 0.25f},
-    {A3, 8.75f, 0.25f},
-    {A2, 9.0f, 0.25f},
-    {A3, 9.25f, 0.25f},
-    {A2, 9.5f, 0.25f},
-    {A3, 9.75f, 0.25f},
-    {E2, 10.0f, 0.25f},
-    {E3, 10.25f, 0.25f},
-    {E2, 10.5f, 0.25f},
-    {E3, 10.75f, 0.25f},
-    {E2, 11.0f, 0.25f},
-    {E3, 11.25f, 0.25f},
-    {E2, 11.5f, 0.25f},
-    {E3, 11.75f, 0.25f},
-    {D2, 12.0f, 0.25f},
-    {D3, 12.25f, 0.25f},
-    {D2, 12.5f, 0.25f},
-    {D3, 12.75f, 0.25f},
-    {D2, 13.0f, 0.25f},
-    {D3, 13.25f, 0.25f},
-    {D2, 13.5f, 0.25f},
-    {D3, 13.75f, 0.25f},
-    {E2, 14.0f, 0.25f},
-    {E3, 14.25f, 0.25f},
-    {E2, 14.5f, 0.25f},
-    {E3, 14.75f, 0.25f},
-    {E2, 15.0f, 0.25f},
-    {E3, 15.25f, 0.25f},
-    {E2, 15.5f, 0.25f},
-    {E3, 15.75f, 0.25f},
-    {A2, 16.0f, 0.25f},
-    {A3, 16.25f, 0.25f},
-    {A2, 16.5f, 0.25f},
-    {A3, 16.75f, 0.25f},
-    {A2, 17.0f, 0.25f},
-    {A3, 17.25f, 0.25f},
-    {A2, 17.5f, 0.25f},
-    {A3, 17.75f, 0.25f},
-    {E2, 18.0f, 0.25f},
-    {E3, 18.25f, 0.25f},
-    {E2, 18.5f, 0.25f},
-    {E3, 18.75f, 0.25f},
-    {E2, 19.0f, 0.25f},
-    {E3, 19.25f, 0.25f},
-    {E2, 19.5f, 0.25f},
-    {E3, 19.75f, 0.25f},
-    {FS2, 20.0f, 0.25f},
-    {FS3, 20.25f, 0.25f},
-    {FS2, 20.5f, 0.25f},
-    {FS3, 20.75f, 0.25f},
-    {FS2, 21.0f, 0.25f},
-    {FS3, 21.25f, 0.25f},
-    {FS2, 21.5f, 0.25f},
-    {FS3, 21.75f, 0.25f},
-    {D2, 22.0f, 0.25f},
-    {D3, 22.25f, 0.25f},
-    {D2, 22.5f, 0.25f},
-    {D3, 22.75f, 0.25f},
-    {D2, 23.0f, 0.25f},
-    {D3, 23.25f, 0.25f},
-    {D2, 23.5f, 0.25f},
-    {D3, 23.75f, 0.25f},
-    {A2, 24.0f, 0.25f},
-    {A3, 24.25f, 0.25f},
-    {A2, 24.5f, 0.25f},
-    {A3, 24.75f, 0.25f},
-    {A2, 25.0f, 0.25f},
-    {A3, 25.25f, 0.25f},
-    {A2, 25.5f, 0.25f},
-    {A3, 25.75f, 0.25f},
-    {E2, 26.0f, 0.25f},
-    {E3, 26.25f, 0.25f},
-    {E2, 26.5f, 0.25f},
-    {E3, 26.75f, 0.25f},
-    {E2, 27.0f, 0.25f},
-    {E3, 27.25f, 0.25f},
-    {E2, 27.5f, 0.25f},
-    {E3, 27.75f, 0.25f},
-    {D2, 28.0f, 0.25f},
-    {D3, 28.25f, 0.25f},
-    {D2, 28.5f, 0.25f},
-    {D3, 28.75f, 0.25f},
-    {D2, 29.0f, 0.25f},
-    {D3, 29.25f, 0.25f},
-    {D2, 29.5f, 0.25f},
-    {D3, 29.75f, 0.25f},
-    {A2, 30.0f, 0.25f},
-    {A3, 30.25f, 0.25f},
-    {A2, 30.5f, 0.25f},
-    {A3, 30.75f, 0.25f},
-    {A2, 31.0f, 0.25f},
-    {A3, 31.25f, 0.25f},
-    {A2, 31.5f, 0.25f},
-    {A3, 31.75f, 0.25f},
+static const Note NOTES_NATURE[] = {
+    {A4, 0.0f, 0.2f},     {CS5, 0.25f, 0.2f},   {E5, 0.5f, 0.45f},
+    {E5, 1.0f, 0.2f},     {FS5, 1.25f, 0.2f},   {E5, 1.5f, 0.45f},
+    {GS4, 2.0f, 0.2f},    {B4, 2.25f, 0.2f},    {E5, 2.5f, 0.45f},
+    {D5, 3.0f, 0.2f},     {B4, 3.25f, 0.2f},    {GS4, 3.5f, 0.45f},
+    {A4, 4.0f, 0.2f},     {CS5, 4.25f, 0.2f},   {FS5, 4.5f, 0.45f},
+    {A5, 5.0f, 0.2f},     {FS5, 5.25f, 0.2f},   {E5, 5.5f, 0.45f},
+    {D5, 6.0f, 0.2f},     {FS5, 6.25f, 0.2f},   {A5, 6.5f, 0.45f},
+    {FS5, 7.0f, 0.2f},    {D5, 7.25f, 0.2f},    {A4, 7.5f, 0.45f},
+    {A4, 8.0f, 0.2f},     {CS5, 8.25f, 0.2f},   {E5, 8.5f, 0.45f},
+    {A5, 9.0f, 0.45f},    {GS5, 9.5f, 0.2f},    {FS5, 9.75f, 0.2f},
+    {GS4, 10.0f, 0.2f},   {B4, 10.25f, 0.2f},   {E5, 10.5f, 0.45f},
+    {GS5, 11.0f, 0.45f},  {B4, 11.5f, 0.2f},    {E5, 11.75f, 0.2f},
+    {FS5, 12.0f, 0.45f},  {D5, 12.5f, 0.2f},    {A4, 12.75f, 0.2f},
+    {D5, 13.0f, 0.45f},   {FS5, 13.5f, 0.45f},  {E5, 14.0f, 0.45f},
+    {GS5, 14.5f, 0.2f},   {B5, 14.75f, 0.2f},   {E5, 15.0f, 0.95f},
+    {A4, 16.0f, 0.2f},    {CS5, 16.25f, 0.2f},  {E5, 16.5f, 0.45f},
+    {E5, 17.0f, 0.2f},    {FS5, 17.25f, 0.2f},  {E5, 17.5f, 0.45f},
+    {GS4, 18.0f, 0.2f},   {B4, 18.25f, 0.2f},   {E5, 18.5f, 0.45f},
+    {D5, 19.0f, 0.2f},    {B4, 19.25f, 0.2f},   {GS4, 19.5f, 0.45f},
+    {A4, 20.0f, 0.2f},    {CS5, 20.25f, 0.2f},  {FS5, 20.5f, 0.45f},
+    {A5, 21.0f, 0.2f},    {FS5, 21.25f, 0.2f},  {E5, 21.5f, 0.45f},
+    {D5, 22.0f, 0.2f},    {FS5, 22.25f, 0.2f},  {A5, 22.5f, 0.45f},
+    {FS5, 23.0f, 0.2f},   {D5, 23.25f, 0.2f},   {A4, 23.5f, 0.45f},
+    {A4, 24.0f, 0.2f},    {CS5, 24.25f, 0.2f},  {E5, 24.5f, 0.45f},
+    {A5, 25.0f, 0.45f},   {GS5, 25.5f, 0.2f},   {FS5, 25.75f, 0.2f},
+    {GS4, 26.0f, 0.2f},   {B4, 26.25f, 0.2f},   {E5, 26.5f, 0.45f},
+    {GS5, 27.0f, 0.45f},  {B4, 27.5f, 0.2f},    {E5, 27.75f, 0.2f},
+    {FS5, 28.0f, 0.45f},  {D5, 28.5f, 0.2f},    {A4, 28.75f, 0.2f},
+    {D5, 29.0f, 0.45f},   {FS5, 29.5f, 0.45f},  {E5, 30.0f, 0.45f},
+    {GS5, 30.5f, 0.2f},   {B5, 30.75f, 0.2f},   {A5, 31.0f, 0.95f},
+    {A2, 0.0f, 0.25f},    {A3, 0.25f, 0.25f},   {A2, 0.5f, 0.25f},
+    {A3, 0.75f, 0.25f},   {A2, 1.0f, 0.25f},    {A3, 1.25f, 0.25f},
+    {A2, 1.5f, 0.25f},    {A3, 1.75f, 0.25f},   {E2, 2.0f, 0.25f},
+    {E3, 2.25f, 0.25f},   {E2, 2.5f, 0.25f},    {E3, 2.75f, 0.25f},
+    {E2, 3.0f, 0.25f},    {E3, 3.25f, 0.25f},   {E2, 3.5f, 0.25f},
+    {E3, 3.75f, 0.25f},   {FS2, 4.0f, 0.25f},   {FS3, 4.25f, 0.25f},
+    {FS2, 4.5f, 0.25f},   {FS3, 4.75f, 0.25f},  {FS2, 5.0f, 0.25f},
+    {FS3, 5.25f, 0.25f},  {FS2, 5.5f, 0.25f},   {FS3, 5.75f, 0.25f},
+    {D2, 6.0f, 0.25f},    {D3, 6.25f, 0.25f},   {D2, 6.5f, 0.25f},
+    {D3, 6.75f, 0.25f},   {D2, 7.0f, 0.25f},    {D3, 7.25f, 0.25f},
+    {D2, 7.5f, 0.25f},    {D3, 7.75f, 0.25f},   {A2, 8.0f, 0.25f},
+    {A3, 8.25f, 0.25f},   {A2, 8.5f, 0.25f},    {A3, 8.75f, 0.25f},
+    {A2, 9.0f, 0.25f},    {A3, 9.25f, 0.25f},   {A2, 9.5f, 0.25f},
+    {A3, 9.75f, 0.25f},   {E2, 10.0f, 0.25f},   {E3, 10.25f, 0.25f},
+    {E2, 10.5f, 0.25f},   {E3, 10.75f, 0.25f},  {E2, 11.0f, 0.25f},
+    {E3, 11.25f, 0.25f},  {E2, 11.5f, 0.25f},   {E3, 11.75f, 0.25f},
+    {D2, 12.0f, 0.25f},   {D3, 12.25f, 0.25f},  {D2, 12.5f, 0.25f},
+    {D3, 12.75f, 0.25f},  {D2, 13.0f, 0.25f},   {D3, 13.25f, 0.25f},
+    {D2, 13.5f, 0.25f},   {D3, 13.75f, 0.25f},  {E2, 14.0f, 0.25f},
+    {E3, 14.25f, 0.25f},  {E2, 14.5f, 0.25f},   {E3, 14.75f, 0.25f},
+    {E2, 15.0f, 0.25f},   {E3, 15.25f, 0.25f},  {E2, 15.5f, 0.25f},
+    {E3, 15.75f, 0.25f},  {A2, 16.0f, 0.25f},   {A3, 16.25f, 0.25f},
+    {A2, 16.5f, 0.25f},   {A3, 16.75f, 0.25f},  {A2, 17.0f, 0.25f},
+    {A3, 17.25f, 0.25f},  {A2, 17.5f, 0.25f},   {A3, 17.75f, 0.25f},
+    {E2, 18.0f, 0.25f},   {E3, 18.25f, 0.25f},  {E2, 18.5f, 0.25f},
+    {E3, 18.75f, 0.25f},  {E2, 19.0f, 0.25f},   {E3, 19.25f, 0.25f},
+    {E2, 19.5f, 0.25f},   {E3, 19.75f, 0.25f},  {FS2, 20.0f, 0.25f},
+    {FS3, 20.25f, 0.25f}, {FS2, 20.5f, 0.25f},  {FS3, 20.75f, 0.25f},
+    {FS2, 21.0f, 0.25f},  {FS3, 21.25f, 0.25f}, {FS2, 21.5f, 0.25f},
+    {FS3, 21.75f, 0.25f}, {D2, 22.0f, 0.25f},   {D3, 22.25f, 0.25f},
+    {D2, 22.5f, 0.25f},   {D3, 22.75f, 0.25f},  {D2, 23.0f, 0.25f},
+    {D3, 23.25f, 0.25f},  {D2, 23.5f, 0.25f},   {D3, 23.75f, 0.25f},
+    {A2, 24.0f, 0.25f},   {A3, 24.25f, 0.25f},  {A2, 24.5f, 0.25f},
+    {A3, 24.75f, 0.25f},  {A2, 25.0f, 0.25f},   {A3, 25.25f, 0.25f},
+    {A2, 25.5f, 0.25f},   {A3, 25.75f, 0.25f},  {E2, 26.0f, 0.25f},
+    {E3, 26.25f, 0.25f},  {E2, 26.5f, 0.25f},   {E3, 26.75f, 0.25f},
+    {E2, 27.0f, 0.25f},   {E3, 27.25f, 0.25f},  {E2, 27.5f, 0.25f},
+    {E3, 27.75f, 0.25f},  {D2, 28.0f, 0.25f},   {D3, 28.25f, 0.25f},
+    {D2, 28.5f, 0.25f},   {D3, 28.75f, 0.25f},  {D2, 29.0f, 0.25f},
+    {D3, 29.25f, 0.25f},  {D2, 29.5f, 0.25f},   {D3, 29.75f, 0.25f},
+    {A2, 30.0f, 0.25f},   {A3, 30.25f, 0.25f},  {A2, 30.5f, 0.25f},
+    {A3, 30.75f, 0.25f},  {A2, 31.0f, 0.25f},   {A3, 31.25f, 0.25f},
+    {A2, 31.5f, 0.25f},   {A3, 31.75f, 0.25f},
 };
 
-// Track 1 — Arcade theme. Same {frequency, start, duration} form as NOTES0
-// (start/duration in seconds within this track's loop). The shared A2
-// tonic-pedal pad plays under every track; keep each track's loop length a
+// Track 1 — Arcade theme. Same {frequency, start, duration} form as
+// NOTES_NATURE (start/duration in seconds within this track's loop). The shared
+// A2 tonic-pedal pad plays under every track; keep each track's loop length a
 // whole number of seconds so that pedal stays seamless.
-static const struct Note NOTES1[] = {
+static const Note NOTES_ARCADE[] = {
     // RIGHT HAND (melody + one harmony tone per chord beat)
     {E5, 0.0f, 0.45f},
     {B4, 0.5f, 0.2f},
@@ -781,137 +636,63 @@ static const struct Note NOTES1[] = {
 };
 
 // Track 2 — Menu/Credits: warm, inviting sustained theme (A mixolydian, 32s).
-static const struct Note NOTES_MENU[] = {
-    {E5, 0.0f, 0.95f},
-    {A5, 1.0f, 0.95f},
-    {E5, 2.0f, 0.95f},
-    {CS5, 3.0f, 0.95f},
-    {FS5, 4.0f, 0.95f},
-    {D5, 5.0f, 0.95f},
-    {A5, 6.0f, 0.95f},
-    {FS5, 7.0f, 0.95f},
-    {G5, 8.0f, 0.95f},
-    {B4, 9.0f, 0.95f},
-    {D5, 10.0f, 0.95f},
-    {G5, 11.0f, 0.95f},
-    {FS5, 12.0f, 0.95f},
-    {A5, 13.0f, 0.95f},
-    {GS5, 14.0f, 0.95f},
-    {E5, 15.0f, 0.95f},
-    {A5, 16.0f, 0.95f},
-    {E5, 17.0f, 0.95f},
-    {CS5, 18.0f, 0.95f},
-    {E5, 19.0f, 0.95f},
-    {D5, 20.0f, 0.95f},
-    {FS5, 21.0f, 0.95f},
-    {A5, 22.0f, 0.95f},
-    {FS5, 23.0f, 0.95f},
-    {G5, 24.0f, 0.95f},
-    {D5, 25.0f, 0.95f},
-    {FS5, 26.0f, 0.95f},
-    {A5, 27.0f, 0.95f},
-    {E5, 28.0f, 0.95f},
-    {GS5, 29.0f, 0.95f},
-    {A5, 30.0f, 1.95f},
-    {A2, 0.0f, 0.5f},
-    {A3, 0.5f, 0.5f},
-    {A2, 1.0f, 0.5f},
-    {A3, 1.5f, 0.5f},
-    {A2, 2.0f, 0.5f},
-    {A3, 2.5f, 0.5f},
-    {A2, 3.0f, 0.5f},
-    {A3, 3.5f, 0.5f},
-    {D2, 4.0f, 0.5f},
-    {D3, 4.5f, 0.5f},
-    {D2, 5.0f, 0.5f},
-    {D3, 5.5f, 0.5f},
-    {D2, 6.0f, 0.5f},
-    {D3, 6.5f, 0.5f},
-    {D2, 7.0f, 0.5f},
-    {D3, 7.5f, 0.5f},
-    {G2, 8.0f, 0.5f},
-    {G3, 8.5f, 0.5f},
-    {G2, 9.0f, 0.5f},
-    {G3, 9.5f, 0.5f},
-    {G2, 10.0f, 0.5f},
-    {G3, 10.5f, 0.5f},
-    {G2, 11.0f, 0.5f},
-    {G3, 11.5f, 0.5f},
-    {D2, 12.0f, 0.5f},
-    {D3, 12.5f, 0.5f},
-    {D2, 13.0f, 0.5f},
-    {D3, 13.5f, 0.5f},
-    {E2, 14.0f, 0.5f},
-    {E3, 14.5f, 0.5f},
-    {E2, 15.0f, 0.5f},
-    {E3, 15.5f, 0.5f},
-    {A2, 16.0f, 0.5f},
-    {A3, 16.5f, 0.5f},
-    {A2, 17.0f, 0.5f},
-    {A3, 17.5f, 0.5f},
-    {A2, 18.0f, 0.5f},
-    {A3, 18.5f, 0.5f},
-    {A2, 19.0f, 0.5f},
-    {A3, 19.5f, 0.5f},
-    {D2, 20.0f, 0.5f},
-    {D3, 20.5f, 0.5f},
-    {D2, 21.0f, 0.5f},
-    {D3, 21.5f, 0.5f},
-    {D2, 22.0f, 0.5f},
-    {D3, 22.5f, 0.5f},
-    {D2, 23.0f, 0.5f},
-    {D3, 23.5f, 0.5f},
-    {G2, 24.0f, 0.5f},
-    {G3, 24.5f, 0.5f},
-    {G2, 25.0f, 0.5f},
-    {G3, 25.5f, 0.5f},
-    {D2, 26.0f, 0.5f},
-    {D3, 26.5f, 0.5f},
-    {D2, 27.0f, 0.5f},
-    {D3, 27.5f, 0.5f},
-    {E2, 28.0f, 0.5f},
-    {E3, 28.5f, 0.5f},
-    {E2, 29.0f, 0.5f},
-    {E3, 29.5f, 0.5f},
-    {A2, 30.0f, 0.5f},
-    {A3, 30.5f, 0.5f},
-    {A2, 31.0f, 0.5f},
-    {A3, 31.5f, 0.5f},
+static const Note NOTES_MENU[] = {
+    {E5, 0.0f, 0.95f},   {A5, 1.0f, 0.95f},  {E5, 2.0f, 0.95f},
+    {CS5, 3.0f, 0.95f},  {FS5, 4.0f, 0.95f}, {D5, 5.0f, 0.95f},
+    {A5, 6.0f, 0.95f},   {FS5, 7.0f, 0.95f}, {G5, 8.0f, 0.95f},
+    {B4, 9.0f, 0.95f},   {D5, 10.0f, 0.95f}, {G5, 11.0f, 0.95f},
+    {FS5, 12.0f, 0.95f}, {A5, 13.0f, 0.95f}, {GS5, 14.0f, 0.95f},
+    {E5, 15.0f, 0.95f},  {A5, 16.0f, 0.95f}, {E5, 17.0f, 0.95f},
+    {CS5, 18.0f, 0.95f}, {E5, 19.0f, 0.95f}, {D5, 20.0f, 0.95f},
+    {FS5, 21.0f, 0.95f}, {A5, 22.0f, 0.95f}, {FS5, 23.0f, 0.95f},
+    {G5, 24.0f, 0.95f},  {D5, 25.0f, 0.95f}, {FS5, 26.0f, 0.95f},
+    {A5, 27.0f, 0.95f},  {E5, 28.0f, 0.95f}, {GS5, 29.0f, 0.95f},
+    {A5, 30.0f, 1.95f},  {A2, 0.0f, 0.5f},   {A3, 0.5f, 0.5f},
+    {A2, 1.0f, 0.5f},    {A3, 1.5f, 0.5f},   {A2, 2.0f, 0.5f},
+    {A3, 2.5f, 0.5f},    {A2, 3.0f, 0.5f},   {A3, 3.5f, 0.5f},
+    {D2, 4.0f, 0.5f},    {D3, 4.5f, 0.5f},   {D2, 5.0f, 0.5f},
+    {D3, 5.5f, 0.5f},    {D2, 6.0f, 0.5f},   {D3, 6.5f, 0.5f},
+    {D2, 7.0f, 0.5f},    {D3, 7.5f, 0.5f},   {G2, 8.0f, 0.5f},
+    {G3, 8.5f, 0.5f},    {G2, 9.0f, 0.5f},   {G3, 9.5f, 0.5f},
+    {G2, 10.0f, 0.5f},   {G3, 10.5f, 0.5f},  {G2, 11.0f, 0.5f},
+    {G3, 11.5f, 0.5f},   {D2, 12.0f, 0.5f},  {D3, 12.5f, 0.5f},
+    {D2, 13.0f, 0.5f},   {D3, 13.5f, 0.5f},  {E2, 14.0f, 0.5f},
+    {E3, 14.5f, 0.5f},   {E2, 15.0f, 0.5f},  {E3, 15.5f, 0.5f},
+    {A2, 16.0f, 0.5f},   {A3, 16.5f, 0.5f},  {A2, 17.0f, 0.5f},
+    {A3, 17.5f, 0.5f},   {A2, 18.0f, 0.5f},  {A3, 18.5f, 0.5f},
+    {A2, 19.0f, 0.5f},   {A3, 19.5f, 0.5f},  {D2, 20.0f, 0.5f},
+    {D3, 20.5f, 0.5f},   {D2, 21.0f, 0.5f},  {D3, 21.5f, 0.5f},
+    {D2, 22.0f, 0.5f},   {D3, 22.5f, 0.5f},  {D2, 23.0f, 0.5f},
+    {D3, 23.5f, 0.5f},   {G2, 24.0f, 0.5f},  {G3, 24.5f, 0.5f},
+    {G2, 25.0f, 0.5f},   {G3, 25.5f, 0.5f},  {D2, 26.0f, 0.5f},
+    {D3, 26.5f, 0.5f},   {D2, 27.0f, 0.5f},  {D3, 27.5f, 0.5f},
+    {E2, 28.0f, 0.5f},   {E3, 28.5f, 0.5f},  {E2, 29.0f, 0.5f},
+    {E3, 29.5f, 0.5f},   {A2, 30.0f, 0.5f},  {A3, 30.5f, 0.5f},
+    {A2, 31.0f, 0.5f},   {A3, 31.5f, 0.5f},
 };
 
 // Track 3 — Game over: somber, sparse A-minor loop (8s).
-static const struct Note NOTES_GAMEOVER[] = {
-    {E5, 0.0f, 0.95f},
-    {D5, 1.0f, 0.95f},
-    {C5, 2.0f, 1.4f},
-    {A4, 3.5f, 0.45f},
-    {E5, 4.0f, 0.95f},
-    {C5, 5.0f, 0.95f},
-    {GS4, 6.0f, 1.95f},
-    {A3, 0.0f, 1.9f},
-    {C4, 0.0f, 1.9f},
-    {F3, 2.0f, 1.9f},
-    {A3, 2.0f, 1.9f},
-    {C3, 4.0f, 1.9f},
-    {E4, 4.0f, 1.9f},
-    {E3, 6.0f, 1.9f},
-    {GS3, 6.0f, 1.9f},
+static const Note NOTES_GAMEOVER[] = {
+    {E5, 0.0f, 0.95f}, {D5, 1.0f, 0.95f}, {C5, 2.0f, 1.4f},   {A4, 3.5f, 0.45f},
+    {E5, 4.0f, 0.95f}, {C5, 5.0f, 0.95f}, {GS4, 6.0f, 1.95f}, {A3, 0.0f, 1.9f},
+    {C4, 0.0f, 1.9f},  {F3, 2.0f, 1.9f},  {A3, 2.0f, 1.9f},   {C3, 4.0f, 1.9f},
+    {E4, 4.0f, 1.9f},  {E3, 6.0f, 1.9f},  {GS3, 6.0f, 1.9f},
 };
 
 // A track is its note list plus its own loop length; the A2 pedal underlies
 // every track and stays seamless for any whole-second `duration`.
-struct Track {
-  const struct Note *notes;
+typedef struct {
+  const Note *notes;
   int count;
   float duration; // loop length (s); per-track so a longer arrangement fits
-};
+} Track;
 #define TRACK(a, dur) {(a), (int)(sizeof(a) / sizeof((a)[0])), (dur)}
 // TRACK_NATURE/ARCADE/MENU/GAMEOVER live in sound.h (main.c selects by state).
 // Each track's duration must give the A2 pedal whole cycles (110Hz * seconds
 // integer) for a seamless seam — 48/64/32/8s all qualify.
-static const struct Track TRACKS[] = {
-    [TRACK_NATURE] = TRACK(NOTES0, 32.0f),
-    [TRACK_ARCADE] = TRACK(NOTES1, 64.0f),
+static const Track TRACKS[] = {
+    [TRACK_NATURE] = TRACK(NOTES_NATURE, 32.0f),
+    [TRACK_ARCADE] = TRACK(NOTES_ARCADE, 64.0f),
     [TRACK_MENU] = TRACK(NOTES_MENU, 32.0f),
     [TRACK_GAMEOVER] = TRACK(NOTES_GAMEOVER, 8.0f),
 };
@@ -961,7 +742,7 @@ static void buildLoop(int track) {
   if (loopBuffer[track] != NULL) {
     return;
   }
-  const struct Note *notes = TRACKS[track].notes;
+  const Note *notes = TRACKS[track].notes;
   int noteCount = TRACKS[track].count;
   int samples = (int)(TRACKS[track].duration * SAMPLE_RATE);
   loopSamples[track] = samples;
@@ -1045,17 +826,17 @@ static const int sfxLen[] = {
 // ponytail: fixed 8 voices; overlapping triggers past 8 drop silently — grow
 // the pool only if that's ever audible.
 #define MAX_VOICES 8
-struct Voice {
+typedef struct {
   bool active;
   int type;
   int pos; // samples elapsed since trigger
-};
-static struct Voice voices[MAX_VOICES];
+} Voice;
+static Voice voices[MAX_VOICES];
 
 void sfx(SfxId id) {
   for (int i = 0; i < MAX_VOICES; i++) {
     if (!voices[i].active) {
-      voices[i] = (struct Voice){true, id, 0};
+      voices[i] = (Voice){true, id, 0};
       return;
     }
   }
@@ -1103,7 +884,7 @@ static float renderVoice(int type, int pos) {
   case SFX_HIT: { // descending saw + noise (noisier on arcade)
     float f = sweep(300.0f, 240.0f, pos, len);
     float saw = 2.0f * (f * t - floorf(0.5f + f * t));
-    float noise = (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
+    float noise = GetRandomValue(-1000, 1000) / 1000.0f;
     s = arc ? 0.4f * saw + 0.6f * noise : 0.7f * saw + 0.3f * noise;
     break;
   }
@@ -1124,7 +905,7 @@ static float renderVoice(int type, int pos) {
   case SFX_SPLAT: { // short wet squish: low saw + noise
     float f = sweep(180.0f, 120.0f, pos, len);
     float saw = 2.0f * (f * t - floorf(0.5f + f * t));
-    float noise = (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
+    float noise = GetRandomValue(-1000, 1000) / 1000.0f;
     s = 0.5f * saw + 0.5f * noise;
     break;
   }
@@ -1140,7 +921,7 @@ static float renderVoice(int type, int pos) {
     static const float natNotes[6] = {C5, E5, G5, C6, E6, G6};
     static const float arcNotes[6] = {E5, G5, B5, E6, G6, B6};
     const float *notes = arc ? arcNotes : natNotes;
-    int k = pos * 6 / len;      // step up over the first 5/6...
+    int k = pos * 6 / len; // step up over the first 5/6...
     if (k > 5) {
       k = 5; // ...then hold the top note for the last sixth (the fanfare peak)
     }
@@ -1202,7 +983,8 @@ void updateAudio(AudioStream *stream) {
       }
     }
 
-    buffer[i] = tanhf(s + e * sfxVol); // soft limiter — warmer than a hard clamp
+    buffer[i] =
+        tanhf(s + e * sfxVol); // soft limiter — warmer than a hard clamp
   }
   UpdateAudioStream(*stream, buffer, BUFFER_SIZE);
 }

@@ -5,7 +5,7 @@
 #include <stddef.h> // offsetof
 
 // Ascent (world-units of climb) that one theme spans before it has fully
-// morphed into the next. ~16000 matches the old single-theme dusk scale.
+// morphed into the next — a full level band.
 #define BAND_HEIGHT 32000.0f
 
 // The theme table. A new level is one more row here (and, for a distinct
@@ -87,12 +87,13 @@ const int THEME_COUNT = (int)(sizeof(THEMES) / sizeof(THEMES[0]));
 Theme gTheme;
 
 // Neighbor indices + blend factor from the last themeUpdate.
-static int gLo = 0, gHi = 1;
-static float gF = 0.0f;
+static int bandLo = 0, bandHi = 1;
+static float bandF = 0.0f;
 
 // lerpTheme walks the leading Color run as a raw Color[] up to `backdrop`, so
 // that offset must land on a whole number of Colors — i.e. no non-Color field
-// may sneak in before `backdrop`. A reordered struct trips this at compile time.
+// may sneak in before `backdrop`. A reordered struct trips this at compile
+// time.
 STATIC_ASSERT(offsetof(Theme, backdrop) % sizeof(Color) == 0, theme_color_run);
 
 // Blend every Color field (the whole leading run of the struct) from a->b by f.
@@ -120,18 +121,18 @@ void themeUpdate(float ascent) {
   }
   float t = ascent / BAND_HEIGHT;
   int level = (int)t; // 0-based band, unbounded
-  gF = clampf(t - (float)level, 0.0f, 1.0f);
+  bandF = clampf(t - (float)level, 0.0f, 1.0f);
   // Levels are infinite; themes loop, so once the last theme's band fills it
   // wraps back to the first (e.g. with 2 themes: nature→arcade→nature→…).
-  gLo = level % THEME_COUNT;
-  gHi = (level + 1) % THEME_COUNT;
-  gTheme = lerpTheme(&THEMES[gLo], &THEMES[gHi], gF);
+  bandLo = level % THEME_COUNT;
+  bandHi = (level + 1) % THEME_COUNT;
+  gTheme = lerpTheme(&THEMES[bandLo], &THEMES[bandHi], bandF);
 }
 
 void themeBlend(int *lo, int *hi, float *f) {
-  *lo = gLo;
-  *hi = gHi;
-  *f = gF;
+  *lo = bandLo;
+  *hi = bandHi;
+  *f = bandF;
 }
 
 int themeTrack(void) { return gTheme.track; }

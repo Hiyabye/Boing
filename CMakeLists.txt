@@ -27,7 +27,13 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # font-format decoders the game never calls). macOS ld64 uses -dead_strip;
 # GNU ld uses --gc-sections. Compile with per-function/data sections so the
 # linker can strip at that granularity.
-target_compile_options(${PROJECT_NAME} PRIVATE -ffunction-sections -fdata-sections)
+# -Wall -Wextra on our target only (not the raylib submodule). Deliberately
+# without -Wconversion: the code leans on raylib's int APIs, so implicit
+# float->int narrowing is expected and would flood the build (see .clang-tidy).
+# -Wno-unused-const-variable: sound.c keeps a full C0..B8 note-frequency table
+# as a reference; the pitches no melody uses are intentionally present.
+target_compile_options(${PROJECT_NAME} PRIVATE
+    -Wall -Wextra -Wno-unused-const-variable -ffunction-sections -fdata-sections)
 if(APPLE)
     target_link_options(${PROJECT_NAME} PRIVATE -Wl,-dead_strip)
 else()

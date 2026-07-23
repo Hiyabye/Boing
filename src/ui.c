@@ -64,15 +64,9 @@ void drawIcon(IconKind kind, float cx, float cy, float s, Color c) {
                  (Vector2){cx + s * 0.45f, cy + s * 0.25f}, c);
     break;
   case ICON_BACK: // "go back" reads as a left-pointing arrow
-  case ICON_ARROW_L:
     DrawTriangle((Vector2){cx + s * 0.4f, cy - s * 0.55f},
                  (Vector2){cx - s * 0.5f, cy},
                  (Vector2){cx + s * 0.4f, cy + s * 0.55f}, c);
-    break;
-  case ICON_ARROW_R:
-    DrawTriangle((Vector2){cx - s * 0.4f, cy - s * 0.55f},
-                 (Vector2){cx - s * 0.4f, cy + s * 0.55f},
-                 (Vector2){cx + s * 0.5f, cy}, c);
     break;
   case ICON_HOME:
     DrawTriangle((Vector2){cx, cy - s * 0.7f},

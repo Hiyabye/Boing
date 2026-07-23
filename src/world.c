@@ -24,9 +24,10 @@
 #define MONSTER_SPACING 900.0f // vertical distance between monster bands
 #define MONSTER_DRIFT 1.5f     // horizontal speed
 #define MONSTER_COIN_LOSS 5    // coins scattered/lost on a monster hit
-#define COIN_SCATTER_R 60.0f     // ring radius knocked-off coins start at (> collect dist)
-#define COIN_SCATTER_SPEED 5.0f  // outward px/frame at launch
-#define COIN_DAMP 0.92f          // scattered coins decelerate to a rest
+#define COIN_SCATTER_R                                                         \
+  60.0f // ring radius knocked-off coins start at (> collect dist)
+#define COIN_SCATTER_SPEED 5.0f // outward px/frame at launch
+#define COIN_DAMP 0.92f         // scattered coins decelerate to a rest
 #define POWERUP_RADIUS 18.0f
 #define POWERUP_SPACING 1500.0f // rare
 #define MAGNET_RADIUS 260.0f    // coins within this get pulled
@@ -43,6 +44,7 @@
   700.0f // how far below the peak view the camera chases a fall
 #define BOTTOM_MARGIN                                                          \
   140.0f // keep the player this far above the screen bottom (see below it)
+#define TWO_PI (2.0f * PI) // raylib defines PI
 
 // Power-up table (indexed by PowerUpType). Ordered exactly as the enum.
 //              duration color       label     weight shake        invincible
@@ -77,15 +79,15 @@ bool worldInvincible(const World *world) {
 //
 // FOREACH_ACTIVE — run the next statement/block for each live slot.
 #define FOREACH_ACTIVE(arr, count, i)                                          \
-  for (int i = 0; i < (count); i++)                                           \
+  for (int i = 0; i < (count); i++)                                            \
     if (world->arr[i].active)
 // FIND_FREE — declare `slot` = index of the first free slot, or -1 if full.
 #define FIND_FREE(slot, arr, count)                                            \
-  int slot = -1;                                                              \
-  for (int fi_ = 0; fi_ < (count); fi_++)                                     \
-    if (!world->arr[fi_].active) {                                            \
-      slot = fi_;                                                             \
-      break;                                                                  \
+  int slot = -1;                                                               \
+  for (int fi_ = 0; fi_ < (count); fi_++)                                      \
+    if (!world->arr[fi_].active) {                                             \
+      slot = fi_;                                                              \
+      break;                                                                   \
     }
 
 World createWorld(void) {
@@ -106,7 +108,7 @@ static void spawnCoins(World *world) {
     if (s >= 0) {
       float x = world->lastSpawnX + GetRandomValue(-COIN_WANDER, COIN_WANDER);
       x = clampf(x, SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
-      world->coins[s] = (Coin){{x, world->spawnY}, true};
+      world->coins[s] = (Coin){{x, world->spawnY}, true, {0, 0}}; // at rest
       world->lastSpawnX = x;
     }
     world->spawnY -= COIN_SPACING;
@@ -168,7 +170,7 @@ static void spawnParticles(World *world, Vector2 at, Color color, int count,
     if (world->particles[i].life > 0.0f) {
       continue;
     }
-    float a = GetRandomValue(0, 628) / 100.0f; // 0..2π
+    float a = GetRandomValue(0, 1000) / 1000.0f * TWO_PI; // 0..2π
     float sp = GetRandomValue(2, 7);
     Color c =
         confetti ? gTheme.confetti[GetRandomValue(0, 5)] : color; // 6 colors
@@ -187,12 +189,12 @@ static void scatterCoins(World *world, Vector2 at, int count) {
     if (world->coins[i].active) {
       continue;
     }
-    float a = (float)made / (float)count * 6.2832f; // even wedge per coin
+    float a = (float)made / (float)count * TWO_PI; // even wedge per coin
     Vector2 dir = {cosf(a), sinf(a)};
-    world->coins[i] = (Coin){
-        {at.x + dir.x * COIN_SCATTER_R, at.y + dir.y * COIN_SCATTER_R},
-        true,
-        {dir.x * COIN_SCATTER_SPEED, dir.y * COIN_SCATTER_SPEED}};
+    world->coins[i] =
+        (Coin){{at.x + dir.x * COIN_SCATTER_R, at.y + dir.y * COIN_SCATTER_R},
+               true,
+               {dir.x * COIN_SCATTER_SPEED, dir.y * COIN_SCATTER_SPEED}};
     made++;
   }
 }
@@ -306,7 +308,8 @@ static void updateMonsters(World *world, Player *player) {
                        ? world->coinsCollected
                        : MONSTER_COIN_LOSS;
         world->coinsCollected -= lost;
-        scatterCoins(world, player->position, lost); // only the coins actually lost
+        scatterCoins(world, player->position,
+                     lost); // only the coins actually lost
         m->active = false;
         world->shake = SHAKE_HIT;
         player->velocity.y = 12.0f;    // knocked downward
@@ -448,8 +451,9 @@ static void drawCloudPad(Vector2 p) {
   // clearly against the sky. Dark outline + body + a bright top face strip.
   Rectangle board = {p.x, p.y, PLATFORM_WIDTH, PLATFORM_HEIGHT};
   DrawRectangleRounded(board, 0.6f, 8, CLOUD);
-  DrawRectangleRounded((Rectangle){p.x, p.y, PLATFORM_WIDTH, PLATFORM_HEIGHT * 0.4f},
-                       0.9f, 8, RAYWHITE); // lit top face (where feet land)
+  DrawRectangleRounded(
+      (Rectangle){p.x, p.y, PLATFORM_WIDTH, PLATFORM_HEIGHT * 0.4f}, 0.9f, 8,
+      RAYWHITE); // lit top face (where feet land)
   DrawRectangleRounded((Rectangle){p.x, p.y + PLATFORM_HEIGHT * 0.55f,
                                    PLATFORM_WIDTH, PLATFORM_HEIGHT * 0.45f},
                        0.9f, 8, Fade(CLOUD_SHADE, 0.85f)); // shaded underside
@@ -498,9 +502,9 @@ static void drawPowerUp(const PowerUp *pu, float t) {
     break;
   }
   case POWERUP_SHIELD:
-    DrawPoly(c, 6, R, 0, GOLD);                     // hex badge
-    DrawPolyLines(c, 6, R, 0, ORANGE);              // rim
-    DrawPoly(c, 6, R * 0.55f, 0, SKYBLUE);          // inner crest
+    DrawPoly(c, 6, R, 0, GOLD);            // hex badge
+    DrawPolyLines(c, 6, R, 0, ORANGE);     // rim
+    DrawPoly(c, 6, R * 0.55f, 0, SKYBLUE); // inner crest
     break;
   case POWERUP_ROCKET:
   default: {

@@ -17,7 +17,8 @@ typedef enum {
 
 // Compile-time assertion for C99 (no _Static_assert until C11): a false
 // condition makes an illegal negative-sized array and fails the build.
-#define STATIC_ASSERT(cond, name) typedef char static_assert_##name[(cond) ? 1 : -1]
+#define STATIC_ASSERT(cond, name)                                              \
+  typedef char static_assert_##name[(cond) ? 1 : -1]
 
 static inline float clampf(float v, float lo, float hi) {
   return v < lo ? lo : (v > hi ? hi : v);

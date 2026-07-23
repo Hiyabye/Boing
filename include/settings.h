@@ -17,8 +17,9 @@ Settings loadSettings(void);
 void saveSettings(const Settings *s);
 void applySettings(const Settings *s); // push to raylib (FPS/window/volume)
 
-// Keyboard-driven settings screen. Up/Down pick a row, Left/Right change it,
-// Esc/Space exits. Sets *state to returnTo on exit (menu or pause).
+// Settings screen. Mouse drags each row's slider knob; keyboard Up/Down pick a
+// row and Left/Right nudge it one stop; Esc/Space or BACK exits. Sets *state to
+// returnTo on exit (menu or pause).
 void updateSettingsMenu(Settings *s, GameState *state, GameState returnTo);
 void drawSettingsMenu(const Settings *s);
 

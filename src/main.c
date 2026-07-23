@@ -23,10 +23,10 @@ typedef struct {
   World world;
   Settings settings;
   int highScore;
-  float accumulator; // fixed-timestep carry
-  bool mouseControl; // true once the mouse moves; arrows reclaim control
-  bool quit;         // set by the menu EXIT button to end the loop
-  bool showHelp;     // menu "How to Play" overlay toggled by the ? button
+  float accumulator;   // fixed-timestep carry
+  bool mouseControl;   // true once the mouse moves; arrows reclaim control
+  bool quit;           // set by the menu EXIT button to end the loop
+  bool showHelp;       // menu "How to Play" overlay toggled by the ? button
   float creditsAnim;   // 0 = fullscreen picture, 1 = zoomed out to the CRT
   float creditsStatic; // "change channel" static timer, runs once zoomed out
   bool creditsExiting; // BACK pressed: ramp creditsAnim back to 0, then MENU
@@ -39,7 +39,8 @@ typedef struct {
 // The menu, frozen the instant CREDITS is pressed, shown on the CRT tube while
 // the camera pulls back. Loaded beside the main render target in main().
 static RenderTexture2D gMenuSnap;
-static void drawMenu(Game *g); // defined below; captured into gMenuSnap on enter
+static void
+drawMenu(Game *g); // defined below; captured into gMenuSnap on enter
 
 // Every state transition goes through here so `prevState` is always the screen
 // we came from — that's what SETTINGS returns to, replacing a hand-threaded
@@ -47,6 +48,13 @@ static void drawMenu(Game *g); // defined below; captured into gMenuSnap on ente
 static void gotoState(Game *g, GameState next) {
   g->prevState = g->state;
   g->state = next;
+}
+
+// Back to the menu's attract demo: fresh wandering blob + MENU state. Callers
+// fire their own SFX (the credits exit is silent), so this stays sfx-free.
+static void returnToMenu(Game *g) {
+  g->player = createPlayer();
+  gotoState(g, GAMESTATE_MENU);
 }
 
 // Button rects, in virtual (800x800) space. Convention: each button is one rect
@@ -238,8 +246,7 @@ static void updateCredits(Game *g) {
     g->creditsAnim = clampf(g->creditsAnim - step, 0.0f, 1.0f);
     if (g->creditsAnim <= 0.0f) {
       g->creditsExiting = false;
-      g->player = createPlayer(); // resume the menu's attract demo
-      gotoState(g, GAMESTATE_MENU);
+      returnToMenu(g); // resume the menu's attract demo
     }
     return;
   }
@@ -305,8 +312,7 @@ static void updatePaused(Game *g) {
     gotoState(g, GAMESTATE_SETTINGS);
     sfx(SFX_SELECT);
   } else if (clicked(rPauseHome())) {
-    g->player = createPlayer(); // back to the menu's attract demo
-    gotoState(g, GAMESTATE_MENU);
+    returnToMenu(g); // back to the menu's attract demo
     sfx(SFX_SELECT);
   }
 }
@@ -315,8 +321,7 @@ static void updateGameover(Game *g) {
   if (IsKeyPressed(KEY_SPACE) || clicked(rRetry())) {
     startGame(g, false);
   } else if (clicked(rGameoverHome())) {
-    g->player = createPlayer(); // back to the menu's attract demo
-    gotoState(g, GAMESTATE_MENU);
+    returnToMenu(g); // back to the menu's attract demo
     sfx(SFX_SELECT);
   }
 }
@@ -350,25 +355,38 @@ static void drawMenu(Game *g) {
 // of association. Lines starting with '-' render as pink section headers; blank
 // lines are spacers, and the leading/trailing ones pad the seamless loop wrap.
 static const char *REEL_LINES[] = {
-    "",  "",  "",
-    "- A GAME BY -",           "Jihoon Lee",
-    "",  "",
-    "- BUILT WITH -",          "raylib  (raylib.com)",
-    "",  "",
-    "- INSPIRED BY -",         "Mega Jump  (Halfbrick)",
+    "",
+    "",
+    "",
+    "- A GAME BY -",
+    "Jihoon Lee",
+    "",
+    "",
+    "- BUILT WITH -",
+    "raylib  (raylib.com)",
+    "",
+    "",
+    "- INSPIRED BY -",
+    "Mega Jump  (Halfbrick)",
     "homage only, not affiliated",
-    "",  "",
-    "- SHOWN AT -",            "2PG Arcade 1.44MB contest",
-    "",  "",
+    "",
+    "",
+    "- SHOWN AT -",
+    "2PG Arcade 1.44MB contest",
+    "",
+    "",
     "- THANK YOU FOR PLAYING -",
-    "",  "",  "",
+    "",
+    "",
+    "",
 };
 #define REEL_LINE_COUNT ((int)(sizeof(REEL_LINES) / sizeof(REEL_LINES[0])))
 #define REEL_LINE_H 34
 
 // The retro CRT shell around the tube: wood body, control column with dials +
 // power LED, bezel bevel, and rabbit-ear antennae. Everything fades/scales in
-// with `e` (the eased zoom-out amount) so it grows out of the fullscreen picture.
+// with `e` (the eased zoom-out amount) so it grows out of the fullscreen
+// picture.
 static void drawCrtCabinet(Rectangle tube, float e) {
   Color shell = Fade((Color){74, 60, 48, 255}, e);
   Color shellHi = Fade((Color){104, 86, 68, 255}, e);
@@ -451,8 +469,8 @@ static void drawCredits(Game *g) {
                          (Color){18, 16, 26, 255}, (Color){6, 5, 10, 255});
 
   // Tube face: fullscreen at a=0, inset CRT glass at a=1. Centered on screen
-  // (tube center 400,400) so the cabinet is centered and the reel text (drawn at
-  // SCREEN_WIDTH center) lands centered on the glass.
+  // (tube center 400,400) so the cabinet is centered and the reel text (drawn
+  // at SCREEN_WIDTH center) lands centered on the glass.
   Rectangle inset = {190, 240, 420, 320};
   Rectangle tube = {inset.x * e, inset.y * e,
                     SCREEN_WIDTH + (inset.width - SCREEN_WIDTH) * e,
@@ -462,13 +480,14 @@ static void drawCredits(Game *g) {
     drawCrtCabinet(tube, e);
   }
 
-  // Scissor is GL screen-space (the scale matrix doesn't touch it), so pre-scale
-  // the 800-space tube rect to native window pixels here only.
+  // Scissor is GL screen-space (the scale matrix doesn't touch it), so
+  // pre-scale the 800-space tube rect to native window pixels here only.
   float s = GetScreenWidth() / (float)SCREEN_WIDTH;
   BeginScissorMode((int)(tube.x * s), (int)(tube.y * s), (int)(tube.width * s),
                    (int)(tube.height * s));
   if (a < 1.0f) {
-    // Frozen menu on the tube while zooming (src y-flipped, like the main blit).
+    // Frozen menu on the tube while zooming (src y-flipped, like the main
+    // blit).
     DrawTexturePro(gMenuSnap.texture,
                    (Rectangle){0, 0, SCREEN_WIDTH, -SCREEN_HEIGHT}, tube,
                    (Vector2){0, 0}, 0.0f, WHITE);
@@ -546,6 +565,23 @@ static void drawSettingsState(Game *g) {
   drawSettingsMenu(&g->settings);
 }
 
+// Music follows the FSM state: menu/credits/settings share the menu track,
+// game over has its own, and gameplay follows the theme the draw pass resolved.
+// setTrack cuts instantly across these UI boundaries and only crossfades
+// between the two gameplay tracks as the theme morphs mid-climb.
+static int trackForState(GameState state) {
+  switch (state) {
+  case GAMESTATE_MENU:
+  case GAMESTATE_CREDITS:
+  case GAMESTATE_SETTINGS:
+    return TRACK_MENU;
+  case GAMESTATE_GAMEOVER:
+    return TRACK_GAMEOVER;
+  default:
+    return themeTrack();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // FSM dispatch table
 // ---------------------------------------------------------------------------
@@ -561,7 +597,8 @@ static const struct {
     [GAMESTATE_CREDITS] = {updateCredits, drawCredits},
 };
 // Every state must have a handler — a NULL slot would crash the dispatch below.
-STATIC_ASSERT(sizeof(STATES) / sizeof(STATES[0]) == GAMESTATE_COUNT, states_full);
+STATIC_ASSERT(sizeof(STATES) / sizeof(STATES[0]) == GAMESTATE_COUNT,
+              states_full);
 
 int main(void) {
   // HighDPI: render at the display's true pixel density (crisp on Retina) and,
@@ -590,30 +627,14 @@ int main(void) {
   // Draw runs in fixed 800x800 logical coords; a GPU scale matrix maps them to
   // the actual window each frame, so the resolution setting resizes the window
   // and everything rasterizes natively (no upscaled-image blur) untouched.
-  gMenuSnap = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT); // CRT freeze-frame
+  gMenuSnap =
+      LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT); // CRT freeze-frame
   SetTextureFilter(gMenuSnap.texture, TEXTURE_FILTER_BILINEAR);
 
   while (!WindowShouldClose() && !game.quit) {
     updateAudio(&stream);
     STATES[game.state].update(&game);
-    // Music follows the FSM state: menu/credits/settings share the menu track,
-    // game over has its own; gameplay follows the theme the draw pass resolved.
-    // setTrack cuts instantly across these UI boundaries and only crossfades
-    // between the two gameplay tracks as the theme morphs mid-climb.
-    int track;
-    switch (game.state) {
-    case GAMESTATE_MENU:
-    case GAMESTATE_CREDITS:
-    case GAMESTATE_SETTINGS:
-      track = TRACK_MENU;
-      break;
-    case GAMESTATE_GAMEOVER:
-      track = TRACK_GAMEOVER;
-      break;
-    default:
-      track = themeTrack();
-    }
-    setTrack(track);
+    setTrack(trackForState(game.state));
 
     // Draw 800-space, scaled to the native window (square, so width == scale).
     float scale = GetScreenWidth() / (float)SCREEN_WIDTH;

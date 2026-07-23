@@ -21,7 +21,7 @@ Boing/
 │   ├── world.c         # 레벨 생성, 카메라, 점수, 코인/플랫폼/몬스터/파워업
 │   ├── background.c    # 절차적 하늘/구름/태양 배경
 │   └── sound.c         # 절차적 칩튠 + SFX (샘플 파일 없음)
-├── include/            # 헤더 (core.h, theme.h는 헤더 온리)
+├── include/            # 헤더 (core.h는 헤더 온리; 나머지는 .c와 1:1)
 ├── lib/raylib/         # raylib (git 서브모듈)
 └── CMakeLists.txt
 ```
