@@ -7,14 +7,16 @@ void initAudio(AudioStream *stream);
 void updateAudio(AudioStream *stream);
 void deinitAudio(AudioStream *stream);
 
-// Music track ids (indices into TRACKS[] in sound.c). 0/1 must stay
-// Nature/Arcade — theme.c's THEMES[].track uses those bare literals. Menu and
-// game over are FSM-driven (main.c), not themes.
+// Music track ids (indices into TRACKS[] in sound.c). 0..3 are the four level
+// tracks (theme.c's THEMES[].track uses those bare literals, one per climb
+// band); menu and game over are FSM-driven (main.c), not themes.
 typedef enum {
-  TRACK_NATURE,   // 0
-  TRACK_ARCADE,   // 1
-  TRACK_MENU,     // 2 — title + credits screens
-  TRACK_GAMEOVER, // 3 — game-over screen
+  TRACK_L1,       // 0 — Sunny Hills (day)
+  TRACK_L2,       // 1 — Night Blocks
+  TRACK_L3,       // 2 — Neon Maze
+  TRACK_L4,       // 3 — Falling Blocks
+  TRACK_MENU,     // 4 — title + credits screens
+  TRACK_GAMEOVER, // 5 — game-over screen
 } MusicTrack;
 
 // Select the music/SFX track; starts a crossfade from the current one. Themes

@@ -133,7 +133,7 @@ typedef struct {
   float duration; // length of the note (seconds)
 } Note;
 
-// Track 0 — Nature: original upbeat, bouncy melody (A major, 32s loop).
+// Track L1 — Sunny Hills: upbeat, bouncy day melody (A major, 32s loop).
 static const Note NOTES_NATURE[] = {
     {A4, 0.0f, 0.2f},     {CS5, 0.25f, 0.2f},   {E5, 0.5f, 0.45f},
     {E5, 1.0f, 0.2f},     {FS5, 1.25f, 0.2f},   {E5, 1.5f, 0.45f},
@@ -210,10 +210,11 @@ static const Note NOTES_NATURE[] = {
     {A2, 31.5f, 0.25f},   {A3, 31.75f, 0.25f},
 };
 
-// Track 1 — Arcade theme. Same {frequency, start, duration} form as
-// NOTES_NATURE (start/duration in seconds within this track's loop). The shared
-// A2 tonic-pedal pad plays under every track; keep each track's loop length a
-// whole number of seconds so that pedal stays seamless.
+// Track L4 — Falling Blocks: energetic puzzle-arcade theme (A minor, 64s loop).
+// Same {frequency, start, duration} form as NOTES_NATURE (start/duration in
+// seconds within this track's loop). The shared A2 tonic-pedal pad plays under
+// every track; keep each track's loop length a whole number of seconds so that
+// pedal stays seamless.
 static const Note NOTES_ARCADE[] = {
     // RIGHT HAND (melody + one harmony tone per chord beat)
     {E5, 0.0f, 0.45f},
@@ -635,7 +636,56 @@ static const Note NOTES_ARCADE[] = {
     {A3, 63.75f, 0.25f},
 };
 
-// Track 2 — Menu/Credits: warm, inviting sustained theme (A mixolydian, 32s).
+// Track L2 — Night Blocks: calm, sparse, melancholic Am–F–C–G pad with a
+// slow pentatonic melody + high sparkle (A minor, 32s loop).
+static const Note NOTES_NIGHT[] = {
+    // melody (long, breathing)
+    {A4, 0.0f, 1.9f},   {C5, 2.0f, 1.9f},   {E5, 4.0f, 1.9f},
+    {D5, 6.0f, 1.9f},   {E5, 8.0f, 1.9f},   {G5, 10.0f, 1.9f},
+    {E5, 12.0f, 1.9f},  {D5, 14.0f, 1.9f},  {C5, 16.0f, 1.9f},
+    {A4, 18.0f, 1.9f},  {D5, 20.0f, 1.9f},  {E5, 22.0f, 1.9f},
+    {G5, 24.0f, 1.9f},  {E5, 26.0f, 1.9f},  {D5, 28.0f, 1.9f},
+    {C5, 30.0f, 1.9f},
+    // high sparkle (offbeat)
+    {E5, 1.0f, 0.9f},   {A5, 5.0f, 0.9f},   {B5, 9.0f, 0.9f},
+    {G5, 13.0f, 0.9f},  {E5, 17.0f, 0.9f},  {A5, 21.0f, 0.9f},
+    {D6, 25.0f, 0.9f},  {B5, 29.0f, 0.9f},
+    // low sustained roots: Am F C G
+    {A2, 0.0f, 3.9f},   {F2, 4.0f, 3.9f},   {C3, 8.0f, 3.9f},
+    {G2, 12.0f, 3.9f},  {A2, 16.0f, 3.9f},  {F2, 20.0f, 3.9f},
+    {C3, 24.0f, 3.9f},  {G2, 28.0f, 3.9f},
+};
+
+// Track L3 — Neon Maze: tense, driving chase riff over Am–Dm–E, staccato
+// melody stabs + walking octave bass (A minor, 16s loop).
+static const Note NOTES_MAZE[] = {
+    // melody stabs
+    {A4, 0.0f, 0.45f},   {C5, 0.5f, 0.45f},   {E5, 1.0f, 0.45f},
+    {C5, 1.5f, 0.45f},   {A4, 2.0f, 0.45f},   {E5, 2.5f, 0.45f},
+    {A5, 3.0f, 0.45f},   {E5, 3.5f, 0.45f},   {D5, 4.0f, 0.45f},
+    {F5, 4.5f, 0.45f},   {A5, 5.0f, 0.45f},   {F5, 5.5f, 0.45f},
+    {D5, 6.0f, 0.45f},   {A5, 6.5f, 0.45f},   {D6, 7.0f, 0.45f},
+    {A5, 7.5f, 0.45f},   {E5, 8.0f, 0.45f},   {GS5, 8.5f, 0.45f},
+    {B5, 9.0f, 0.45f},   {GS5, 9.5f, 0.45f},  {B4, 10.0f, 0.45f},
+    {E5, 10.5f, 0.45f},  {GS5, 11.0f, 0.45f}, {B5, 11.5f, 0.45f},
+    {A4, 12.0f, 0.45f},  {C5, 12.5f, 0.45f},  {E5, 13.0f, 0.45f},
+    {A5, 13.5f, 0.45f},  {E5, 14.0f, 0.45f},  {D5, 14.5f, 0.45f},
+    {C5, 15.0f, 0.45f},  {B4, 15.5f, 0.45f},
+    // walking octave bass: Am Am Dm Dm E E Am E
+    {A2, 0.0f, 0.45f},   {A3, 0.5f, 0.45f},   {A2, 1.0f, 0.45f},
+    {A3, 1.5f, 0.45f},   {A2, 2.0f, 0.45f},   {A3, 2.5f, 0.45f},
+    {A2, 3.0f, 0.45f},   {A3, 3.5f, 0.45f},   {D3, 4.0f, 0.45f},
+    {D4, 4.5f, 0.45f},   {D3, 5.0f, 0.45f},   {D4, 5.5f, 0.45f},
+    {D3, 6.0f, 0.45f},   {D4, 6.5f, 0.45f},   {D3, 7.0f, 0.45f},
+    {D4, 7.5f, 0.45f},   {E2, 8.0f, 0.45f},   {E3, 8.5f, 0.45f},
+    {E2, 9.0f, 0.45f},   {E3, 9.5f, 0.45f},   {E2, 10.0f, 0.45f},
+    {E3, 10.5f, 0.45f},  {E2, 11.0f, 0.45f},  {E3, 11.5f, 0.45f},
+    {A2, 12.0f, 0.45f},  {A3, 12.5f, 0.45f},  {A2, 13.0f, 0.45f},
+    {A3, 13.5f, 0.45f},  {E2, 14.0f, 0.45f},  {E3, 14.5f, 0.45f},
+    {E2, 15.0f, 0.45f},  {E3, 15.5f, 0.45f},
+};
+
+// Track — Menu/Credits: warm, inviting sustained theme (A mixolydian, 32s).
 static const Note NOTES_MENU[] = {
     {E5, 0.0f, 0.95f},   {A5, 1.0f, 0.95f},  {E5, 2.0f, 0.95f},
     {CS5, 3.0f, 0.95f},  {FS5, 4.0f, 0.95f}, {D5, 5.0f, 0.95f},
@@ -687,12 +737,15 @@ typedef struct {
   float duration; // loop length (s); per-track so a longer arrangement fits
 } Track;
 #define TRACK(a, dur) {(a), (int)(sizeof(a) / sizeof((a)[0])), (dur)}
-// TRACK_NATURE/ARCADE/MENU/GAMEOVER live in sound.h (main.c selects by state).
-// Each track's duration must give the A2 pedal whole cycles (110Hz * seconds
-// integer) for a seamless seam — 48/64/32/8s all qualify.
+// TRACK_L1..L4/MENU/GAMEOVER live in sound.h (themes select L1..L4 by climb
+// band; main.c hard-cuts to MENU/GAMEOVER by state). Each track's duration must
+// give the A2 pedal whole cycles (110Hz * integer seconds) for a seamless seam
+// — 16/32/64/8s all qualify.
 static const Track TRACKS[] = {
-    [TRACK_NATURE] = TRACK(NOTES_NATURE, 32.0f),
-    [TRACK_ARCADE] = TRACK(NOTES_ARCADE, 64.0f),
+    [TRACK_L1] = TRACK(NOTES_NATURE, 32.0f),
+    [TRACK_L2] = TRACK(NOTES_NIGHT, 32.0f),
+    [TRACK_L3] = TRACK(NOTES_MAZE, 16.0f),
+    [TRACK_L4] = TRACK(NOTES_ARCADE, 64.0f),
     [TRACK_MENU] = TRACK(NOTES_MENU, 32.0f),
     [TRACK_GAMEOVER] = TRACK(NOTES_GAMEOVER, 8.0f),
 };
@@ -784,12 +837,10 @@ static void buildLoop(int track) {
   }
 }
 
-// Level tracks (nature/arcade) crossfade into each other as the theme morphs
+// The four level tracks crossfade into each other as the theme morphs
 // mid-climb; menu and game over are separate screens, so switching to/from them
 // is a hard cut — no music bleeds across a UI boundary.
-static bool isLevelTrack(int t) {
-  return t == TRACK_NATURE || t == TRACK_ARCADE;
-}
+static bool isLevelTrack(int t) { return t >= TRACK_L1 && t <= TRACK_L4; }
 
 // Switch to `track` (no-op if already selected). Crossfades over FADE_SAMPLES
 // only between two level tracks; any switch involving menu/game over cuts
@@ -861,9 +912,9 @@ static float renderVoice(int type, int pos) {
   }
   float t = (float)pos / SAMPLE_RATE;
   float s = 0.0f;
-  // ponytail: arcade (track 1) gets a harsher, brighter 8-bit variant per
-  // effect — hand-tuned, not a data table like the music.
-  bool arc = (curTrack == TRACK_ARCADE);
+  // ponytail: the neon levels (Maze/Blocks) get a harsher, brighter 8-bit
+  // variant per effect — hand-tuned, not a data table like the music.
+  bool arc = (curTrack == TRACK_L3 || curTrack == TRACK_L4);
   switch (type) {
   case SFX_COIN: // rising two-note blip (brighter on arcade)
     s = square(pos < len / 2 ? (arc ? D6 : B5) : (arc ? G6 : E6), t);

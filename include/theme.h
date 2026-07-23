@@ -9,7 +9,12 @@
 // ascent. The color macros below just read `gTheme`, so every existing inline
 // draw site (world.c / player.c / background.c) keeps working unchanged.
 
-typedef enum { BACKDROP_CLOUDS, BACKDROP_BLOCKS } BackdropStyle;
+typedef enum {
+  BACKDROP_HILLS, // L1: day sky, clouds + rolling green hills/bushes
+  BACKDROP_STARS, // L2: night sky, moon + pixel stars + blocky terrain
+  BACKDROP_MAZE,  // L3: neon maze lattice + pellet dots on a dark ground
+  BACKDROP_BLOCKS // L4: falling neon tetromino cells
+} BackdropStyle;
 
 // One theme. Every Color must come before `backdrop` — themeUpdate() blends the
 // whole leading run of Colors generically (offsetof(Theme, backdrop)), so a new

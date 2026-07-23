@@ -19,8 +19,9 @@ Boing/
 │   ├── main.c          # 게임 루프 + GameState 머신, HUD/오버레이
 │   ├── player.c        # 플레이어 물리(중력, 입력, 스쿼시&스트레치)
 │   ├── world.c         # 레벨 생성, 카메라, 점수, 코인/플랫폼/몬스터/파워업
-│   ├── background.c    # 절차적 하늘/구름/태양 배경
-│   └── sound.c         # 절차적 칩튠 + SFX (샘플 파일 없음)
+│   ├── background.c    # 절차적 배경 — 4개 레트로 시대 테마가 등반에 따라 연속 전환
+│   ├── theme.c         # 런타임 팔레트/테마 테이블(THEMES[]) — 장면이 이어서 모핑
+│   └── sound.c         # 절차적 칩튠 + SFX (레벨별 4트랙, 샘플 파일 없음)
 ├── include/            # 헤더 (core.h는 헤더 온리; 나머지는 .c와 1:1)
 ├── lib/raylib/         # raylib (git 서브모듈)
 └── CMakeLists.txt
