@@ -1039,6 +1039,7 @@ static const int sfxLen[] = {
     [SFX_GAMEOVER] = (int)(0.50f * SAMPLE_RATE),
     [SFX_SPLAT] = (int)(0.18f * SAMPLE_RATE),
     [SFX_PICKUP] = (int)(0.22f * SAMPLE_RATE),
+    [SFX_NEWBEST] = (int)(1.10f * SAMPLE_RATE),
 };
 
 // ponytail: fixed 8 voices; overlapping triggers past 8 drop silently — grow
@@ -1133,6 +1134,18 @@ static float renderVoice(int type, int pos) {
     const float *notes = arc ? arcNotes : natNotes;
     int k = pos * 3 / len;
     s = square(notes[k > 2 ? 2 : k], t);
+    break;
+  }
+  case SFX_NEWBEST: { // grand ascending run holding on the top note
+    static const float natNotes[6] = {C5, E5, G5, C6, E6, G6};
+    static const float arcNotes[6] = {E5, G5, B5, E6, G6, B6};
+    const float *notes = arc ? arcNotes : natNotes;
+    int k = pos * 6 / len;      // step up over the first 5/6...
+    if (k > 5) {
+      k = 5; // ...then hold the top note for the last sixth (the fanfare peak)
+    }
+    // Layer a fifth above for a fuller, brighter chord than the plain level-up.
+    s = 0.6f * square(notes[k], t) + 0.4f * square(notes[k] * 1.5f, t);
     break;
   }
   }

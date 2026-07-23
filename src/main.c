@@ -30,6 +30,7 @@ typedef struct {
   float creditsAnim;   // 0 = fullscreen picture, 1 = zoomed out to the CRT
   float creditsStatic; // "change channel" static timer, runs once zoomed out
   bool creditsExiting; // BACK pressed: ramp creditsAnim back to 0, then MENU
+  bool newBest;        // last run beat the high score (game-over banner)
 } Game;
 
 #define FIXED_DT (1.0f / 60.0f)
@@ -166,6 +167,7 @@ static void startGame(Game *g, bool fromMenu) {
     g->player = createPlayer();
   }
   g->accumulator = 0.0f;
+  g->newBest = false;
   gotoState(g, GAMESTATE_PLAYING);
   sfx(SFX_SELECT);
 }
@@ -284,8 +286,9 @@ static void updatePlaying(Game *g) {
       int score = getScore(&g->world);
       if (score > g->highScore) {
         g->highScore = score;
+        g->newBest = true;
         saveHighScore(g->highScore);
-        sfx(SFX_LEVELUP); // new best: celebratory jingle
+        sfx(SFX_NEWBEST); // new best: dedicated celebratory jingle
       } else {
         sfx(SFX_GAMEOVER); // ordinary death: sad tone
       }
@@ -504,6 +507,7 @@ static void drawPlay(Game *g) {
   rlTranslatef(-sx, -(cameraY + sy), 0.0f);
   drawWorld(&g->world);
   drawPlayer(&g->player);
+  drawPowerAura(&g->world, &g->player); // rotating rings for active power-ups
   rlPopMatrix();
 
   drawHud(&g->world);
@@ -518,7 +522,11 @@ static void drawPlay(Game *g) {
     uiButton(rPauseHome(), "HOME", ICON_HOME);
   } else if (g->state == GAMESTATE_GAMEOVER) {
     DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.5f));
-    drawCenteredText("GAME OVER", SCREEN_HEIGHT / 3, 60, RAYWHITE);
+    if (g->newBest) {
+      drawCenteredText("NEW BEST!", SCREEN_HEIGHT / 3, 60, GOLD);
+    } else {
+      drawCenteredText("GAME OVER", SCREEN_HEIGHT / 3, 60, RAYWHITE);
+    }
     drawCenteredText(TextFormat("SCORE %d", getScore(&g->world)),
                      SCREEN_HEIGHT / 2 - 20, 40, RAYWHITE);
     drawCenteredText(TextFormat("BEST %d", g->highScore),

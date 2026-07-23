@@ -439,14 +439,21 @@ static void drawCloudPad(Vector2 p) {
   float cx = p.x + PLATFORM_WIDTH / 2.0f;
   DrawEllipse(cx, p.y + PLATFORM_HEIGHT + 6.0f, PLATFORM_WIDTH * 0.48f, 9.0f,
               Fade(SKY_BOT_HIGH, 0.35f)); // soft shadow
+  // Cloud-puff silhouette behind the board, as a soft backing accent.
   DrawCircle(p.x + 24.0f, p.y, 17.0f, CLOUD);
   DrawCircle(p.x + PLATFORM_WIDTH - 24.0f, p.y, 17.0f, CLOUD);
   DrawCircle(cx, p.y - 5.0f, 21.0f, CLOUD);
-  DrawRectangleRounded((Rectangle){p.x, p.y, PLATFORM_WIDTH, PLATFORM_HEIGHT},
-                       1.0f, 8, CLOUD);
+
+  // The landing board: a defined solid surface so the jump-off edge reads
+  // clearly against the sky. Dark outline + body + a bright top face strip.
+  Rectangle board = {p.x, p.y, PLATFORM_WIDTH, PLATFORM_HEIGHT};
+  DrawRectangleRounded(board, 0.6f, 8, CLOUD);
+  DrawRectangleRounded((Rectangle){p.x, p.y, PLATFORM_WIDTH, PLATFORM_HEIGHT * 0.4f},
+                       0.9f, 8, RAYWHITE); // lit top face (where feet land)
   DrawRectangleRounded((Rectangle){p.x, p.y + PLATFORM_HEIGHT * 0.55f,
                                    PLATFORM_WIDTH, PLATFORM_HEIGHT * 0.45f},
-                       1.0f, 8, Fade(CLOUD_SHADE, 0.7f));
+                       0.9f, 8, Fade(CLOUD_SHADE, 0.85f)); // shaded underside
+  DrawRectangleRoundedLines(board, 0.6f, 8, GRASS_DK);     // crisp rim
 }
 
 static void drawMonster(Vector2 m, float t) {
@@ -538,6 +545,28 @@ static void drawFlash(const World *world) {
     float r = COIN_RADIUS + (1.0f - world->flash) * 42.0f;
     DrawRing(world->flashPos, r * 0.72f, r, 0, 360, 24,
              Fade(RAYWHITE, world->flash));
+  }
+}
+
+// Rotating power-up rings around the player, one per active power-up, stacked
+// at increasing radii so multiple boosts read as concentric orbits. Drawn in
+// world space (after drawPlayer, inside the camera matrix).
+void drawPowerAura(const World *world, const Player *player) {
+  float t = (float)GetTime();
+  int slot = 0;
+  for (PowerUpType type = 0; type < POWERUP_COUNT; type++) {
+    if (world->powerTimer[type] <= 0.0f) {
+      continue;
+    }
+    Color col = POWERUP_DEFS[type].color;
+    float r = player->radius * 1.35f + slot * 9.0f;
+    float dir = (slot % 2 == 0) ? 1.0f : -1.0f; // alternate spin direction
+    float ang = fmodf(t * (90.0f + slot * 40.0f) * dir, 360.0f);
+    DrawRing(player->position, r - 3.0f, r, ang, ang + 300.0f, 32,
+             Fade(col, 0.85f)); // arc with a gap so the spin is visible
+    DrawRing(player->position, r - 3.0f, r, ang, ang + 300.0f, 32,
+             Fade(col, 0.25f)); // faint glow doubling
+    slot++;
   }
 }
 

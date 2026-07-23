@@ -37,6 +37,7 @@ typedef enum {
   SFX_GAMEOVER, // sad tone on a normal death
   SFX_SPLAT,    // monster splattered (invincible plow-through)
   SFX_PICKUP,   // Balloon/Shield pickup variant
+  SFX_NEWBEST,  // new high score jingle (game-over screen)
   SFX_COUNT
 } SfxId;
 

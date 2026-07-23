@@ -90,6 +90,7 @@ World createWorld(void);
 void updateWorld(World *world, Player *player);
 void drawGround(void);
 void drawWorld(const World *world);
+void drawPowerAura(const World *world, const Player *player);
 bool isPlayerFallen(const World *world, const Player *player);
 int getScore(const World *world);
 
