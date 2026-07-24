@@ -1045,18 +1045,21 @@ static const int sfxLen[] = {
 typedef struct {
   bool active;
   int type;
-  int pos; // samples elapsed since trigger
+  int pos;     // samples elapsed since trigger
+  float pitch; // frequency scale (1.0 = normal)
 } Voice;
 static Voice voices[MAX_VOICES];
 
-void sfx(SfxId id) {
+void sfxPitched(SfxId id, float pitch) {
   for (int i = 0; i < MAX_VOICES; i++) {
     if (!voices[i].active) {
-      voices[i] = (Voice){true, id, 0};
+      voices[i] = (Voice){true, id, 0, pitch};
       return;
     }
   }
 }
+
+void sfx(SfxId id) { sfxPitched(id, 1.0f); }
 
 static float square(float freq, float t) {
   return fmodf(freq * t, 1.0f) < 0.5f ? 1.0f : -1.0f;
@@ -1068,14 +1071,16 @@ static float sweep(float base, float depth, int pos, int len) {
 }
 
 // One sample for a voice, amplitude-scaled with a linear decay envelope.
-static float renderVoice(int type, int pos) {
+static float renderVoice(int type, int pos, float pitch) {
   int len = sfxLen[type];
   int atk = (int)(0.004f * SAMPLE_RATE); // ~4ms attack removes the click
   float env = pos < atk ? (float)pos / atk : 1.0f - (float)pos / len;
   if (env < 0.0f) {
     env = 0.0f;
   }
-  float t = (float)pos / SAMPLE_RATE;
+  // Scaling t scales every oscillator frequency uniformly (env keys off pos, so
+  // duration is unchanged) — that's the whole pitch shift.
+  float t = (float)pos / SAMPLE_RATE * pitch;
   float s = 0.0f;
   // ponytail: the neon levels (Maze/Blocks) get a harsher, brighter 8-bit
   // variant per effect — hand-tuned, not a data table like the music.
@@ -1193,7 +1198,7 @@ void updateAudio(AudioStream *stream) {
       if (!voices[v].active) {
         continue;
       }
-      e += renderVoice(voices[v].type, voices[v].pos);
+      e += renderVoice(voices[v].type, voices[v].pos, voices[v].pitch);
       if (++voices[v].pos >= sfxLen[voices[v].type]) {
         voices[v].active = false;
       }

@@ -134,6 +134,13 @@ static void drawHud(const World *world) {
   DrawRectangleRounded((Rectangle){px, py, pw * f, ph}, 0.9f, 8,
                        Fade(COIN_HI, 0.9f));
 
+  // Combo multiplier: shown centered under the level bar while a chain is going,
+  // bigger the higher it climbs.
+  if (world->combo > 1) {
+    drawCenteredText(TextFormat("COMBO x%d", world->combo), (int)py + 22,
+                     20 + (world->combo > 10 ? 10 : world->combo), GOLD);
+  }
+
   // One timer bar per active power-up, stacked (magnet + rocket can overlap).
   int bx = 12, by = 98, bw = 150; // below the score + coin badges
   for (PowerUpType t = 0; t < POWERUP_COUNT; t++) {
@@ -285,6 +292,10 @@ static void updatePlaying(Game *g) {
   float mouseX = g->mouseControl ? virtualMouse().x : -1.0f;
   while (g->accumulator >= FIXED_DT) {
     g->accumulator -= FIXED_DT;
+    if (g->world.hitstop > 0) {
+      g->world.hitstop--; // impact freeze: hold everything for a few frames
+      continue;
+    }
     handlePlayerInput(&g->player, mouseX, worldInputDir(&g->world));
     updatePlayer(&g->player);
     updateWorld(&g->world, &g->player);
@@ -507,6 +518,47 @@ static void drawCredits(Game *g) {
   }
 }
 
+// Era names in climb order (themes loop every 4 bands). Used by the game-over
+// summary; homage to a genre/era each, never a named product.
+static const char *ERA_NAMES[] = {"SUNNY HILLS", "NIGHT BLOCKS", "NEON MAZE",
+                                  "FALLING BLOCKS"};
+
+// Game-over run summary: a rounded card with height, coins, best combo, and the
+// era reached — closure + a screenshot-worthy moment.
+static void drawSummaryCard(Game *g) {
+  const World *w = &g->world;
+  DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.55f));
+  if (g->newBest) {
+    drawCenteredText("NEW BEST!", 150, 60, GOLD);
+  } else {
+    drawCenteredText("GAME OVER", 150, 60, RAYWHITE);
+  }
+
+  Rectangle panel = {SCREEN_WIDTH / 2.0f - 210, 240, 420, 300};
+  DrawRectangleRounded(panel, 0.08f, 12, Fade(BLACK, 0.5f));
+  DrawRectangleRoundedLines(panel, 0.08f, 12, CANDY_PINK);
+
+  struct {
+    const char *label, *value;
+  } rows[] = {
+      {"HEIGHT", TextFormat("%d m", (int)((FLOOR_Y - w->bestY) / 10.0f))},
+      {"COINS", TextFormat("%d", w->coinsCollected)},
+      {"BEST COMBO", TextFormat("x%d", w->bestCombo)},
+      {"ERA", ERA_NAMES[worldLevel(w) % 4]},
+  };
+  int ry = 268;
+  for (int i = 0; i < 4; i++) {
+    drawTextShadow(rows[i].label, (int)panel.x + 30, ry, 24, RAYWHITE);
+    int vw = MeasureText(rows[i].value, 24);
+    drawTextShadow(rows[i].value, (int)(panel.x + panel.width - 30 - vw), ry, 24,
+                   COIN_LO);
+    ry += 40;
+  }
+
+  drawCenteredText(TextFormat("SCORE %d", getScore(w)), 452, 40, RAYWHITE);
+  drawCenteredText(TextFormat("BEST %d", g->highScore), 500, 24, GOLD);
+}
+
 // Shared by PLAYING / PAUSED / GAMEOVER: the world, then state-specific
 // overlay.
 static void drawPlay(Game *g) {
@@ -548,16 +600,7 @@ static void drawPlay(Game *g) {
     uiButton(rPauseSettings(), "SETTINGS", ICON_GEAR);
     uiButton(rPauseHome(), "HOME", ICON_HOME);
   } else if (g->state == GAMESTATE_GAMEOVER) {
-    DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.5f));
-    if (g->newBest) {
-      drawCenteredText("NEW BEST!", SCREEN_HEIGHT / 3, 60, GOLD);
-    } else {
-      drawCenteredText("GAME OVER", SCREEN_HEIGHT / 3, 60, RAYWHITE);
-    }
-    drawCenteredText(TextFormat("SCORE %d", getScore(&g->world)),
-                     SCREEN_HEIGHT / 2 - 20, 40, RAYWHITE);
-    drawCenteredText(TextFormat("BEST %d", g->highScore),
-                     SCREEN_HEIGHT / 2 + 25, 28, GOLD);
+    drawSummaryCard(g);
     uiButton(rRetry(), "RETRY", ICON_RETRY);
     uiButton(rGameoverHome(), "HOME", ICON_HOME);
   }

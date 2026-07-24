@@ -90,6 +90,11 @@ typedef struct World {
   float flash;      // pop-ring life, 1 at collect -> 0
   int coinsCollected;
   int level; // 0-based theme band entered; a level-up fanfare fires on increase
+  int combo; // coins chained without falling to the floor / taking a hit
+  float comboTimer; // frames left before an idle chain auto-resets
+  int bestCombo;  // longest chain this run (game-over summary)
+  int comboBonus; // accumulated combo bonus points, folded into getScore
+  int hitstop;    // frames of physics freeze remaining (impact juice)
 } World;
 
 World createWorld(void);

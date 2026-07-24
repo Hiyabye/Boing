@@ -13,6 +13,7 @@
 #define COIN_SPACING 55.0f // vertical distance between spawned coins
 #define COIN_WANDER 150.0f // max horizontal step between consecutive coins
 #define COIN_DOUBLE_CAP 2  // levels below this get 2 coins/row (L0-L1); L2+ single
+#define COMBO_TIMEOUT 150.0f // frames (~2.5s) w/o a coin before the chain resets
 #define COIN_PAIR_GAP 90.0f // horizontal gap of the bonus second coin
 #define SPAWN_MARGIN 40.0f // keep spawns away from screen edges
 #define PLATFORM_BOUNCE -28.0f
@@ -45,6 +46,7 @@
 #define PARTICLE_GRAVITY 0.3f
 #define PARTICLE_DECAY 0.03f
 #define SHAKE_HIT 14.0f   // screen shake on a monster hit
+#define SHAKE_SPLAT 9.0f  // shake on an invincible plow-through splat
 #define SHAKE_LAUNCH 6.0f // shake on floor bounce / rocket pickup
 #define SHAKE_DECAY 0.85f // per-frame shake falloff
 #define FLASH_DECAY 0.08f // pop-ring fade per frame
@@ -278,14 +280,28 @@ static void collectCoins(World *world, Player *player) {
   FOREACH_ACTIVE(coins, MAX_COINS, i) {
     if (CheckCollisionCircles(player->position, player->radius,
                               world->coins[i].position, COIN_RADIUS)) {
-      spawnParticles(world, world->coins[i].position, WHITE, 14, true);
+      // Combo: each coin chained (no fall to the floor / hit between) raises the
+      // multiplier, and with it the pop size, shake, and SFX pitch.
+      world->combo++;
+      if (world->combo > world->bestCombo) {
+        world->bestCombo = world->combo;
+      }
+      world->comboTimer = COMBO_TIMEOUT;      // refresh the idle-reset window
+      world->comboBonus += world->combo - 1; // rising multiplier bonus
+      int pop = 14 + world->combo * 2;
+      if (pop > 40) {
+        pop = 40;
+      }
+      spawnParticles(world, world->coins[i].position, WHITE, pop, true);
+      world->shake = fmaxf(world->shake, fminf(world->combo * 0.6f, 7.0f));
       world->flashPos = world->coins[i].position;
       world->flash = 1.0f;
       world->coins[i].active = false;
       world->coinsCollected++;
       player->velocity.y = COIN_BOOST;
       player->expression = EXPR_HAPPY;
-      sfx(SFX_COIN);
+      float pitch = 1.0f + fminf((float)world->combo, 20.0f) * 0.045f;
+      sfxPitched(SFX_COIN, pitch);
     }
   }
 }
@@ -356,6 +372,8 @@ static void updateMonsters(World *world, Player *player) {
         // Invincible (rocket etc.): plow through, splatter the monster.
         spawnParticles(world, m->position, GRAPE, 12, false);
         m->active = false;
+        world->shake = fmaxf(world->shake, SHAKE_SPLAT);
+        world->hitstop = 3; // brief freeze reads as impact
         sfx(SFX_SPLAT);
       } else {
         // Mega-Jump-style: a hit costs coins (they scatter out) and knocks you
@@ -369,6 +387,8 @@ static void updateMonsters(World *world, Player *player) {
                      lost); // only the coins actually lost
         m->active = false;
         world->shake = SHAKE_HIT;
+        world->hitstop = 2;  // brief freeze reads as impact
+        world->combo = 0;    // hit broke the chain
         player->velocity.y = 12.0f;    // knocked downward
         player->expression = EXPR_SAD; // shakes off on the next coin/power-up
         sfx(SFX_HIT);
@@ -420,6 +440,7 @@ void updateWorld(World *world, Player *player) {
     spawnParticles(world, (Vector2){player->position.x, FLOOR_Y}, GRASS, 10,
                    false);
     world->shake = SHAKE_LAUNCH;
+    world->combo = 0; // fell all the way to the floor: chain broken
     sfx(SFX_BOUNCE);
   }
 
@@ -470,6 +491,11 @@ void updateWorld(World *world, Player *player) {
   if (lvl > world->level) {
     world->level = lvl;
     sfx(SFX_LEVELUP);
+  }
+
+  // Idle combo reset: no coin grabbed within COMBO_TIMEOUT drops the chain.
+  if (world->combo > 0 && (world->comboTimer -= 1.0f) <= 0.0f) {
+    world->combo = 0;
   }
 
   updateParticles(world);
@@ -851,5 +877,5 @@ bool isPlayerFallen(const World *world, const Player *player) {
 int getScore(const World *world) {
   float ascent = FLOOR_Y - world->bestY;
   return (int)(ascent / HEIGHT_PER_POINT) +
-         world->coinsCollected * POINTS_PER_COIN;
+         world->coinsCollected * POINTS_PER_COIN + world->comboBonus;
 }
