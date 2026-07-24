@@ -18,7 +18,7 @@ Boing/
 ├── src/                # 구현부
 │   ├── main.c          # 게임 루프 + GameState 머신, HUD/오버레이
 │   ├── player.c        # 플레이어 물리(중력, 입력, 스쿼시&스트레치)
-│   ├── world.c         # 레벨 생성, 카메라, 점수, 코인/플랫폼/몬스터/파워업
+│   ├── world.c         # 레벨 생성, 카메라, 점수, 코인/플랫폼/몬스터/파워업/디버프
 │   ├── background.c    # 절차적 배경 — 4개 레트로 시대 테마가 등반에 따라 연속 전환
 │   ├── theme.c         # 런타임 팔레트/테마 테이블(THEMES[]) — 장면이 이어서 모핑
 │   └── sound.c         # 절차적 칩튠 + SFX (레벨별 4트랙, 샘플 파일 없음)
@@ -49,5 +49,5 @@ OpenGL 프레임워크가 자동으로 링크된다.
 기본 빌드가 `MinSizeRel` + strip이라 `build/Boing`이 곧 배포 크기다:
 
 ```sh
-ls -l build/Boing   # stripped ~484KB (495,272 B), 한도 1,474,560 B
+ls -l build/Boing   # stripped ~500KB (511,816 B), 한도 1,474,560 B
 ```

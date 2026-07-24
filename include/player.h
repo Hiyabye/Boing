@@ -36,7 +36,8 @@ typedef struct Player {
 Player createPlayer(void);
 // Keyboard arrows steer directly; with no arrow held the blob follows targetX
 // (the mouse column, in world x). Pass a sentinel outside the screen to ignore.
-void handlePlayerInput(Player *player, float targetX);
+// dir scales the steering direction: +1 normal, -1 to reverse it (Dizzy debuff).
+void handlePlayerInput(Player *player, float targetX, float dir);
 void updatePlayer(Player *player);
 void updateAttract(Player *player); // menu demo: wander horizontally + bob
 void drawPlayer(const Player *player);

@@ -37,14 +37,15 @@ static void pushTrail(Player *player) {
   player->trailHead = (player->trailHead + 1) % TRAIL_LEN;
 }
 
-void handlePlayerInput(Player *player, float targetX) {
+void handlePlayerInput(Player *player, float targetX, float dir) {
+  // dir is +1 normally, -1 while Dizzy — flips arrows and mouse-follow alike.
   if (IsKeyDown(KEY_LEFT)) {
-    player->velocity.x = -MOVE_SPEED;
+    player->velocity.x = -MOVE_SPEED * dir;
   } else if (IsKeyDown(KEY_RIGHT)) {
-    player->velocity.x = MOVE_SPEED;
+    player->velocity.x = MOVE_SPEED * dir;
   } else if (targetX >= 0.0f && targetX <= SCREEN_WIDTH) {
-    // No key held: steer toward the mouse column.
-    player->velocity.x = clampf((targetX - player->position.x) * FOLLOW_K,
+    // No key held: steer toward the mouse column (away from it while reversed).
+    player->velocity.x = clampf((targetX - player->position.x) * FOLLOW_K * dir,
                                 -MOVE_SPEED, MOVE_SPEED);
   }
 }

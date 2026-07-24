@@ -34,6 +34,11 @@ typedef enum {
   POWERUP_ROCKET,
   POWERUP_BALLOON,
   POWERUP_SHIELD,
+  // Debuffs (bad pickups to dodge): flagged `debuff` in POWERUP_DEFS.
+  POWERUP_ANCHOR, // heavier gravity, falls faster
+  POWERUP_DIZZY,  // reversed steering
+  POWERUP_FOG,    // screen dims, cuts visibility
+  POWERUP_BUTTER, // butterfingers: coins slip through, can't collect
   POWERUP_COUNT
 } PowerUpType;
 
@@ -48,6 +53,7 @@ typedef struct PowerUpDef {
   int spawnWeight;   // relative spawn frequency vs other types
   float pickupShake; // screen shake on pickup
   bool invincible;   // grants monster immunity while active (worldInvincible)
+  bool debuff;       // bad pickup: sad reaction, no boost (see collectPowerups)
 } PowerUpDef;
 
 extern const PowerUpDef POWERUP_DEFS[POWERUP_COUNT];
@@ -103,5 +109,7 @@ float worldShake(const World *world);
 int worldLevel(const World *world); // 0-based theme band the climb has entered
 float worldPowerTimer(const World *world, PowerUpType type);
 bool worldInvincible(const World *world); // any active power-up grants immunity
+float worldInputDir(const World *world);  // -1 while Dizzy reverses steering, else +1
+float worldFog(const World *world);       // Fog timer (0 = clear), drives the dim overlay
 
 #endif // WORLD_H

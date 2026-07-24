@@ -285,7 +285,7 @@ static void updatePlaying(Game *g) {
   float mouseX = g->mouseControl ? virtualMouse().x : -1.0f;
   while (g->accumulator >= FIXED_DT) {
     g->accumulator -= FIXED_DT;
-    handlePlayerInput(&g->player, mouseX);
+    handlePlayerInput(&g->player, mouseX, worldInputDir(&g->world));
     updatePlayer(&g->player);
     updateWorld(&g->world, &g->player);
     if (isPlayerFallen(&g->world, &g->player)) {
@@ -528,6 +528,14 @@ static void drawPlay(Game *g) {
   drawPlayer(&g->player);
   drawPowerAura(&g->world, &g->player); // rotating rings for active power-ups
   rlPopMatrix();
+
+  // Fog debuff: dim the scene (screen space, so it's under the HUD). Fade the
+  // dim out over the last ~30 frames so it lifts smoothly instead of popping.
+  float fog = worldFog(&g->world);
+  if (fog > 0.0f) {
+    float k = fminf(fog, 30.0f) / 30.0f;
+    DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.55f * k));
+  }
 
   drawHud(&g->world);
 

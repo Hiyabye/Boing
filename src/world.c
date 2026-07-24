@@ -39,6 +39,7 @@
 #define MAGNET_PULL 6.0f        // px/frame toward the player
 #define ROCKET_VELOCITY -34.0f  // upward thrust while active
 #define BALLOON_LIFT -8.0f      // gentle guaranteed rise while active
+#define ANCHOR_GRAVITY 0.9f     // extra downward vel/frame while anchored (doubles gravity)
 #define PARTICLE_GRAVITY 0.3f
 #define PARTICLE_DECAY 0.03f
 #define SHAKE_HIT 14.0f   // screen shake on a monster hit
@@ -52,13 +53,20 @@
 #define TWO_PI (2.0f * PI) // raylib defines PI
 
 // Power-up table (indexed by PowerUpType). Ordered exactly as the enum.
-//              duration color       label     weight shake        invincible
+//              duration color       label     weight shake        invincible debuff
 const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
     // HUD timer-bar colors are fixed (not themed): the table is static config.
-    [POWERUP_MAGNET] = {600.0f, SKYBLUE, "MAGNET", 1, 0.0f, false}, // ~10s
-    [POWERUP_ROCKET] = {120.0f, ORANGE, "ROCKET", 1, SHAKE_LAUNCH, true}, // ~2s
-    [POWERUP_BALLOON] = {300.0f, LIME, "BALLOON", 1, 0.0f, false},        // ~5s
-    [POWERUP_SHIELD] = {360.0f, GOLD, "SHIELD", 1, SHAKE_LAUNCH, true},   // ~6s
+    // Good pickups carry weight 3, the four debuffs weight 1, so ~1-in-4 pickups
+    // is bad (good 4x3=12 vs bad 4x1=4). Tune knob.
+    [POWERUP_MAGNET] = {600.0f, SKYBLUE, "MAGNET", 3, 0.0f, false, false}, // ~10s
+    [POWERUP_ROCKET] = {120.0f, ORANGE, "ROCKET", 3, SHAKE_LAUNCH, true, false}, // ~2s
+    [POWERUP_BALLOON] = {300.0f, LIME, "BALLOON", 3, 0.0f, false, false},        // ~5s
+    [POWERUP_SHIELD] = {360.0f, GOLD, "SHIELD", 3, SHAKE_LAUNCH, true, false},   // ~6s
+    // Debuffs: no boost, no immunity, SAD reaction + SFX_HIT on pickup.
+    [POWERUP_ANCHOR] = {300.0f, DARKGRAY, "ANCHOR", 1, SHAKE_HIT, false, true}, // ~5s
+    [POWERUP_DIZZY] = {300.0f, VIOLET, "DIZZY", 1, SHAKE_HIT, false, true},     // ~5s
+    [POWERUP_FOG] = {300.0f, GRAY, "FOG", 1, SHAKE_HIT, false, true},           // ~5s
+    [POWERUP_BUTTER] = {300.0f, BROWN, "BUTTER", 1, SHAKE_HIT, false, true},    // ~5s
 };
 
 float worldCameraY(const World *world) { return world->cameraY; }
@@ -77,6 +85,12 @@ bool worldInvincible(const World *world) {
   }
   return false;
 }
+
+float worldInputDir(const World *world) {
+  return world->powerTimer[POWERUP_DIZZY] > 0.0f ? -1.0f : 1.0f;
+}
+
+float worldFog(const World *world) { return world->powerTimer[POWERUP_FOG]; }
 
 // Pool iteration idioms, shared by the fixed-array pools (all liveness-flagged
 // with `.active`). `world` is assumed in scope; particles key off `.life`
@@ -230,6 +244,9 @@ static void cullBelowView(World *world) {
 #undef CULL
 
 static void collectCoins(World *world, Player *player) {
+  if (world->powerTimer[POWERUP_BUTTER] > 0.0f) {
+    return; // butterfingers: coins slip through, can't be picked up
+  }
   FOREACH_ACTIVE(coins, MAX_COINS, i) {
     if (CheckCollisionCircles(player->position, player->radius,
                               world->coins[i].position, COIN_RADIUS)) {
@@ -283,12 +300,15 @@ static void collectPowerups(World *world, Player *player) {
       world->powerups[i].active = false;
       world->powerTimer[t] = POWERUP_DEFS[t].duration;
       world->shake = fmaxf(world->shake, POWERUP_DEFS[t].pickupShake);
-      player->velocity.y = COIN_BOOST;
-      player->expression = EXPR_HAPPY;
-      if (t == POWERUP_BALLOON || t == POWERUP_SHIELD) {
-        sfx(SFX_PICKUP);
+      if (POWERUP_DEFS[t].debuff) {
+        // Bad pickup: no upward kick, sour face, same hit sting as a monster.
+        player->expression = EXPR_SAD;
+        sfx(SFX_HIT);
       } else {
-        sfx(SFX_POWERUP);
+        player->velocity.y = COIN_BOOST;
+        player->expression = EXPR_HAPPY;
+        sfx((t == POWERUP_BALLOON || t == POWERUP_SHIELD) ? SFX_PICKUP
+                                                          : SFX_POWERUP);
       }
     }
   }
@@ -384,6 +404,9 @@ void updateWorld(World *world, Player *player) {
   }
   moveCoins(world);
   collectCoins(world, player);
+  if (world->powerTimer[POWERUP_ANCHOR] > 0.0f) {
+    player->velocity.y += ANCHOR_GRAVITY; // heavier pull; rocket below overrides
+  }
   if (world->powerTimer[POWERUP_ROCKET] > 0.0f) {
     player->velocity.y = ROCKET_VELOCITY;
   }
@@ -637,6 +660,58 @@ static void drawPowerUp(const PowerUp *pu, float t) {
     DrawPoly((Vector2){c.x, c.y - R * 0.18f}, 6, R * 0.5f, 0,
              Fade(sheen, 0.7f));                     // top sheen
     DrawPoly(c, 5, R * 0.42f, t * 30.0f, GRAPE);     // spinning crest
+    break;
+  }
+  case POWERUP_ANCHOR: {
+    // Iron anchor: top ring, vertical shank + crossbar, two upswept flukes.
+    Color iron = DARKGRAY, ironLt = ColorBrightness(DARKGRAY, 0.35f);
+    DrawRing((Vector2){c.x, c.y - R * 0.62f}, R * 0.16f, R * 0.3f, 0, 360, 20,
+             iron); // top ring
+    DrawRectangle(c.x - R * 0.1f, c.y - R * 0.5f, R * 0.2f, R * 1.15f, iron); // shank
+    DrawRectangle(c.x - R * 0.45f, c.y - R * 0.15f, R * 0.9f, R * 0.16f,
+                  iron); // stock (crossbar)
+    DrawRing(c, R * 0.6f, R * 0.78f, 20, 160, 20, iron); // curved arms
+    DrawPoly((Vector2){c.x - R * 0.72f, c.y + R * 0.5f}, 3, R * 0.28f, 20, ironLt);
+    DrawPoly((Vector2){c.x + R * 0.72f, c.y + R * 0.5f}, 3, R * 0.28f, -20, ironLt);
+    break;
+  }
+  case POWERUP_DIZZY: {
+    // Spiral-swirl goggles: two hypno spirals joined by a bridge.
+    Color frame = VIOLET, dk = ColorBrightness(VIOLET, -0.4f);
+    for (int e = -1; e <= 1; e += 2) {
+      float ox = c.x + e * R * 0.5f;
+      DrawCircle(ox, c.y, R * 0.5f, dk);
+      DrawCircle(ox, c.y, R * 0.42f, RAYWHITE);
+      // Spiral: a few shrinking arcs stepped in angle around the eye.
+      for (int k = 0; k < 4; k++) {
+        float rr = R * (0.36f - k * 0.08f);
+        float a = t * 120.0f * e + k * 90.0f;
+        DrawRing((Vector2){ox, c.y}, rr - R * 0.05f, rr, a, a + 200.0f, 12, frame);
+      }
+    }
+    DrawRectangle(c.x - R * 0.06f, c.y - R * 0.06f, R * 0.12f, R * 0.12f, frame); // bridge
+    break;
+  }
+  case POWERUP_FOG: {
+    // A low grey mist bank: overlapping soft puffs, deliberately murky.
+    Color mist = GRAY, mistDk = ColorBrightness(GRAY, -0.3f);
+    DrawCircle(c.x - R * 0.55f, c.y + R * 0.2f, R * 0.55f, mistDk);
+    DrawCircle(c.x + R * 0.55f, c.y + R * 0.2f, R * 0.55f, mistDk);
+    DrawCircle(c.x, c.y - R * 0.1f, R * 0.7f, mist);
+    DrawCircle(c.x - R * 0.4f, c.y, R * 0.5f, mist);
+    DrawCircle(c.x + R * 0.4f, c.y, R * 0.5f, mist);
+    DrawCircle(c.x - R * 0.15f, c.y - R * 0.25f, R * 0.4f,
+               ColorBrightness(GRAY, 0.25f)); // lit crown
+    break;
+  }
+  case POWERUP_BUTTER: {
+    // A coin with a red no-entry slash: coins won't stick.
+    DrawEllipse(c.x, c.y, R * 0.7f, R * 0.8f, ColorBrightness(COIN_LO, -0.3f));
+    DrawEllipse(c.x, c.y, R * 0.55f, R * 0.64f, COIN_HI);
+    DrawRing(c, R * 0.82f, R, 0, 360, 24, RED); // prohibition ring
+    DrawLineEx((Vector2){c.x - R * 0.62f, c.y - R * 0.62f},
+               (Vector2){c.x + R * 0.62f, c.y + R * 0.62f}, R * 0.16f,
+               RED); // slash
     break;
   }
   case POWERUP_ROCKET:
