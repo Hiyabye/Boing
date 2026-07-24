@@ -1,5 +1,6 @@
 #include "sound.h"
 
+#include "core.h" // STATIC_ASSERT
 #include "raylib.h"
 
 #include <assert.h>
@@ -772,6 +773,8 @@ static const Track TRACKS[] = {
     [TRACK_GAMEOVER] = TRACK(NOTES_GAMEOVER, 8.0f, TIMBRE_SOFT, DRUMS_NONE, 0.2f),
 };
 #define TRACK_COUNT ((int)(sizeof(TRACKS) / sizeof(TRACKS[0])))
+// Every MusicTrack id must have a TRACKS[] row — a gap would leave a NULL loop.
+STATIC_ASSERT(TRACK_COUNT == TRACK_GAMEOVER + 1, tracks_full);
 
 // One precomputed loop buffer per track. Playback crossfades between the
 // currently-selected track and the one we're fading out of.
@@ -847,6 +850,10 @@ static float tone(float freq, float local, Timbre tb) {
 static float sweep(float base, float depth, int pos, int len); // defined below
 typedef enum { DRUM_KICK, DRUM_SNARE, DRUM_HAT } DrumType;
 
+// White noise in [-1, 1], the raw material for snares/hats and the HIT/SPLAT
+// crackle.
+static float noise(void) { return GetRandomValue(-1000, 1000) / 1000.0f; }
+
 // Length of each drum voice in samples.
 static int drumLen(DrumType d) {
   switch (d) {
@@ -876,13 +883,11 @@ static void addDrum(float *buf, int samples, DrumType d, float startSec,
       s = sinf(2.0f * PI * f * t);
       break;
     }
-    case DRUM_SNARE: { // noise crack + short tonal body
-      float noise = GetRandomValue(-1000, 1000) / 1000.0f;
-      s = 0.7f * noise + 0.3f * sinf(2.0f * PI * 200.0f * t);
+    case DRUM_SNARE: // noise crack + short tonal body
+      s = 0.7f * noise() + 0.3f * sinf(2.0f * PI * 200.0f * t);
       break;
-    }
     case DRUM_HAT: // bright noise tick
-      s = GetRandomValue(-1000, 1000) / 1000.0f;
+      s = noise();
       break;
     }
     buf[(start + i) % samples] += gain * env * s;
@@ -965,7 +970,7 @@ static void buildLoop(int track) {
     }
     // Soft tonic (A2) pedal pad under everything for warmth, with slow tremolo.
     // A2=110Hz over an integer number of seconds is whole cycles, so the loop
-    // seam stays seamless for any track (48s -> 5280, 64s -> 7040).
+    // seam stays seamless for any track (32s -> 3520, 64s -> 7040).
     float trem = 0.85f + 0.15f * sinf(2.0f * PI * 0.2f * t);
     sample +=
         0.07f * trem *
@@ -1038,6 +1043,8 @@ static const int sfxLen[] = {
     [SFX_PICKUP] = (int)(0.22f * SAMPLE_RATE),
     [SFX_NEWBEST] = (int)(1.10f * SAMPLE_RATE),
 };
+// Every SfxId must have a length — a 0 slot divides by zero in renderVoice.
+STATIC_ASSERT(sizeof(sfxLen) / sizeof(sfxLen[0]) == SFX_COUNT, sfx_lengths_full);
 
 // ponytail: fixed 8 voices; overlapping triggers past 8 drop silently — grow
 // the pool only if that's ever audible.
@@ -1105,8 +1112,8 @@ static float renderVoice(int type, int pos, float pitch) {
   case SFX_HIT: { // descending saw + noise (noisier on arcade)
     float f = sweep(300.0f, 240.0f, pos, len);
     float saw = 2.0f * (f * t - floorf(0.5f + f * t));
-    float noise = GetRandomValue(-1000, 1000) / 1000.0f;
-    s = arc ? 0.4f * saw + 0.6f * noise : 0.7f * saw + 0.3f * noise;
+    float n = noise();
+    s = arc ? 0.4f * saw + 0.6f * n : 0.7f * saw + 0.3f * n;
     break;
   }
   case SFX_SELECT:
@@ -1126,8 +1133,7 @@ static float renderVoice(int type, int pos, float pitch) {
   case SFX_SPLAT: { // short wet squish: low saw + noise
     float f = sweep(180.0f, 120.0f, pos, len);
     float saw = 2.0f * (f * t - floorf(0.5f + f * t));
-    float noise = GetRandomValue(-1000, 1000) / 1000.0f;
-    s = 0.5f * saw + 0.5f * noise;
+    s = 0.5f * saw + 0.5f * noise();
     break;
   }
   case SFX_PICKUP: { // brighter/higher arpeggio (Balloon/Shield)

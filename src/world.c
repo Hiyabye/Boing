@@ -60,8 +60,10 @@
 //              duration color       label     weight shake        invincible debuff
 const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
     // HUD timer-bar colors are fixed (not themed): the table is static config.
-    // Good pickups carry weight 3, the four debuffs weight 1, so ~1-in-4 pickups
-    // is bad (good 4x3=12 vs bad 4x1=4). Tune knob.
+    // spawnWeight only distributes picks *within* a category — pickPowerup(bad)
+    // weighted-picks among the good rows or among the debuff rows. The good-vs-
+    // bad ratio itself is the altitude roll in spawnPowerups (0/5 bad at L0, up
+    // to 3/5 at L3+), not these weights. Tune knob.
     [POWERUP_MAGNET] = {600.0f, SKYBLUE, "MAGNET", 3, 0.0f, false, false}, // ~10s
     [POWERUP_ROCKET] = {120.0f, ORANGE, "ROCKET", 3, SHAKE_LAUNCH, true, false}, // ~2s
     [POWERUP_BALLOON] = {300.0f, LIME, "BALLOON", 3, 0.0f, false, false},        // ~5s
@@ -161,8 +163,15 @@ static void spawnPlatforms(World *world) {
   }
 }
 
+// Difficulty level for the altitude ramp: the monotonic climb level, capped at
+// DIFFICULTY_CAP (0..CAP). Drives monster density/speed/spacing and the debuff
+// spawn odds.
+static int difficulty(const World *world) {
+  return world->level < DIFFICULTY_CAP ? world->level : DIFFICULTY_CAP;
+}
+
 static void spawnMonsters(World *world) {
-  int d = world->level < DIFFICULTY_CAP ? world->level : DIFFICULTY_CAP; // 0..CAP
+  int d = difficulty(world);
   while (world->monsterSpawnY > world->cameraY - SCREEN_HEIGHT) {
     // Higher levels: more bands carry a monster (L0:1/5 .. L3+:4/5).
     if (GetRandomValue(0, 4) <= d) {
@@ -202,9 +211,10 @@ static PowerUpType pickPowerup(bool debuff) {
 }
 
 static void spawnPowerups(World *world) {
-  // Debuff chance ramps with altitude (same n/5 idiom as spawnMonsters):
-  // L0:0/5 bad .. L3+:3/5 bad. Level 0 is all good pickups.
-  int d = world->level < DIFFICULTY_CAP ? world->level : DIFFICULTY_CAP;
+  // Debuff chance ramps with altitude: GetRandomValue(0,4) < d gives L0:0/5 bad
+  // .. L3+:3/5 bad (strictly-less, so level 0 is all good pickups — unlike
+  // spawnMonsters' <= d, which puts a monster on 1/5 of bands even at L0).
+  int d = difficulty(world);
   while (world->powerupSpawnY > world->cameraY - SCREEN_HEIGHT) {
     FIND_FREE(s, powerups, MAX_POWERUPS);
     if (s >= 0) {

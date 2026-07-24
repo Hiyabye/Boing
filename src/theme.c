@@ -199,7 +199,8 @@ void themeUpdate(float ascent) {
   int level = (int)t; // 0-based band, unbounded
   bandF = clampf(t - (float)level, 0.0f, 1.0f);
   // Levels are infinite; themes loop, so once the last theme's band fills it
-  // wraps back to the first (e.g. with 2 themes: nature→arcade→nature→…).
+  // wraps back to the first (Sunny Hills→Night Blocks→Neon Maze→Falling
+  // Blocks→Sunny Hills→…).
   bandLo = level % THEME_COUNT;
   bandHi = (level + 1) % THEME_COUNT;
   gTheme = lerpTheme(&THEMES[bandLo], &THEMES[bandHi], bandF);

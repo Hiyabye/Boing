@@ -23,6 +23,8 @@ static const char *const ROW_LABELS[] = {
     [ROW_SFX] = "SFX",
 };
 #define ROW_COUNT ((int)(sizeof(ROW_LABELS) / sizeof(ROW_LABELS[0])))
+// Every RowKind must have a label (and a case in the row switches below).
+STATIC_ASSERT(ROW_COUNT == ROW_SFX + 1, rows_full);
 
 static int selRow = 0;
 static int dragRow = -1; // row whose slider is being dragged, -1 = none
