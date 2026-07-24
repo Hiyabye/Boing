@@ -34,6 +34,8 @@ typedef struct Player {
 } Player;
 
 Player createPlayer(void);
+// Set the palette createPlayer stamps onto new blobs (the selected shop skin).
+void setPlayerSkin(Character c);
 // Keyboard arrows steer directly; with no arrow held the blob follows targetX
 // (the mouse column, in world x). Pass a sentinel outside the screen to ignore.
 // dir scales the steering direction: +1 normal, -1 to reverse it (Dizzy debuff).

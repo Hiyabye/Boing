@@ -88,6 +88,11 @@ void drawIcon(IconKind kind, float cx, float cy, float s, Color c) {
     DrawTriangle((Vector2){cx, cy + s * 0.7f}, (Vector2){cx + 0.62f * s, cy},
                  (Vector2){cx - 0.62f * s, cy}, c); // point
     break;
+  case ICON_SHOP: // stack of coins
+    DrawEllipse(cx, cy + s * 0.42f, s * 0.62f, s * 0.28f, c);
+    DrawEllipse(cx, cy, s * 0.62f, s * 0.28f, c);
+    DrawEllipse(cx, cy - s * 0.42f, s * 0.62f, s * 0.28f, c);
+    break;
   case ICON_NONE:
     break;
   }

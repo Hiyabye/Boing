@@ -1,10 +1,17 @@
 #include "world.h"
 
 #include "core.h"
+#include "progress.h" // UpgradeId bits for the upgrade hooks
 #include "sound.h"
 #include "theme.h"
 
 #include <math.h>
+
+// ponytail: purchased upgrades passed in as a module global (mirrors gTheme),
+// so createWorld/updateWorld callers don't thread a param. Set per run start.
+static int gUpgrades = 0;
+void worldSetUpgrades(int mask) { gUpgrades = mask; }
+static bool upg(UpgradeId id) { return (gUpgrades & (1 << id)) != 0; }
 
 // Tuning knobs — hand-tune after playtesting.
 #define BOUNCE_VELOCITY -37.0f // floor bounce at the start of a run
@@ -123,6 +130,9 @@ World createWorld(void) {
   world.powerupSpawnY = FLOOR_Y - POWERUP_SPACING;
   world.lastSpawnX = SCREEN_WIDTH / 2.0f;
   world.bestY = FLOOR_Y;
+  if (upg(UPG_HEADSTART)) {
+    world.powerTimer[POWERUP_SHIELD] = 180.0f; // ~3s opening shield
+  }
   return world;
 }
 
@@ -296,7 +306,8 @@ static void collectCoins(World *world, Player *player) {
       if (world->combo > world->bestCombo) {
         world->bestCombo = world->combo;
       }
-      world->comboTimer = COMBO_TIMEOUT;      // refresh the idle-reset window
+      world->comboTimer = upg(UPG_COMBOGRACE) ? COMBO_TIMEOUT * 1.5f
+                                              : COMBO_TIMEOUT; // idle-reset window
       world->comboBonus += world->combo - 1; // rising multiplier bonus
       int pop = 14 + world->combo * 2;
       if (pop > 40) {
@@ -352,7 +363,11 @@ static void collectPowerups(World *world, Player *player) {
       world->flashPos = world->powerups[i].position;
       world->flash = 1.0f;
       world->powerups[i].active = false;
-      world->powerTimer[t] = POWERUP_DEFS[t].duration;
+      float dur = POWERUP_DEFS[t].duration;
+      if (upg(UPG_LONGBOOST) && !POWERUP_DEFS[t].debuff) {
+        dur *= 1.5f; // Long Boost: good power-ups linger longer
+      }
+      world->powerTimer[t] = dur;
       world->shake = fmaxf(world->shake, POWERUP_DEFS[t].pickupShake);
       if (POWERUP_DEFS[t].debuff) {
         // Bad pickup: no upward kick, sour face, same hit sting as a monster.

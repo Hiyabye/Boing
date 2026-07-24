@@ -117,4 +117,8 @@ bool worldInvincible(const World *world); // any active power-up grants immunity
 float worldInputDir(const World *world);  // -1 while Dizzy reverses steering, else +1
 float worldFog(const World *world);       // Fog timer (0 = clear), drives the dim overlay
 
+// Purchased permanent-upgrade bitmask (UpgradeId bits), set once per run from
+// saved progress before createWorld. Gates the three upgrade effects below.
+void worldSetUpgrades(int mask);
+
 #endif // WORLD_H

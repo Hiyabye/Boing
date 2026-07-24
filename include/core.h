@@ -12,6 +12,7 @@ typedef enum {
   GAMESTATE_PAUSED,
   GAMESTATE_GAMEOVER,
   GAMESTATE_CREDITS,
+  GAMESTATE_SHOP,
   GAMESTATE_COUNT // sentinel: sizes the STATES[] dispatch table in main.c
 } GameState;
 

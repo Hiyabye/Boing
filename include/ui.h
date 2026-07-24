@@ -17,6 +17,7 @@ typedef enum {
   ICON_HOME,
   ICON_EXIT,
   ICON_HEART,
+  ICON_SHOP, // stacked-coins glyph for the shop
 } IconKind;
 
 // Window mouse position mapped into the virtual 800x800 render space.

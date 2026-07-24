@@ -13,6 +13,13 @@
 #define ATTRACT_SPEED 2.6f // menu demo wander pace
 #define ATTRACT_BOB 10.0f  // menu demo vertical bob amplitude
 
+// ponytail: the selected shop skin lives in a module global (mirrors how this
+// file already reads the gTheme global), so createPlayer stays arg-free and its
+// 3 call sites don't change. Defaults to the Bubblegum pink until main() sets it
+// from saved progress. Literal Color (the CANDY_PINK macro is a runtime lvalue).
+static Character gSkin = {{255, 127, 176, 255}, {228, 70, 139, 255}};
+void setPlayerSkin(Character c) { gSkin = c; }
+
 Player createPlayer(void) {
   Player p = {
       .position = {SCREEN_WIDTH / 2.0f, FLOOR_Y - PLAYER_RADIUS},
@@ -20,7 +27,7 @@ Player createPlayer(void) {
       .acceleration = {0.0f, GRAVITY},
       .radius = PLAYER_RADIUS,
       .trailHead = 0,
-      .character = {CANDY_PINK, CANDY_PINK_DK},
+      .character = gSkin,
       .expression = EXPR_HAPPY,
       .attractTimer = 0.0f,
       .attractTarget = SCREEN_WIDTH / 2.0f,
