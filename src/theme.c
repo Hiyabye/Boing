@@ -6,7 +6,7 @@
 
 // Ascent (world-units of climb) that one theme spans before it has fully
 // morphed into the next — a full level band.
-#define BAND_HEIGHT 3000.0f
+#define BAND_HEIGHT 20000.0f
 
 // The theme table. A new level is one more row here (and, for a distinct
 // backdrop shape, a case in background.c). Row order = climb order — the scene
