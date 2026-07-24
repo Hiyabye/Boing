@@ -1,5 +1,6 @@
 #include "progress.h"
 
+#include "core.h" // STATIC_ASSERT
 #include "persist.h"
 
 // Skin palettes: {body, bodyDark}. Literal Colors (not the gTheme macros, which
@@ -18,6 +19,9 @@ const UpgradeDef UPGRADES[] = {
     [UPG_LONGBOOST] = {"LONG BOOST", "Power-ups last 50% longer", 250},
     [UPG_COMBOGRACE] = {"COMBO GRACE", "Combo holds 50% longer", 150},
 };
+// Enum-indexed: a new UpgradeId without a row here loops past the array end.
+STATIC_ASSERT(sizeof(UPGRADES) / sizeof(UPGRADES[0]) == UPGRADE_COUNT,
+              upgrades_full);
 
 const MissionDef MISSIONS[] = {
     {"Reach the Neon Maze", MSTAT_LEVEL, 2, 100},
@@ -34,6 +38,9 @@ bool skinOwned(const Progress *p, int i) {
 bool upgradeOwned(const Progress *p, int id) {
   return (p->upgradeMask & (1 << id)) != 0;
 }
+bool missionDone(const Progress *p, int i) {
+  return (p->missionMask & (1 << i)) != 0;
+}
 
 bool tryBuy(Progress *p, int cost) {
   if (p->coinBank < cost) {
@@ -47,7 +54,7 @@ int bankRun(Progress *p, const World *w) {
   p->coinBank += w->coinsCollected;
   int newly = 0;
   for (int i = 0; i < MISSION_COUNT; i++) {
-    if (p->missionMask & (1 << i)) {
+    if (missionDone(p, i)) {
       continue; // already completed and paid
     }
     int v = 0;

@@ -741,7 +741,7 @@ static void drawShop(Game *g) {
   drawCenteredText("MISSIONS", 490, 24, RAYWHITE);
   int my = 524;
   for (int i = 0; i < MISSION_COUNT; i++) {
-    bool done = (p->missionMask & (1 << i)) != 0;
+    bool done = missionDone(p, i);
     drawTextShadow(TextFormat("%s %s", done ? "[x]" : "[ ]", MISSIONS[i].desc),
                    150, my, 18, done ? GOLD : RAYWHITE);
     const char *rw = TextFormat("+%d", MISSIONS[i].reward);

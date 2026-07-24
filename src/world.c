@@ -81,6 +81,10 @@ const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
     [POWERUP_FOG] = {300.0f, GRAY, "FOG", 1, SHAKE_HIT, false, true},           // ~5s
     [POWERUP_BUTTER] = {300.0f, BROWN, "BUTTER", 1, SHAKE_HIT, false, true},    // ~5s
 };
+// A dropped row would leave a zero-duration slot (divide-by-zero in the HUD
+// timer bar) — fail the build instead.
+STATIC_ASSERT(sizeof(POWERUP_DEFS) / sizeof(POWERUP_DEFS[0]) == POWERUP_COUNT,
+              powerups_full);
 
 float worldCameraY(const World *world) { return world->cameraY; }
 float worldShake(const World *world) { return world->shake; }

@@ -64,6 +64,7 @@ void saveProgress(const Progress *p);
 
 bool skinOwned(const Progress *p, int i);
 bool upgradeOwned(const Progress *p, int id);
+bool missionDone(const Progress *p, int i);
 // Spend `cost` from the bank if affordable; returns whether it went through.
 // Caller sets the owning bit + saves on true.
 bool tryBuy(Progress *p, int cost);
