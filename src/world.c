@@ -24,6 +24,11 @@
 #define MONSTER_SPACING 900.0f // vertical distance between monster bands
 #define MONSTER_DRIFT 1.5f     // horizontal speed
 #define MONSTER_COIN_LOSS 5    // coins scattered/lost on a monster hit
+// Altitude difficulty ramp (keyed on world->level; hand-tune for feel).
+#define DIFFICULTY_CAP 3        // level past which the ramp plateaus
+#define DIFFICULTY_SPEED 0.25f  // +25% monster drift per level, capped
+#define DIFFICULTY_TIGHTEN 150.0f // px closer monster bands per level
+#define MONSTER_SPACING_MIN 450.0f // floor on band spacing
 #define COIN_SCATTER_R                                                         \
   60.0f // ring radius knocked-off coins start at (> collect dist)
 #define COIN_SCATTER_SPEED 5.0f // outward px/frame at launch
@@ -128,16 +133,20 @@ static void spawnPlatforms(World *world) {
 }
 
 static void spawnMonsters(World *world) {
+  int d = world->level < DIFFICULTY_CAP ? world->level : DIFFICULTY_CAP; // 0..CAP
   while (world->monsterSpawnY > world->cameraY - SCREEN_HEIGHT) {
-    if (GetRandomValue(0, 4) == 0) { // ~1 in 5 bands actually gets a monster
+    // Higher levels: more bands carry a monster (L0:1/5 .. L3+:4/5).
+    if (GetRandomValue(0, 4) <= d) {
       FIND_FREE(s, monsters, MAX_MONSTERS);
       if (s >= 0) {
         float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
-        float vx = GetRandomValue(0, 1) ? MONSTER_DRIFT : -MONSTER_DRIFT;
+        float speed = MONSTER_DRIFT * (1.0f + DIFFICULTY_SPEED * d);
+        float vx = GetRandomValue(0, 1) ? speed : -speed;
         world->monsters[s] = (Monster){{x, world->monsterSpawnY}, vx, true};
       }
     }
-    world->monsterSpawnY -= MONSTER_SPACING;
+    float step = MONSTER_SPACING - DIFFICULTY_TIGHTEN * d;
+    world->monsterSpawnY -= step < MONSTER_SPACING_MIN ? MONSTER_SPACING_MIN : step;
   }
 }
 
