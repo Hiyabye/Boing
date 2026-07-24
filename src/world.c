@@ -12,6 +12,8 @@
 #define COIN_RADIUS 12.0f
 #define COIN_SPACING 55.0f // vertical distance between spawned coins
 #define COIN_WANDER 150.0f // max horizontal step between consecutive coins
+#define COIN_DOUBLE_CAP 2  // levels below this get 2 coins/row (L0-L1); L2+ single
+#define COIN_PAIR_GAP 90.0f // horizontal gap of the bonus second coin
 #define SPAWN_MARGIN 40.0f // keep spawns away from screen edges
 #define PLATFORM_BOUNCE -28.0f
 #define PLATFORM_SPACING 300.0f // vertical distance between platforms
@@ -129,6 +131,17 @@ static void spawnCoins(World *world) {
       x = clampf(x, SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
       world->coins[s] = (Coin){{x, world->spawnY}, true, {0, 0}}; // at rest
       world->lastSpawnX = x;
+      // Low levels are richer: drop a bonus coin beside the trail coin on the
+      // same row. lastSpawnX stays the trail coin so the followable line holds.
+      if (world->level < COIN_DOUBLE_CAP) {
+        FIND_FREE(s2, coins, MAX_COINS);
+        if (s2 >= 0) {
+          float x2 = clampf(x + (GetRandomValue(0, 1) ? COIN_PAIR_GAP
+                                                       : -COIN_PAIR_GAP),
+                            SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
+          world->coins[s2] = (Coin){{x2, world->spawnY}, true, {0, 0}};
+        }
+      }
     }
     world->spawnY -= COIN_SPACING;
   }
@@ -164,22 +177,37 @@ static void spawnMonsters(World *world) {
   }
 }
 
+// Weighted pick over POWERUP_DEFS[].spawnWeight, restricted to one category
+// (good or debuff). Both categories have positive total weight, so the fallback
+// return is unreachable.
+static PowerUpType pickPowerup(bool debuff) {
+  int total = 0;
+  for (int k = 0; k < POWERUP_COUNT; k++) {
+    if (POWERUP_DEFS[k].debuff == debuff) {
+      total += POWERUP_DEFS[k].spawnWeight;
+    }
+  }
+  int roll = GetRandomValue(0, total - 1);
+  for (PowerUpType t = 0; t < POWERUP_COUNT; t++) {
+    if (POWERUP_DEFS[t].debuff == debuff) {
+      if (roll < POWERUP_DEFS[t].spawnWeight) {
+        return t;
+      }
+      roll -= POWERUP_DEFS[t].spawnWeight;
+    }
+  }
+  return POWERUP_MAGNET;
+}
+
 static void spawnPowerups(World *world) {
+  // Debuff chance ramps with altitude (same n/5 idiom as spawnMonsters):
+  // L0:0/5 bad .. L3+:3/5 bad. Level 0 is all good pickups.
+  int d = world->level < DIFFICULTY_CAP ? world->level : DIFFICULTY_CAP;
   while (world->powerupSpawnY > world->cameraY - SCREEN_HEIGHT) {
     FIND_FREE(s, powerups, MAX_POWERUPS);
     if (s >= 0) {
       float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
-      // Weighted pick over POWERUP_DEFS[].spawnWeight.
-      int total = 0;
-      for (int k = 0; k < POWERUP_COUNT; k++) {
-        total += POWERUP_DEFS[k].spawnWeight;
-      }
-      int roll = GetRandomValue(0, total - 1);
-      PowerUpType t = 0;
-      while (t < POWERUP_COUNT - 1 && roll >= POWERUP_DEFS[t].spawnWeight) {
-        roll -= POWERUP_DEFS[t].spawnWeight;
-        t++;
-      }
+      PowerUpType t = pickPowerup(GetRandomValue(0, 4) < d);
       world->powerups[s] = (PowerUp){{x, world->powerupSpawnY}, t, true};
     }
     world->powerupSpawnY -= POWERUP_SPACING;
