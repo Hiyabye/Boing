@@ -427,14 +427,55 @@ void updateWorld(World *world, Player *player) {
   cullBelowView(world);
 }
 
+// Deterministic per-instance seed from an entity's (fixed) spawn y, so coins and
+// monsters get stable random-looking variety without extra struct fields.
+static unsigned entSeed(Vector2 p) {
+  unsigned h = (unsigned)(int)fabsf(p.y) * 2654435761u;
+  h ^= h >> 15;
+  return h;
+}
+
 static void drawCoin(Vector2 c, float t) {
+  unsigned seed = entSeed(c);
+  float phase = (seed & 255) / 255.0f * TWO_PI; // out-of-sync twinkle offset
   float spin = fabsf(cosf(t * 4.0f + c.y * 0.05f)); // 0 (edge-on) .. 1 (face)
   float w = COIN_RADIUS * (0.22f + 0.78f * spin);
   DrawCircle(c.x, c.y, COIN_RADIUS * 1.5f, Fade(COIN_HI, 0.22f)); // glow
-  DrawEllipse(c.x, c.y, w, COIN_RADIUS, COIN_LO);
-  DrawEllipse(c.x, c.y, w * 0.68f, COIN_RADIUS * 0.68f, COIN_HI);
-  if (w > COIN_RADIUS * 0.4f) {
+  DrawEllipse(c.x, c.y, w * 1.12f, COIN_RADIUS * 1.12f,
+              ColorBrightness(COIN_LO, -0.35f));                    // minted rim
+  DrawEllipse(c.x, c.y, w, COIN_RADIUS, COIN_LO);                   // edge
+  DrawEllipse(c.x, c.y, w * 0.68f, COIN_RADIUS * 0.68f, COIN_HI);   // face
+  if (w > COIN_RADIUS * 0.45f) {
+    float fw = w * 0.68f, fh = COIN_RADIUS * 0.68f;
+    Color emb = ColorBrightness(COIN_LO, -0.15f);
+    switch (seed % 3) { // embossed emblem, varies per coin
+    case 0:
+      DrawPoly(c, 5, fh * 0.6f, t * 40.0f, emb);
+      break;
+    case 1:
+      DrawRing(c, fh * 0.34f, fh * 0.52f, 0, 360, 16, emb);
+      break;
+    default:
+      DrawCircle(c.x, c.y, fh * 0.32f, emb);
+      break;
+    }
+    // Rotating glint streak sweeping across the face.
+    float g = t * 3.0f;
+    DrawLineEx(
+        (Vector2){c.x - cosf(g) * fw * 0.7f, c.y - sinf(g) * fh * 0.7f},
+        (Vector2){c.x + cosf(g) * fw * 0.7f, c.y + sinf(g) * fh * 0.7f}, 2.0f,
+        Fade(RAYWHITE, 0.5f));
     DrawCircle(c.x - w * 0.32f, c.y - COIN_RADIUS * 0.34f, 2.5f, RAYWHITE);
+  }
+  // Periodic sparkle beside the coin, phased by the seed.
+  float tw = sinf(t * 3.0f + phase);
+  if (tw > 0.6f) {
+    float s = (tw - 0.6f) / 0.4f * 4.0f;
+    float sx = c.x + COIN_RADIUS * 0.9f, sy = c.y - COIN_RADIUS * 0.9f;
+    DrawLineEx((Vector2){sx - s, sy}, (Vector2){sx + s, sy}, 1.5f,
+               Fade(RAYWHITE, tw));
+    DrawLineEx((Vector2){sx, sy - s}, (Vector2){sx, sy + s}, 1.5f,
+               Fade(RAYWHITE, tw));
   }
 }
 
@@ -462,21 +503,78 @@ static void drawCloudPad(Vector2 p) {
 
 static void drawMonster(Vector2 m, float t) {
   float R = MONSTER_RADIUS;
+  unsigned seed = entSeed(m);
   float wob = 1.0f + 0.08f * sinf(t * 6.0f + m.x * 0.1f);
-  DrawCircle(m.x, m.y, R * 1.35f, Fade(GRAPE, 0.22f));             // glow
-  DrawCircle(m.x - R * 0.5f, m.y + R * 0.8f, R * 0.26f, GRAPE_DK); // feet
-  DrawCircle(m.x + R * 0.5f, m.y + R * 0.8f, R * 0.26f, GRAPE_DK);
+  Color horn = ColorBrightness(GRAPE_DK, -0.15f);
+
+  DrawEllipse(m.x, m.y + R * 1.05f, R * 0.8f, R * 0.24f,
+              Fade(BLACK, 0.18f));                       // drop shadow
+  DrawCircle(m.x, m.y, R * 1.35f, Fade(GRAPE, 0.22f));   // glow
+
+  // Wobbling stubby legs (2 or 3, seed-picked).
+  int legs = (seed & 1) ? 3 : 2;
+  for (int k = 0; k < legs; k++) {
+    float lx = m.x + (k - (legs - 1) * 0.5f) * R * 0.5f;
+    float ly = m.y + R * 0.7f + sinf(t * 7.0f + k + m.x * 0.1f) * R * 0.14f;
+    DrawCircle(lx, ly + R * 0.18f, R * 0.2f, GRAPE_DK);
+  }
+
+  // Head decor: two horns / a bobbing antenna / bald, seed-picked.
+  switch (seed % 3) {
+  case 0:
+    DrawPoly((Vector2){m.x - R * 0.4f, m.y - R * 0.75f}, 3, R * 0.32f, -90, horn);
+    DrawPoly((Vector2){m.x + R * 0.4f, m.y - R * 0.75f}, 3, R * 0.32f, -90, horn);
+    break;
+  case 1: {
+    float ax = m.x + sinf(t * 4.0f + m.x) * R * 0.2f;
+    DrawLineEx((Vector2){m.x, m.y - R * 0.7f}, (Vector2){ax, m.y - R * 1.25f},
+               3.0f, horn);
+    DrawCircle(ax, m.y - R * 1.3f, R * 0.16f, GRAPE);
+    break;
+  }
+  default:
+    break;
+  }
+
+  // Body: dark base, brightened rim, lit body.
   DrawEllipse(m.x, m.y, R * wob, R / wob, GRAPE_DK);
-  DrawEllipse(m.x, m.y - R * 0.1f, R * 0.82f * wob, R * 0.82f / wob, GRAPE);
-  DrawCircle(m.x - 8, m.y - 5, 6, RAYWHITE); // eyes
-  DrawCircle(m.x + 8, m.y - 5, 6, RAYWHITE);
-  DrawCircle(m.x - 8, m.y - 4, 3, BLACK);
-  DrawCircle(m.x + 8, m.y - 4, 3, BLACK);
-  for (int k = 0; k < 4; k++) { // zig-zag mouth
-    float x0 = m.x - 9 + k * 5;
-    float y0 = m.y + (k % 2 ? 12 : 9);
-    float y1 = m.y + (k % 2 ? 9 : 12);
-    DrawLineEx((Vector2){x0, y0}, (Vector2){x0 + 5, y1}, 2.0f, BLACK);
+  DrawEllipse(m.x, m.y, R * 0.9f * wob, R * 0.9f / wob, ColorBrightness(GRAPE, 0.3f));
+  DrawEllipse(m.x, m.y - R * 0.1f, R * 0.78f * wob, R * 0.78f / wob, GRAPE);
+
+  // Eyes, seed-picked: even / one wonky-bigger / cyclops.
+  int eyeStyle = seed % 3;
+  if (eyeStyle == 2) {
+    DrawCircle(m.x, m.y - 4, 8, RAYWHITE);
+    DrawCircle(m.x, m.y - 3, 4, BLACK);
+  } else {
+    float rr = (eyeStyle == 1) ? 8.0f : 6.0f; // wonky: right eye bigger
+    DrawCircle(m.x - 8, m.y - 5, 6, RAYWHITE);
+    DrawCircle(m.x + 8, m.y - 5, rr, RAYWHITE);
+    DrawCircle(m.x - 8, m.y - 4, 3, BLACK);
+    DrawCircle(m.x + 8, m.y - 4, 3, BLACK);
+  }
+  // Angry brows.
+  DrawLineEx((Vector2){m.x - 13, m.y - 12}, (Vector2){m.x - 4, m.y - 8}, 2.5f, BLACK);
+  DrawLineEx((Vector2){m.x + 13, m.y - 12}, (Vector2){m.x + 4, m.y - 8}, 2.5f, BLACK);
+
+  // Mouth, seed-picked: zig-zag / open maw with fangs / grin.
+  switch (seed % 3) {
+  case 0:
+    for (int k = 0; k < 4; k++) {
+      float x0 = m.x - 9 + k * 5;
+      float y0 = m.y + (k % 2 ? 12 : 9);
+      float y1 = m.y + (k % 2 ? 9 : 12);
+      DrawLineEx((Vector2){x0, y0}, (Vector2){x0 + 5, y1}, 2.0f, BLACK);
+    }
+    break;
+  case 1:
+    DrawCircle(m.x, m.y + 11, 5, BLACK);
+    DrawPoly((Vector2){m.x - 3, m.y + 9}, 3, 3.0f, 90, RAYWHITE);
+    DrawPoly((Vector2){m.x + 3, m.y + 9}, 3, 3.0f, 90, RAYWHITE);
+    break;
+  default:
+    DrawLineEx((Vector2){m.x - 8, m.y + 10}, (Vector2){m.x + 8, m.y + 10}, 2.0f, BLACK);
+    break;
   }
 }
 
@@ -484,35 +582,77 @@ static void drawPowerUp(const PowerUp *pu, float t) {
   Vector2 c = {pu->position.x,
                pu->position.y + sinf(t * 3.0f + pu->position.x * 0.1f) * 4.0f};
   float R = POWERUP_RADIUS;
-  DrawCircle(c.x, c.y, R * 1.6f, Fade(RAYWHITE, 0.3f)); // glow
+  float pulse = 0.25f + 0.12f * sinf(t * 4.0f + pu->position.y * 0.05f);
+  DrawCircle(c.x, c.y, R * (1.6f + 0.15f * sinf(t * 4.0f)),
+             Fade(RAYWHITE, pulse)); // pulsing halo
   switch (pu->type) {
-  case POWERUP_MAGNET:
-    DrawRing(c, R * 0.5f, R, 0, 360, 32, MAGNET_RED);
-    DrawCircle(c.x - R * 0.72f, c.y + R * 0.55f, 4, LIGHTGRAY); // pole tips
-    DrawCircle(c.x + R * 0.72f, c.y + R * 0.55f, 4, LIGHTGRAY);
-    break;
-  case POWERUP_BALLOON: {
-    Vector2 knot = {c.x, c.y + R * 0.9f};
-    DrawLineEx(knot, (Vector2){c.x, c.y + R * 1.8f}, 2, DARKGRAY); // string
-    DrawEllipse(c.x, c.y, R * 0.85f, R, LIME);                     // balloon
-    DrawCircle(c.x - R * 0.3f, c.y - R * 0.3f, R * 0.18f,
-               Fade(RAYWHITE, 0.6f)); // highlight
-    DrawTriangle((Vector2){c.x - 3, knot.y}, (Vector2){c.x + 3, knot.y},
-                 (Vector2){c.x, knot.y + 5}, LIME); // knot
+  case POWERUP_MAGNET: {
+    // Horseshoe: two red legs joined by a top arc, silver pole tips, a spark.
+    Color red = MAGNET_RED, redDk = ColorBrightness(MAGNET_RED, -0.3f);
+    DrawRing(c, R * 0.5f, R, 180, 360, 24, redDk);
+    DrawRing(c, R * 0.5f, R, 190, 350, 24, red);
+    DrawRectangle(c.x - R, c.y, R * 0.5f, R * 0.7f, red);        // left leg
+    DrawRectangle(c.x + R * 0.5f, c.y, R * 0.5f, R * 0.7f, red); // right leg
+    DrawRectangle(c.x - R, c.y + R * 0.55f, R * 0.5f, R * 0.2f, LIGHTGRAY);
+    DrawRectangle(c.x + R * 0.5f, c.y + R * 0.55f, R * 0.5f, R * 0.2f, LIGHTGRAY);
+    if (sinf(t * 8.0f) > 0.7f) {
+      DrawCircle(c.x, c.y + R * 0.95f, 2.5f, Fade(RAYWHITE, 0.9f)); // spark
+    }
     break;
   }
-  case POWERUP_SHIELD:
-    DrawPoly(c, 6, R, 0, GOLD);            // hex badge
-    DrawPolyLines(c, 6, R, 0, ORANGE);     // rim
-    DrawPoly(c, 6, R * 0.55f, 0, SKYBLUE); // inner crest
+  case POWERUP_BALLOON: {
+    // Glossy balloon on a wavy string; body recolors with the theme.
+    Color body = GRASS, bodyDk = ColorBrightness(GRASS, -0.28f);
+    Vector2 knot = {c.x, c.y + R * 0.9f}, a = knot;
+    for (int k = 1; k <= 4; k++) { // wavy string
+      Vector2 b = {c.x + sinf(t * 4.0f + k) * 3.0f, knot.y + k * R * 0.28f};
+      DrawLineEx(a, b, 2.0f, DARKGRAY);
+      a = b;
+    }
+    DrawEllipse(c.x, c.y, R * 0.85f, R, bodyDk); // base
+    DrawEllipse(c.x - R * 0.12f, c.y - R * 0.05f, R * 0.62f, R * 0.78f,
+                body); // lit
+    DrawEllipse(c.x - R * 0.3f, c.y - R * 0.35f, R * 0.16f, R * 0.26f,
+                Fade(RAYWHITE, 0.6f)); // specular streak
+    DrawTriangle((Vector2){c.x - 3, knot.y}, (Vector2){c.x + 3, knot.y},
+                 (Vector2){c.x, knot.y + 5}, bodyDk); // knot
     break;
+  }
+  case POWERUP_SHIELD: {
+    // Beveled crested badge; plate recolors with the theme (coin gold band).
+    Color plate = COIN_LO, rim = ColorBrightness(COIN_LO, -0.35f),
+          sheen = COIN_HI;
+    DrawPoly(c, 6, R * 1.12f, 0, Fade(sheen, 0.3f)); // outer glow
+    DrawPoly(c, 6, R, 0, rim);                       // bevel rim
+    DrawPoly(c, 6, R * 0.82f, 0, plate);             // plate
+    DrawPoly((Vector2){c.x, c.y - R * 0.18f}, 6, R * 0.5f, 0,
+             Fade(sheen, 0.7f));                     // top sheen
+    DrawPoly(c, 5, R * 0.42f, t * 30.0f, GRAPE);     // spinning crest
+    break;
+  }
   case POWERUP_ROCKET:
   default: {
+    // Multi-layer exhaust under a two-tone body with fins + a shiny porthole.
     float fl = R * (0.6f + 0.35f * sinf(t * 22.0f)); // flame flicker
-    DrawPoly((Vector2){c.x, c.y + R * 0.9f + fl * 0.4f}, 3, fl, 90, FLAME);
+    DrawPoly((Vector2){c.x, c.y + R * 0.9f + fl * 0.4f}, 3, fl, 90,
+             Fade(FLAME, 0.7f));
+    DrawPoly((Vector2){c.x, c.y + R * 0.9f + fl * 0.2f}, 3, fl * 0.6f, 90,
+             ColorBrightness(FLAME, 0.4f));
+    DrawPoly((Vector2){c.x, c.y + R * 0.85f}, 3, fl * 0.3f, 90,
+             Fade(RAYWHITE, 0.8f)); // hot core
     DrawEllipse(c.x, c.y, R * 0.5f, R * 0.9f, ROCKET_BODY);
-    DrawPoly((Vector2){c.x, c.y - R * 0.6f}, 3, R * 0.5f, -90, ROCKET_FIN);
-    DrawCircle(c.x, c.y - R * 0.1f, R * 0.24f, SKYBLUE); // window
+    DrawEllipse(c.x + R * 0.16f, c.y, R * 0.2f, R * 0.82f,
+                ColorBrightness(ROCKET_BODY, -0.28f)); // shade
+    DrawPoly((Vector2){c.x - R * 0.42f, c.y + R * 0.5f}, 3, R * 0.32f, 40,
+             ROCKET_FIN); // left fin
+    DrawPoly((Vector2){c.x + R * 0.42f, c.y + R * 0.5f}, 3, R * 0.32f, -40,
+             ROCKET_FIN); // right fin
+    DrawPoly((Vector2){c.x, c.y - R * 0.6f}, 3, R * 0.5f, -90,
+             ROCKET_FIN); // nose
+    DrawCircle(c.x, c.y - R * 0.1f, R * 0.26f,
+               ColorBrightness(ROCKET_FIN, 0.35f)); // window
+    DrawCircle(c.x - R * 0.08f, c.y - R * 0.18f, R * 0.08f,
+               Fade(RAYWHITE, 0.8f)); // window shine
     break;
   }
   }

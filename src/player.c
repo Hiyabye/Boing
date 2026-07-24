@@ -126,12 +126,15 @@ void drawPlayer(const Player *player) {
                 Fade(c.body, 0.22f * f));
   }
 
-  // Soft glow.
-  DrawEllipse(px, py, rx * 1.25f, ry * 1.25f, Fade(c.body, 0.25f));
-
-  // Body (layered ellipses fake a gradient).
+  // Body: solid two-tone candy fill (dark base + lighter inner). No glow/rim/
+  // sheen — a firm flat blob, not a glossy bubble.
   DrawEllipse(px, py, rx, ry, c.bodyDark);
   DrawEllipse(px, py - ry * 0.12f, rx * 0.82f, ry * 0.82f, c.body);
+
+  // Cheek blush.
+  Color blush = Fade(ColorBrightness(c.bodyDark, 0.2f), 0.4f);
+  DrawCircle(px - rx * 0.5f, py + ry * 0.12f, r * 0.12f, blush);
+  DrawCircle(px + rx * 0.5f, py + ry * 0.12f, r * 0.12f, blush);
 
   // Googly eyes; pupils lean toward the direction of motion.
   float ex = rx * 0.38f;
@@ -142,6 +145,22 @@ void drawPlayer(const Player *player) {
   DrawCircle(px + ex, py + ey, r * 0.2f, RAYWHITE);
   DrawCircle(px - ex + pupx, py + ey + pupy, r * 0.1f, BLACK);
   DrawCircle(px + ex + pupx, py + ey + pupy, r * 0.1f, BLACK);
+  // Glossy catch-light on each pupil.
+  DrawCircle(px - ex + pupx - r * 0.03f, py + ey + pupy - r * 0.03f, r * 0.035f,
+             RAYWHITE);
+  DrawCircle(px + ex + pupx - r * 0.03f, py + ey + pupy - r * 0.03f, r * 0.035f,
+             RAYWHITE);
+
+  // Eyebrows above the eyes; inner ends tilt with the expression (HAPPY raised,
+  // SAD angled down) to amplify the mouth's emotion.
+  float browY = py + ey - r * 0.32f, bw = r * 0.16f, bth = r * 0.055f;
+  float tilt = player->expression == EXPR_HAPPY  ? -r * 0.07f
+               : player->expression == EXPR_SAD  ? r * 0.09f
+                                                 : 0.0f;
+  DrawLineEx((Vector2){px - ex - bw, browY}, (Vector2){px - ex + bw, browY + tilt},
+             bth, MOUTH);
+  DrawLineEx((Vector2){px + ex + bw, browY}, (Vector2){px + ex - bw, browY + tilt},
+             bth, MOUTH);
 
   // Mouth, below the eyes. DrawRing angle 0 is at 3 o'clock, +angle sweeps
   // clockwise (down); a smile is the bottom arc below its center, a frown the
