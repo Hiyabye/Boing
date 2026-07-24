@@ -589,10 +589,12 @@ static void drawCredits(Game *g) {
   }
 }
 
-// Era names in climb order (themes loop every 4 bands). Used by the game-over
-// summary; homage to a genre/era each, never a named product.
+// Era names in climb order — keep this in sync with THEMES[] (theme.c) row
+// order; themes loop, so the game-over summary indexes worldLevel % ERA_COUNT.
+// Homage to a genre/era each, never a named product.
 static const char *ERA_NAMES[] = {"SUNNY HILLS", "NIGHT BLOCKS", "NEON MAZE",
                                   "FALLING BLOCKS"};
+#define ERA_COUNT ((int)(sizeof(ERA_NAMES) / sizeof(ERA_NAMES[0])))
 
 // Game-over run summary: a rounded card with height, coins, best combo, and the
 // era reached — closure + a screenshot-worthy moment.
@@ -615,7 +617,7 @@ static void drawSummaryCard(Game *g) {
       {"HEIGHT", TextFormat("%d m", (int)((FLOOR_Y - w->bestY) / 10.0f))},
       {"COINS", TextFormat("%d", w->coinsCollected)},
       {"BEST COMBO", TextFormat("x%d", w->bestCombo)},
-      {"ERA", ERA_NAMES[worldLevel(w) % 4]},
+      {"ERA", ERA_NAMES[worldLevel(w) % ERA_COUNT]},
   };
   int ry = 268;
   for (int i = 0; i < 4; i++) {
