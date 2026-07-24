@@ -127,13 +127,10 @@ Settings loadSettings(void) {
                 .resIndex = 1,
                 .musicVolume = 1.0f,
                 .sfxVolume = 1.0f}; // 60fps, 800, both max
-  int buf[4];
-  if (readInts("settings", buf, 4)) {
-    s.fpsIndex = buf[0];
-    s.resIndex = buf[1];
-    s.musicVolume = buf[2] / 100.0f; // stored as int percents
-    s.sfxVolume = buf[3] / 100.0f;
-  }
+  s.fpsIndex = configGetInt("fpsIndex", s.fpsIndex);
+  s.resIndex = configGetInt("resIndex", s.resIndex);
+  s.musicVolume = configGetInt("musicPct", 100) / 100.0f; // stored as int percents
+  s.sfxVolume = configGetInt("sfxPct", 100) / 100.0f;
   s.fpsIndex = wrapi(s.fpsIndex, FPS_COUNT);
   s.resIndex = wrapi(s.resIndex, RES_COUNT);
   s.musicVolume = clampf(s.musicVolume, 0.0f, 1.0f);
@@ -142,9 +139,11 @@ Settings loadSettings(void) {
 }
 
 void saveSettings(const Settings *s) {
-  int buf[4] = {s->fpsIndex, s->resIndex, volumePercent(s->musicVolume),
-                volumePercent(s->sfxVolume)};
-  writeInts("settings", buf, 4);
+  configSetInt("fpsIndex", s->fpsIndex);
+  configSetInt("resIndex", s->resIndex);
+  configSetInt("musicPct", volumePercent(s->musicVolume));
+  configSetInt("sfxPct", volumePercent(s->sfxVolume));
+  configSave("save.json");
 }
 
 void applySettings(const Settings *s) {

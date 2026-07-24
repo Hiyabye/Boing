@@ -1,16 +1,19 @@
 #ifndef PERSIST_H
 #define PERSIST_H
 
-#include <stdbool.h>
-
-// Tiny plain-text persistence for runtime files beside the exe (high score,
-// settings). Each file is n space-separated ints.
+// Tiny JSON int key-value store for a single runtime save file beside the exe
+// (high score, settings, progress all share it). The file is a flat JSON
+// object of string keys to integer values, e.g. {"highScore": 42, ...} —
+// non-int values (a volume fraction) are stored scaled to an int by the caller.
 //
-// readInts fills buf and returns true only if all n ints parsed; on a missing
-// or malformed file it returns false and leaves buf untouched, so callers keep
-// their defaults. Non-int values (e.g. a volume fraction) are stored scaled to
-// an int by the caller.
-bool readInts(const char *path, int *buf, int n);
-void writeInts(const char *path, const int *buf, int n);
+// configLoad parses the file into a shared in-memory map once at startup; a
+// missing or malformed file leaves the map empty, so configGetInt returns each
+// caller's default. Every subsystem reads/writes its own keys through this one
+// map, and configSave serializes the whole map — so independent saves merge
+// instead of clobbering each other's keys.
+void configLoad(const char *path);
+int configGetInt(const char *key, int def);
+void configSetInt(const char *key, int val);
+void configSave(const char *path);
 
 #endif // PERSIST_H

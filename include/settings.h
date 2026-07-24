@@ -4,8 +4,8 @@
 #include "core.h"
 
 // Player-adjustable options: target framerate, window resolution, and separate
-// music / SFX volumes. Persisted to a plain text file beside the exe (like the
-// highscore), so it's runtime-generated and doesn't count against the budget.
+// music / SFX volumes. Persisted as keys in the shared "save.json" beside the
+// exe (via persist), so it's runtime-generated and doesn't count against the budget.
 typedef struct {
   int fpsIndex;      // index into the framerate options (see settings.c)
   int resIndex;      // index into the resolution options (square window sizes)

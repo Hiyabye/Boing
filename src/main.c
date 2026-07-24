@@ -169,15 +169,16 @@ static void drawHud(const World *world) {
 }
 
 // ---------------------------------------------------------------------------
-// High score persistence (plain text file beside the exe)
+// High score persistence (shared save.json beside the exe)
 // ---------------------------------------------------------------------------
 static int loadHighScore(void) {
-  int best = 0;
-  readInts("highscore", &best, 1); // keeps 0 on a missing/garbage file
-  return best;
+  return configGetInt("highScore", 0); // keeps 0 on a missing/garbage file
 }
 
-static void saveHighScore(int best) { writeInts("highscore", &best, 1); }
+static void saveHighScore(int best) {
+  configSetInt("highScore", best);
+  configSave("save.json");
+}
 
 // ---------------------------------------------------------------------------
 // Transitions
@@ -804,6 +805,7 @@ int main(void) {
 
   themeUpdate(0.0f); // seed gTheme so createPlayer reads the nature palette
 
+  configLoad("save.json"); // populate the shared map before any loader reads it
   Progress progress = loadProgress();
   setPlayerSkin(SKINS[progress.selectedSkin].character); // equip saved skin
   Game game = {

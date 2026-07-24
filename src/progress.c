@@ -83,14 +83,11 @@ int bankRun(Progress *p, const World *w) {
 
 Progress loadProgress(void) {
   Progress p = {0, 1, 0, 0, 0}; // fresh: only the free default skin owned
-  int buf[5];
-  if (readInts("progress", buf, 5)) {
-    p.coinBank = buf[0];
-    p.skinMask = buf[1];
-    p.selectedSkin = buf[2];
-    p.upgradeMask = buf[3];
-    p.missionMask = buf[4];
-  }
+  p.coinBank = configGetInt("coinBank", p.coinBank);
+  p.skinMask = configGetInt("skinMask", p.skinMask);
+  p.selectedSkin = configGetInt("selectedSkin", p.selectedSkin);
+  p.upgradeMask = configGetInt("upgradeMask", p.upgradeMask);
+  p.missionMask = configGetInt("missionMask", p.missionMask);
   // Guard a missing/garbage-partial file: default skin always owned, bank
   // non-negative, selection must point at an owned skin.
   p.skinMask |= 1;
@@ -105,7 +102,10 @@ Progress loadProgress(void) {
 }
 
 void saveProgress(const Progress *p) {
-  int buf[5] = {p->coinBank, p->skinMask, p->selectedSkin, p->upgradeMask,
-                p->missionMask};
-  writeInts("progress", buf, 5);
+  configSetInt("coinBank", p->coinBank);
+  configSetInt("skinMask", p->skinMask);
+  configSetInt("selectedSkin", p->selectedSkin);
+  configSetInt("upgradeMask", p->upgradeMask);
+  configSetInt("missionMask", p->missionMask);
+  configSave("save.json");
 }

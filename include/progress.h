@@ -7,9 +7,9 @@
 #include <stdbool.h>
 
 // Persistent meta-progression: a coin bank that survives death, plus the
-// unlock state for skins, permanent upgrades, and completed missions. One
-// plain-text "progress" file beside the exe (5 ints), same convention as
-// "highscore"/"settings" — runtime-generated, off the 1.44MB budget.
+// unlock state for skins, permanent upgrades, and completed missions. Saved as
+// 5 keys in the shared "save.json" beside the exe (via persist) —
+// runtime-generated, off the 1.44MB budget.
 typedef struct {
   int coinBank;     // spendable currency (run coins banked at death + rewards)
   int skinMask;     // bit i set = skin i owned (bit 0 always the free default)

@@ -92,6 +92,4 @@ Temporary Items
 
 ### Mega Jump ###
 build*/
-highscore
-settings
-progress
+save.json
