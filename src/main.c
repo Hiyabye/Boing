@@ -34,10 +34,14 @@ typedef struct {
   bool creditsExiting; // BACK pressed: ramp creditsAnim back to 0, then MENU
   bool newBest;        // last run beat the high score (game-over banner)
   float splashT;       // startup-splash elapsed seconds (GetTime is never reset)
+  float fade;          // black-overlay alpha for a state transition (0 clear..1)
+  int fadePhase;       // 0 none, 1 dipping to black, 2 lifting back in
+  GameState fadeNext;  // state to switch to at the bottom of the dip
 } Game;
 
-#define SPLASH_MIN 2.0f // splash holds at least this long (arcade beat), longer
+#define SPLASH_MIN 1.5f // splash holds at least this long (arcade beat), longer
                         // if assets are still preloading on a slow machine
+#define FADE_SPEED 3.0f // black-dip transition rate (~0.33s each direction)
 #define FIXED_DT (1.0f / 60.0f)
 #define MAX_FRAME_TIME 0.25f // clamp on a slow frame so physics can't spiral
 
@@ -53,6 +57,15 @@ drawMenu(Game *g); // defined below; captured into gMenuSnap on enter
 static void gotoState(Game *g, GameState next) {
   g->prevState = g->state;
   g->state = next;
+}
+
+// Begin a black-dip transition: fade the current state out to black, then swap
+// to `next` at the bottom and fade back in. The dip is driven in the main loop.
+static void startTransition(Game *g, GameState next) {
+  if (g->fadePhase == 0) {
+    g->fadePhase = 1;
+    g->fadeNext = next;
+  }
 }
 
 // Back to the menu's attract demo: fresh wandering blob + MENU state. Callers
@@ -83,11 +96,11 @@ static Rectangle rHelpBtn(void) { return (Rectangle){10, 10, 44, 44}; }
 static Rectangle rHelpClose(void) {
   return centeredBtn(SCREEN_HEIGHT / 2.0f + 168, 180, 54);
 }
-static Rectangle rMenuPlay(void) { return centeredBtn(400, 240, 58); }
-static Rectangle rMenuShop(void) { return centeredBtn(466, 240, 54); }
-static Rectangle rMenuSettings(void) { return centeredBtn(530, 240, 54); }
-static Rectangle rMenuCredits(void) { return centeredBtn(594, 240, 54); }
-static Rectangle rMenuExit(void) { return centeredBtn(658, 240, 54); }
+static Rectangle rMenuPlay(void) { return centeredBtn(360, 240, 58); }
+static Rectangle rMenuShop(void) { return centeredBtn(426, 240, 54); }
+static Rectangle rMenuSettings(void) { return centeredBtn(490, 240, 54); }
+static Rectangle rMenuCredits(void) { return centeredBtn(554, 240, 54); }
+static Rectangle rMenuExit(void) { return centeredBtn(618, 240, 54); }
 // Shop screen: 4 skin swatches, 3 upgrade rows, a Back button.
 static Rectangle rShopSkin(int i) { return centeredRow(175, 120, 110, i, 4); }
 static Rectangle rShopUpg(int i) {
@@ -428,8 +441,8 @@ static void drawMenu(Game *g) {
   drawGround();           // so the attract blob stands on grass, like gameplay
   drawPlayer(&g->player); // the wandering attract blob
   int bob = (int)(sinf((float)GetTime() * 2.0f) * 10.0f);
-  drawCenteredText("BOING!", SCREEN_HEIGHT / 4 + bob, 80, CANDY_PINK);
-  drawCenteredText(TextFormat("BEST %d", g->highScore), SCREEN_HEIGHT / 4 + 100,
+  drawCenteredText("BOING!", SCREEN_HEIGHT / 4 - 40 + bob, 80, CANDY_PINK);
+  drawCenteredText(TextFormat("BEST %d", g->highScore), SCREEN_HEIGHT / 4 + 60,
                    24, COIN_LO);
   uiButton(rMenuPlay(), "PLAY", ICON_PLAY);
   uiButton(rMenuShop(), "SHOP", ICON_SHOP);
@@ -798,7 +811,7 @@ static void updateSplash(Game *g) {
   // Loaded: hold the arcade-beat minimum, or let an impatient tap skip it.
   if (g->splashT >= SPLASH_MIN || GetKeyPressed() ||
       IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-    gotoState(g, GAMESTATE_MENU);
+    startTransition(g, GAMESTATE_MENU); // dip to black, then reveal the menu
 }
 
 static void drawSplash(Game *g) {
@@ -812,15 +825,17 @@ static void drawSplash(Game *g) {
   Color lo = {198, 148, 34, 255};  // deep gold (bottom)
   float cx = SCREEN_WIDTH / 2.0f, cy = 340.0f;
 
-  // Serif "H" as primitive rects: 2 columns + crossbar + 4 serif caps.
+  // Serif "H" as primitive rects: 2 columns + crossbar + 4 serif caps. All
+  // offsets scale by k about (cx,cy), so the glyph stays centered as it shrinks.
+  float k = 0.7f;
   Rectangle parts[] = {
-      {cx - 90, cy - 110, 40, 220}, // left column
-      {cx + 50, cy - 110, 40, 220}, // right column
-      {cx - 50, cy - 20, 100, 40},  // crossbar
-      {cx - 105, cy - 110, 70, 16}, // serif: top-left
-      {cx - 105, cy + 94, 70, 16},  // serif: bottom-left
-      {cx + 35, cy - 110, 70, 16},  // serif: top-right
-      {cx + 35, cy + 94, 70, 16},   // serif: bottom-right
+      {cx - 90 * k, cy - 110 * k, 40 * k, 220 * k}, // left column
+      {cx + 50 * k, cy - 110 * k, 40 * k, 220 * k}, // right column
+      {cx - 50 * k, cy - 20 * k, 100 * k, 40 * k},  // crossbar
+      {cx - 105 * k, cy - 110 * k, 70 * k, 16 * k}, // serif: top-left
+      {cx - 105 * k, cy + 94 * k, 70 * k, 16 * k},  // serif: bottom-left
+      {cx + 35 * k, cy - 110 * k, 70 * k, 16 * k},  // serif: top-right
+      {cx + 35 * k, cy + 94 * k, 70 * k, 16 * k},   // serif: bottom-right
   };
   int n = sizeof(parts) / sizeof(parts[0]);
 
@@ -905,8 +920,29 @@ int main(void) {
   SetTextureFilter(gMenuSnap.texture, TEXTURE_FILTER_BILINEAR);
 
   while (!WindowShouldClose() && !game.quit) {
-    updateAudio(&stream);
+    // Splash is a silent loading screen: don't feed the stream (no music/SFX)
+    // until the menu, so audio begins with the first real screen.
+    if (game.state != GAMESTATE_SPLASH) {
+      updateAudio(&stream);
+    }
     STATES[game.state].update(&game);
+
+    // Black-dip transition: fall to black, swap state at the bottom, lift back.
+    if (game.fadePhase == 1) {
+      game.fade += FADE_SPEED * GetFrameTime();
+      if (game.fade >= 1.0f) {
+        game.fade = 1.0f;
+        gotoState(&game, game.fadeNext);
+        game.fadePhase = 2;
+      }
+    } else if (game.fadePhase == 2) {
+      game.fade -= FADE_SPEED * GetFrameTime();
+      if (game.fade <= 0.0f) {
+        game.fade = 0.0f;
+        game.fadePhase = 0;
+      }
+    }
+
     setTrack(trackForState(game.state));
 
     // Draw 800-space, scaled to the native window (square, so width == scale).
@@ -916,6 +952,9 @@ int main(void) {
     rlPushMatrix();
     rlScalef(scale, scale, 1.0f);
     STATES[game.state].draw(&game);
+    if (game.fade > 0.0f) { // transition dip, over the current state's draw
+      DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, game.fade));
+    }
     rlPopMatrix();
     EndDrawing();
   }
