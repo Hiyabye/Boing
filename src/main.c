@@ -113,6 +113,13 @@ static Rectangle rGameoverHome(void) {
   return centeredRow(SCREEN_HEIGHT * 2.0f / 3, 200, 60, 1, 2);
 }
 
+// Mini coin glyph (rim + face), centered at (x,y). Shared by the HUD coin tally
+// and the shop coin-bank readout.
+static void drawCoinGlyph(float x, float y) {
+  DrawEllipse(x, y, 11, 13, COIN_LO);
+  DrawEllipse(x, y, 7.5f, 9, COIN_HI);
+}
+
 // Score badge + coin tally + level bar + power-up timer bars, in screen space
 // (drawn after the world's rlPopMatrix, in the frame's scaled 800x800 space).
 static void drawHud(const World *world) {
@@ -129,8 +136,7 @@ static void drawHud(const World *world) {
   DrawRectangleRounded((Rectangle){cbx, cby, cbw, 40}, 0.4f, 8,
                        Fade(BLACK, 0.28f));
   float gcx = cbx + 20, gcy = cby + 20;
-  DrawEllipse(gcx, gcy, 11, 13, COIN_LO);
-  DrawEllipse(gcx, gcy, 7.5f, 9, COIN_HI);
+  drawCoinGlyph(gcx, gcy);
   drawTextShadow(coinStr, (int)gcx + 16, (int)cby + 5, 30, RAYWHITE);
 
   // Level progress bar (top-center): how far into the current theme band the
@@ -701,8 +707,7 @@ static void drawShop(Game *g) {
   // Coin bank: a coin glyph + total, centered under the title.
   const char *bankStr = TextFormat("%d", p->coinBank);
   float bx = SCREEN_WIDTH / 2.0f - (MeasureText(bankStr, 30) + 30) / 2.0f;
-  DrawEllipse(bx, 118, 11, 13, COIN_LO);
-  DrawEllipse(bx, 118, 7.5f, 9, COIN_HI);
+  drawCoinGlyph(bx, 118);
   drawTextShadow(bankStr, (int)bx + 16, 103, 30, GOLD);
 
   // Skins — swatch per palette with a mini blob preview + owned/selected/cost.
