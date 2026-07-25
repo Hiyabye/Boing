@@ -158,7 +158,7 @@ static void drawHud(const World *world) {
       continue;
     }
     PowerUpDef d = POWERUP_DEFS[t];
-    float frac = timer / d.duration;
+    float frac = fminf(timer / d.duration, 1.0f); // clamp: Long Boost sets timer > base duration
     DrawRectangleRounded((Rectangle){bx, by, bw, 26}, 0.5f, 8,
                          Fade(BLACK, 0.3f));
     DrawRectangleRounded((Rectangle){bx, by, bw * frac, 26}, 0.5f, 8,

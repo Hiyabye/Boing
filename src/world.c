@@ -71,15 +71,16 @@ const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
     // weighted-picks among the good rows or among the debuff rows. The good-vs-
     // bad ratio itself is the altitude roll in spawnPowerups (0/5 bad at L0, up
     // to 3/5 at L3+), not these weights. Tune knob.
-    [POWERUP_MAGNET] = {600.0f, SKYBLUE, "MAGNET", 3, 0.0f, false, false}, // ~10s
-    [POWERUP_ROCKET] = {120.0f, ORANGE, "ROCKET", 3, SHAKE_LAUNCH, true, false}, // ~2s
-    [POWERUP_BALLOON] = {300.0f, LIME, "BALLOON", 3, 0.0f, false, false},        // ~5s
-    [POWERUP_SHIELD] = {360.0f, GOLD, "SHIELD", 3, SHAKE_LAUNCH, true, false},   // ~6s
-    // Debuffs: no boost, no immunity, SAD reaction + SFX_HIT on pickup.
-    [POWERUP_ANCHOR] = {300.0f, DARKGRAY, "ANCHOR", 1, SHAKE_HIT, false, true}, // ~5s
-    [POWERUP_DIZZY] = {300.0f, VIOLET, "DIZZY", 1, SHAKE_HIT, false, true},     // ~5s
-    [POWERUP_FOG] = {300.0f, GRAY, "FOG", 1, SHAKE_HIT, false, true},           // ~5s
-    [POWERUP_BUTTER] = {300.0f, BROWN, "BUTTER", 1, SHAKE_HIT, false, true},    // ~5s
+    [POWERUP_MAGNET] = {480.0f, SKYBLUE, "MAGNET", 3, 0.0f, false, false}, // ~8s
+    [POWERUP_ROCKET] = {150.0f, ORANGE, "ROCKET", 3, SHAKE_LAUNCH, true, false}, // ~2.5s
+    [POWERUP_BALLOON] = {360.0f, LIME, "BALLOON", 3, 0.0f, false, false},        // ~6s
+    [POWERUP_SHIELD] = {480.0f, GOLD, "SHIELD", 3, SHAKE_LAUNCH, true, false},   // ~8s
+    // Debuffs: no boost, no immunity, SAD reaction + SFX_HIT on pickup. All ~3s
+    // (short — Anchor/Dizzy are run-ending at 5s).
+    [POWERUP_ANCHOR] = {180.0f, DARKGRAY, "ANCHOR", 1, SHAKE_HIT, false, true}, // ~3s
+    [POWERUP_DIZZY] = {180.0f, VIOLET, "DIZZY", 1, SHAKE_HIT, false, true},     // ~3s
+    [POWERUP_FOG] = {180.0f, GRAY, "FOG", 1, SHAKE_HIT, false, true},           // ~3s
+    [POWERUP_BUTTER] = {180.0f, BROWN, "BUTTER", 1, SHAKE_HIT, false, true},    // ~3s
 };
 // A dropped row would leave a zero-duration slot (divide-by-zero in the HUD
 // timer bar) — fail the build instead.
