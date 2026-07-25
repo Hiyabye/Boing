@@ -85,6 +85,7 @@ typedef struct World {
   float lastSpawnX;     // previous coin x, so coins form a followable trail
   float bestY;          // highest point the player has reached (smallest y)
   float powerTimer[POWERUP_COUNT]; // frames of each power-up remaining
+  int shieldHits;                  // monster hits the active Shield still absorbs
   float shake;                     // screen-shake magnitude, decays each frame
   Vector2 flashPos; // where the last collect "pop" ring is centered
   float flash;      // pop-ring life, 1 at collect -> 0
@@ -102,6 +103,8 @@ void updateWorld(World *world, Player *player);
 void drawGround(void);
 void drawWorld(const World *world);
 void drawPowerAura(const World *world, const Player *player);
+// Glyph-only power-up icon (no halo/bob) — reused by the SHOP upgrade cards.
+void drawPowerupGlyph(PowerUpType type, Vector2 c, float R, float t);
 bool isPlayerFallen(const World *world, const Player *player);
 int getScore(const World *world);
 
@@ -117,8 +120,9 @@ bool worldInvincible(const World *world); // any active power-up grants immunity
 float worldInputDir(const World *world);  // -1 while Dizzy reverses steering, else +1
 float worldFog(const World *world);       // Fog timer (0 = clear), drives the dim overlay
 
-// Purchased permanent-upgrade bitmask (UpgradeId bits), set once per run from
-// saved progress before createWorld. Gates the three upgrade effects below.
-void worldSetUpgrades(int mask);
+// Purchased per-powerup upgrade levels (indexed by PuTrack), set once per run
+// from saved progress before createWorld. Drives the spawn/effect/duration
+// scaling and the debuff-suppress roll inside world.c.
+void worldSetUpgrades(const int *puLevel);
 
 #endif // WORLD_H

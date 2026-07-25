@@ -29,6 +29,7 @@ typedef struct {
   bool mouseControl;   // true once the mouse moves; arrows reclaim control
   bool quit;           // set by the menu EXIT button to end the loop
   bool showHelp;       // menu "How to Play" overlay toggled by the ? button
+  bool showMissions;   // menu "Missions" overlay toggled by the MISSIONS button
   float creditsAnim;   // 0 = fullscreen picture, 1 = zoomed out to the CRT
   float creditsStatic; // "change channel" static timer, runs once zoomed out
   bool creditsExiting; // BACK pressed: ramp creditsAnim back to 0, then MENU
@@ -96,17 +97,51 @@ static Rectangle rHelpBtn(void) { return (Rectangle){10, 10, 44, 44}; }
 static Rectangle rHelpClose(void) {
   return centeredBtn(SCREEN_HEIGHT / 2.0f + 168, 180, 54);
 }
-static Rectangle rMenuPlay(void) { return centeredBtn(360, 240, 58); }
-static Rectangle rMenuShop(void) { return centeredBtn(426, 240, 54); }
-static Rectangle rMenuSettings(void) { return centeredBtn(490, 240, 54); }
-static Rectangle rMenuCredits(void) { return centeredBtn(554, 240, 54); }
-static Rectangle rMenuExit(void) { return centeredBtn(618, 240, 54); }
-// Shop screen: 4 skin swatches, 3 upgrade rows, a Back button.
-static Rectangle rShopSkin(int i) { return centeredRow(175, 120, 110, i, 4); }
-static Rectangle rShopUpg(int i) {
-  return (Rectangle){150, 330 + i * 52.0f, 500, 46};
+static Rectangle rMenuPlay(void) { return centeredBtn(352, 240, 56); }
+static Rectangle rMenuShop(void) { return centeredBtn(412, 240, 52); }
+static Rectangle rMenuMissions(void) { return centeredBtn(470, 240, 52); }
+static Rectangle rMenuSettings(void) { return centeredBtn(528, 240, 52); }
+static Rectangle rMenuCredits(void) { return centeredBtn(586, 240, 52); }
+static Rectangle rMenuExit(void) { return centeredBtn(644, 240, 52); }
+static Rectangle rMissionsClose(void) {
+  return centeredBtn(SCREEN_HEIGHT / 2.0f + 168, 180, 54);
 }
-static Rectangle rShopBack(void) { return centeredBtn(710, 200, 50); }
+// Shop screen: 4 skin swatches, then one card per power-up laid out horizontally
+// (like the skins), each card stacking its upgrade axes vertically, and a Back
+// button. Each axis row shows a 5-segment level bar + next cost.
+static Rectangle rShopSkin(int i) { return centeredRow(175, 120, 110, i, 4); }
+// Power-up columns for the upgrade grid: header name, an icon (PowerUpType for
+// drawPowerupGlyph — the Debuffs card borrows the Anchor glyph), and its PuTrack
+// axes (-1 pads the ragged cards — Shield has 2 axes, Debuffs 1).
+static const struct {
+  const char *name;
+  int icon; // PowerUpType
+  int track[3];
+} SHOP_PU[] = {
+    {"MAGNET", POWERUP_MAGNET, {PU_MAGNET_SPAWN, PU_MAGNET_EFFECT, PU_MAGNET_DURATION}},
+    {"ROCKET", POWERUP_ROCKET, {PU_ROCKET_SPAWN, PU_ROCKET_EFFECT, PU_ROCKET_DURATION}},
+    {"BALLOON", POWERUP_BALLOON, {PU_BALLOON_SPAWN, PU_BALLOON_EFFECT, PU_BALLOON_DURATION}},
+    {"SHIELD", POWERUP_SHIELD, {PU_SHIELD_SPAWN, PU_SHIELD_EFFECT, -1}},
+    {"DEBUFFS", POWERUP_ANCHOR, {PU_DEBUFF_SUPPRESS, -1, -1}},
+};
+#define SHOP_PU_N (int)(sizeof(SHOP_PU) / sizeof(SHOP_PU[0]))
+static int shopPuAxes(int p) { // count of real axes on card p (1..3)
+  int n = 0;
+  while (n < 3 && SHOP_PU[p].track[n] >= 0) {
+    n++;
+  }
+  return n;
+}
+// Card holds: title, power-up icon below it, then the axis rows — with generous
+// vertical spacing so the section doesn't crowd.
+static Rectangle rShopUpgCard(int p) {
+  return (Rectangle){22 + p * 154.0f, 336, 138, 312};
+}
+static Rectangle rShopUpgAxis(int p, int a) {
+  Rectangle c = rShopUpgCard(p);
+  return (Rectangle){c.x + 8, c.y + 84 + a * 74.0f, c.width - 16, 52};
+}
+static Rectangle rShopBack(void) { return centeredBtn(712, 200, 48); }
 static Rectangle rCreditsBack(void) {
   return centeredBtn(SCREEN_HEIGHT - 110, 200, 54);
 }
@@ -180,7 +215,7 @@ static void drawHud(const World *world) {
       continue;
     }
     PowerUpDef d = POWERUP_DEFS[t];
-    float frac = fminf(timer / d.duration, 1.0f); // clamp: Long Boost sets timer > base duration
+    float frac = fminf(timer / d.duration, 1.0f); // clamp: a Duration upgrade sets timer > base duration
     DrawRectangleRounded((Rectangle){bx, by, bw, 26}, 0.5f, 8,
                          Fade(BLACK, 0.3f));
     DrawRectangleRounded((Rectangle){bx, by, bw * frac, 26}, 0.5f, 8,
@@ -209,7 +244,7 @@ static void saveHighScore(int best) {
 // velocity carry over, gravity already lives in acceleration.y) for a seamless
 // handoff; otherwise (retry) respawn a fresh player.
 static void startGame(Game *g, bool fromMenu) {
-  worldSetUpgrades(g->progress.upgradeMask); // gate upgrade effects for this run
+  worldSetUpgrades(g->progress.puLevel); // gate upgrade effects for this run
   g->world = createWorld();
   if (!fromMenu) {
     g->player = createPlayer();
@@ -231,6 +266,44 @@ static const char *HELP_LINES[] = {
 };
 #define HELP_LINE_COUNT ((int)(sizeof(HELP_LINES) / sizeof(HELP_LINES[0])))
 
+// Level indicator: a rounded bar split into MAX_UPG_LEVEL segments; the first
+// `level` are filled gold (with a top gloss), the rest dark. Purely visual.
+static void drawLevelBar(float x, float y, float w, float h, int level) {
+  const float gap = 3.0f;
+  float segW = (w - (MAX_UPG_LEVEL - 1) * gap) / MAX_UPG_LEVEL;
+  for (int i = 0; i < MAX_UPG_LEVEL; i++) {
+    Rectangle seg = {x + i * (segW + gap), y, segW, h};
+    bool on = i < level;
+    DrawRectangleRounded(seg, 0.45f, 4, on ? GOLD : Fade(BLACK, 0.45f));
+    if (on) {
+      Rectangle gloss = {seg.x + 2, seg.y + 2, seg.width - 4, h / 2 - 2};
+      DrawRectangleRounded(gloss, 0.5f, 3, Fade(RAYWHITE, 0.3f));
+    }
+  }
+}
+
+// Missions overlay — read-only checklist with rewards, ticked once completed.
+// Same dimmed rounded panel as the how-to-play overlay; toggled from the menu.
+static void drawMissionsOverlay(const Game *g) {
+  const Progress *p = &g->progress;
+  DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.55f));
+  Rectangle panel = {SCREEN_WIDTH / 2.0f - 300, 180, 600, 420};
+  DrawRectangleRounded(panel, 0.08f, 12, Fade(BLACK, 0.55f));
+  DrawRectangleRoundedLines(panel, 0.08f, 12, CANDY_PINK);
+  drawCenteredText("MISSIONS", 210, 48, CANDY_PINK);
+  int y = 300;
+  for (int i = 0; i < MISSION_COUNT; i++) {
+    bool done = missionDone(p, i);
+    drawTextShadow(TextFormat("%s %s", done ? "[x]" : "[ ]", MISSIONS[i].desc),
+                   (int)panel.x + 40, y, 22, done ? GOLD : RAYWHITE);
+    const char *rw = TextFormat("+%d", MISSIONS[i].reward);
+    drawTextShadow(rw, (int)(panel.x + panel.width - 40 - MeasureText(rw, 22)), y,
+                   22, done ? Fade(GOLD, 0.6f) : COIN_LO);
+    y += 46;
+  }
+  uiButton(rMissionsClose(), "GOT IT", ICON_PLAY);
+}
+
 static void drawHelpOverlay(void) {
   DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.55f));
   Rectangle panel = {SCREEN_WIDTH / 2.0f - 300, 180, 600, 420};
@@ -247,16 +320,21 @@ static void drawHelpOverlay(void) {
 
 static void updateMenu(Game *g) {
   updateAttract(&g->player); // demo: blob wanders the menu
-  if (g->showHelp) {         // modal open: only close-input is live
+  if (g->showHelp || g->showMissions) { // modal open: only close-input is live
     if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
         clicked(rHelpClose())) {
-      g->showHelp = false;
+      g->showHelp = g->showMissions = false;
       sfx(SFX_SELECT);
     }
     return;
   }
   if (clicked(rHelpBtn())) {
     g->showHelp = true;
+    sfx(SFX_SELECT);
+    return;
+  }
+  if (clicked(rMenuMissions())) {
+    g->showMissions = true;
     sfx(SFX_SELECT);
     return;
   }
@@ -417,18 +495,25 @@ static void updateShop(Game *g) {
       sfx(SFX_HIT); // can't afford
     }
   }
-  for (int i = 0; i < UPGRADE_COUNT; i++) {
-    if (!clicked(rShopUpg(i))) {
-      continue;
-    }
-    if (upgradeOwned(p, i)) {
-      sfx(SFX_SELECT); // already owned: no-op
-    } else if (tryBuy(p, UPGRADES[i].cost)) {
-      p->upgradeMask |= (1 << i);
-      saveProgress(p);
-      sfx(SFX_POWERUP);
-    } else {
-      sfx(SFX_HIT);
+  for (int pu = 0; pu < SHOP_PU_N; pu++) {
+    for (int a = 0; a < shopPuAxes(pu); a++) {
+      if (!clicked(rShopUpgAxis(pu, a))) {
+        continue;
+      }
+      int track = SHOP_PU[pu].track[a];
+      if (track < 0) {
+        continue; // padded slot (unreachable via shopPuAxes; keeps analyzer happy)
+      }
+      int lvl = upgLevel(p, track);
+      if (lvl >= MAX_UPG_LEVEL) {
+        sfx(SFX_SELECT); // maxed: no-op
+      } else if (tryBuy(p, upgCost(track, lvl))) {
+        p->puLevel[track]++;
+        saveProgress(p);
+        sfx(SFX_POWERUP);
+      } else {
+        sfx(SFX_HIT);
+      }
     }
   }
 }
@@ -446,12 +531,15 @@ static void drawMenu(Game *g) {
                    24, COIN_LO);
   uiButton(rMenuPlay(), "PLAY", ICON_PLAY);
   uiButton(rMenuShop(), "SHOP", ICON_SHOP);
+  uiButton(rMenuMissions(), "MISSIONS", ICON_MISSIONS);
   uiButton(rMenuSettings(), "SETTINGS", ICON_GEAR);
   uiButton(rMenuCredits(), "CREDITS", ICON_HEART);
   uiButton(rMenuExit(), "EXIT", ICON_EXIT);
   uiButton(rHelpBtn(), "?", ICON_NONE);
   if (g->showHelp) {
     drawHelpOverlay();
+  } else if (g->showMissions) {
+    drawMissionsOverlay(g);
   }
 }
 
@@ -743,35 +831,39 @@ static void drawShop(Game *g) {
                    (int)(r.y + r.height - 22), 16, owned ? RAYWHITE : GOLD);
   }
 
-  // Upgrades — one-time unlocks: name + blurb + cost/OWNED.
-  drawCenteredText("UPGRADES", 300, 24, RAYWHITE);
-  for (int i = 0; i < UPGRADE_COUNT; i++) {
-    Rectangle r = rShopUpg(i);
-    bool owned = upgradeOwned(p, i);
-    DrawRectangleRounded(r, 0.3f, 8, Fade(BLACK, owned ? 0.25f : 0.4f));
-    if (!owned && mouseInRect(r)) {
-      DrawRectangleRoundedLines(r, 0.3f, 8, RAYWHITE);
+  // Upgrades — one card per power-up laid out horizontally (like the skins):
+  // title, the power-up icon below it, then the axis rows stacked. Per axis:
+  // short label + next cost, and a 5-segment level bar. Click an axis to buy.
+  drawCenteredText("UPGRADES", 306, 20, RAYWHITE);
+  for (int pu = 0; pu < SHOP_PU_N; pu++) {
+    Rectangle card = rShopUpgCard(pu);
+    DrawRectangleRounded(card, 0.12f, 8, Fade(BLACK, 0.35f));
+    drawTextShadow(SHOP_PU[pu].name,
+                   (int)(card.x + card.width / 2 -
+                         MeasureText(SHOP_PU[pu].name, 18) / 2),
+                   (int)card.y + 12, 18, CANDY_PINK);
+    // Power-up icon between the title and its upgrades.
+    drawPowerupGlyph(SHOP_PU[pu].icon,
+                     (Vector2){card.x + card.width / 2, card.y + 54}, 18.0f,
+                     (float)GetTime());
+    for (int a = 0; a < shopPuAxes(pu); a++) {
+      int track = SHOP_PU[pu].track[a];
+      if (track < 0) {
+        continue; // padded slot (unreachable via shopPuAxes; keeps analyzer happy)
+      }
+      Rectangle ax = rShopUpgAxis(pu, a);
+      int lvl = upgLevel(p, track);
+      bool max = lvl >= MAX_UPG_LEVEL;
+      if (!max && mouseInRect(ax)) {
+        DrawRectangleRounded(ax, 0.25f, 6, Fade(RAYWHITE, 0.1f));
+      }
+      drawTextShadow(PU_UPGRADES[track].label, (int)ax.x + 4, (int)ax.y, 16,
+                     max ? GOLD : RAYWHITE);
+      const char *tag = max ? "MAX" : TextFormat("%d", upgCost(track, lvl));
+      drawTextShadow(tag, (int)(ax.x + ax.width - 4 - MeasureText(tag, 16)),
+                     (int)ax.y, 16, max ? Fade(GOLD, 0.7f) : GOLD);
+      drawLevelBar(ax.x + 2, ax.y + 28, ax.width - 4, 16, lvl);
     }
-    drawTextShadow(UPGRADES[i].name, (int)r.x + 16, (int)r.y + 5, 22,
-                   owned ? GOLD : RAYWHITE);
-    drawTextShadow(UPGRADES[i].desc, (int)r.x + 16, (int)r.y + 28, 14,
-                   Fade(RAYWHITE, 0.8f));
-    const char *tag = owned ? "OWNED" : TextFormat("%d", UPGRADES[i].cost);
-    drawTextShadow(tag, (int)(r.x + r.width - 20 - MeasureText(tag, 20)),
-                   (int)r.y + 14, 20, owned ? RAYWHITE : GOLD);
-  }
-
-  // Missions — read-only checklist with the reward, ticked once completed.
-  drawCenteredText("MISSIONS", 490, 24, RAYWHITE);
-  int my = 524;
-  for (int i = 0; i < MISSION_COUNT; i++) {
-    bool done = missionDone(p, i);
-    drawTextShadow(TextFormat("%s %s", done ? "[x]" : "[ ]", MISSIONS[i].desc),
-                   150, my, 18, done ? GOLD : RAYWHITE);
-    const char *rw = TextFormat("+%d", MISSIONS[i].reward);
-    drawTextShadow(rw, SCREEN_WIDTH - 150 - MeasureText(rw, 18), my, 18,
-                   done ? Fade(GOLD, 0.6f) : COIN_LO);
-    my += 26;
   }
 
   uiButton(rShopBack(), "BACK", ICON_BACK);

@@ -14,14 +14,25 @@ const SkinDef SKINS[] = {
 };
 const int SKIN_COUNT = (int)(sizeof(SKINS) / sizeof(SKINS[0]));
 
-const UpgradeDef UPGRADES[] = {
-    [UPG_HEADSTART] = {"HEAD START", "Begin each run shielded", 200},
-    [UPG_LONGBOOST] = {"LONG BOOST", "Power-ups last 50% longer", 250},
-    [UPG_COMBOGRACE] = {"COMBO GRACE", "Combo holds 50% longer", 150},
+const PuUpgradeDef PU_UPGRADES[PU_UPGRADE_COUNT] = {
+    // label, base cost (level cost = base * (level+1)). Spawn cheapest, Effect
+    // dearest; the shared debuff-suppress is the premium sink.
+    // Short axis-only labels: the SHOP card header supplies the power-up name.
+    [PU_MAGNET_SPAWN] = {"Spawn", 40},   [PU_MAGNET_EFFECT] = {"Range", 60},
+    [PU_MAGNET_DURATION] = {"Time", 50},
+    [PU_ROCKET_SPAWN] = {"Spawn", 40},   [PU_ROCKET_EFFECT] = {"Thrust", 60},
+    [PU_ROCKET_DURATION] = {"Time", 50},
+    [PU_BALLOON_SPAWN] = {"Spawn", 40},  [PU_BALLOON_EFFECT] = {"Lift", 60},
+    [PU_BALLOON_DURATION] = {"Time", 50},
+    [PU_SHIELD_SPAWN] = {"Spawn", 40},   [PU_SHIELD_EFFECT] = {"Hits", 80},
+    [PU_DEBUFF_SUPPRESS] = {"Rarer", 100},
 };
-// Enum-indexed: a new UpgradeId without a row here loops past the array end.
-STATIC_ASSERT(sizeof(UPGRADES) / sizeof(UPGRADES[0]) == UPGRADE_COUNT,
-              upgrades_full);
+// Enum-indexed: a new PuTrack without a row here loops past the array end, and
+// puLevel[] in Progress must match this size (both keyed by PU_UPGRADE_COUNT).
+STATIC_ASSERT(sizeof(PU_UPGRADES) / sizeof(PU_UPGRADES[0]) == PU_UPGRADE_COUNT,
+              pu_upgrades_full);
+
+int upgCost(int track, int level) { return PU_UPGRADES[track].base * (level + 1); }
 
 const MissionDef MISSIONS[] = {
     {"Reach the Neon Maze", MSTAT_LEVEL, 2, 100},
@@ -35,9 +46,7 @@ const int MISSION_COUNT = (int)(sizeof(MISSIONS) / sizeof(MISSIONS[0]));
 bool skinOwned(const Progress *p, int i) {
   return (p->skinMask & (1 << i)) != 0;
 }
-bool upgradeOwned(const Progress *p, int id) {
-  return (p->upgradeMask & (1 << id)) != 0;
-}
+int upgLevel(const Progress *p, int track) { return p->puLevel[track]; }
 bool missionDone(const Progress *p, int i) {
   return (p->missionMask & (1 << i)) != 0;
 }
@@ -82,12 +91,15 @@ int bankRun(Progress *p, const World *w) {
 }
 
 Progress loadProgress(void) {
-  Progress p = {0, 1, 0, 0, 0}; // fresh: only the free default skin owned
+  Progress p = {0, 1, 0, 0, {0}}; // fresh: only the free default skin owned
   p.coinBank = configGetInt("coinBank", p.coinBank);
   p.skinMask = configGetInt("skinMask", p.skinMask);
   p.selectedSkin = configGetInt("selectedSkin", p.selectedSkin);
-  p.upgradeMask = configGetInt("upgradeMask", p.upgradeMask);
   p.missionMask = configGetInt("missionMask", p.missionMask);
+  for (int i = 0; i < PU_UPGRADE_COUNT; i++) {
+    int lvl = configGetInt(TextFormat("pu%d", i), 0);
+    p.puLevel[i] = lvl < 0 ? 0 : (lvl > MAX_UPG_LEVEL ? MAX_UPG_LEVEL : lvl);
+  }
   // Guard a missing/garbage-partial file: default skin always owned, bank
   // non-negative, selection must point at an owned skin.
   p.skinMask |= 1;
@@ -105,7 +117,9 @@ void saveProgress(const Progress *p) {
   configSetInt("coinBank", p->coinBank);
   configSetInt("skinMask", p->skinMask);
   configSetInt("selectedSkin", p->selectedSkin);
-  configSetInt("upgradeMask", p->upgradeMask);
   configSetInt("missionMask", p->missionMask);
+  for (int i = 0; i < PU_UPGRADE_COUNT; i++) {
+    configSetInt(TextFormat("pu%d", i), p->puLevel[i]);
+  }
   configSave("save.json");
 }

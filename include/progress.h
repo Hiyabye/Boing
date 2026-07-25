@@ -6,16 +6,40 @@
 
 #include <stdbool.h>
 
-// Persistent meta-progression: a coin bank that survives death, plus the
-// unlock state for skins, permanent upgrades, and completed missions. Saved as
-// 5 keys in the shared "save.json" beside the exe (via persist) —
-// runtime-generated, off the 1.44MB budget.
+// Per-powerup upgrade tracks — each good power-up gets Spawn/Effect/Duration
+// axes, plus one shared "Fewer Debuffs". 5 buyable levels each; the effect
+// magnitudes live in world.c (tuning knobs), only the enum + shop cost/label
+// live here. Shield has no Duration axis (its duration is a flag, until-hit).
+// Adding a track is one enum value + one PU_UPGRADES row. (Declared before
+// Progress so puLevel[] can be sized by PU_UPGRADE_COUNT — no magic literal.)
+#define MAX_UPG_LEVEL 5
+typedef enum {
+  PU_MAGNET_SPAWN, PU_MAGNET_EFFECT, PU_MAGNET_DURATION,
+  PU_ROCKET_SPAWN, PU_ROCKET_EFFECT, PU_ROCKET_DURATION,
+  PU_BALLOON_SPAWN, PU_BALLOON_EFFECT, PU_BALLOON_DURATION,
+  PU_SHIELD_SPAWN, PU_SHIELD_EFFECT, // Shield: no duration axis (until-hit flag)
+  PU_DEBUFF_SUPPRESS,                // shared "Fewer Debuffs"
+  PU_UPGRADE_COUNT
+} PuTrack;
+typedef struct {
+  const char *label;
+  int base; // level cost = base * (level + 1), so prices rise per level
+} PuUpgradeDef;
+extern const PuUpgradeDef PU_UPGRADES[PU_UPGRADE_COUNT];
+// Cost to buy the next level from `level` (level is the count already owned).
+int upgCost(int track, int level);
+
+// Persistent meta-progression: a coin bank that survives death, plus the unlock
+// state for skins, per-powerup upgrade levels, and completed missions. Saved as
+// individual int keys in the shared "save.json" beside the exe (via persist) —
+// the four scalars plus one "pu<i>" key per upgrade track; runtime-generated,
+// off the 1.44MB budget.
 typedef struct {
   int coinBank;     // spendable currency (run coins banked at death + rewards)
   int skinMask;     // bit i set = skin i owned (bit 0 always the free default)
   int selectedSkin; // index into SKINS, must be owned
-  int upgradeMask;  // bit UPG_* set = that upgrade purchased
   int missionMask;  // bit i set = mission i completed (reward already paid)
+  int puLevel[PU_UPGRADE_COUNT]; // per-track upgrade levels, 0..MAX_UPG_LEVEL
 } Progress;
 
 // Unlockable blob skins — original candy palettes, row 0 is the free default.
@@ -27,20 +51,6 @@ typedef struct {
 } SkinDef;
 extern const SkinDef SKINS[];
 extern const int SKIN_COUNT;
-
-// Permanent upgrades — one-time unlocks (bit index into upgradeMask), no tiers.
-// Effects live at their hook sites in world.c, gated on worldSetUpgrades().
-typedef enum {
-  UPG_HEADSTART,  // begin each run with a Shield active
-  UPG_LONGBOOST,  // good power-ups last 50% longer
-  UPG_COMBOGRACE, // combo chain holds 50% longer between coins
-  UPGRADE_COUNT
-} UpgradeId;
-typedef struct {
-  const char *name, *desc;
-  int cost;
-} UpgradeDef;
-extern const UpgradeDef UPGRADES[];
 
 // Missions — data-driven threshold checks scored once at game over against the
 // run's stats. No per-mission predicate code, no live per-frame tracking.
@@ -63,7 +73,7 @@ Progress loadProgress(void);
 void saveProgress(const Progress *p);
 
 bool skinOwned(const Progress *p, int i);
-bool upgradeOwned(const Progress *p, int id);
+int upgLevel(const Progress *p, int track); // levels owned on a PuTrack (0..MAX)
 bool missionDone(const Progress *p, int i);
 // Spend `cost` from the bank if affordable; returns whether it went through.
 // Caller sets the owning bit + saves on true.

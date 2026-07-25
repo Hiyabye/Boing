@@ -1,17 +1,35 @@
 #include "world.h"
 
 #include "core.h"
-#include "progress.h" // UpgradeId bits for the upgrade hooks
+#include "progress.h" // PuTrack + MAX_UPG_LEVEL for the upgrade hooks
 #include "sound.h"
 #include "theme.h"
 
 #include <math.h>
 
-// ponytail: purchased upgrades passed in as a module global (mirrors gTheme),
-// so createWorld/updateWorld callers don't thread a param. Set per run start.
-static int gUpgrades = 0;
-void worldSetUpgrades(int mask) { gUpgrades = mask; }
-static bool upg(UpgradeId id) { return (gUpgrades & (1 << id)) != 0; }
+// ponytail: purchased upgrade levels passed in as a module global (mirrors
+// gTheme), so createWorld/updateWorld callers don't thread a param. Set per run
+// start; indexed by PuTrack.
+static int gPuUpg[PU_UPGRADE_COUNT] = {0};
+void worldSetUpgrades(const int *puLevel) {
+  for (int i = 0; i < PU_UPGRADE_COUNT; i++) {
+    gPuUpg[i] = puLevel[i];
+  }
+}
+
+// Per-level effect scaling (tuning knobs — game feel lives here, not in the
+// shop table). A track's effect grows 1 + STEP*level; spawn weight grows by
+// whole points; the shared debuff-suppress subtracts levels from the bad roll.
+#define EFFECT_STEP 0.14f // +14%/level: magnet range, rocket thrust, balloon lift
+#define DUR_STEP 0.12f    // +12%/level good-power-up duration (was flat +50% LONGBOOST)
+#define SPAWN_STEP 1      // +1 spawnWeight/level for the upgraded good power-up
+
+// Effect multiplier (>= 1) for a good power-up's Effect axis.
+static float effectMul(PuTrack track) {
+  return 1.0f + EFFECT_STEP * gPuUpg[track];
+}
+// Duration multiplier (>= 1) for a good power-up's Duration axis.
+static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 
 // Tuning knobs — hand-tune after playtesting.
 #define BOUNCE_VELOCITY -37.0f // floor bounce at the start of a run
@@ -135,10 +153,6 @@ World createWorld(void) {
   world.powerupSpawnY = FLOOR_Y - POWERUP_SPACING;
   world.lastSpawnX = SCREEN_WIDTH / 2.0f;
   world.bestY = FLOOR_Y;
-  if (upg(UPG_HEADSTART)) {
-    world.powerTimer[POWERUP_SHIELD] =
-        POWERUP_DEFS[POWERUP_SHIELD].duration; // opening shield until first hit
-  }
   return world;
 }
 
@@ -204,23 +218,38 @@ static void spawnMonsters(World *world) {
   }
 }
 
-// Weighted pick over POWERUP_DEFS[].spawnWeight, restricted to one category
-// (good or debuff). Both categories have positive total weight, so the fallback
-// return is unreachable.
+// Spawn-axis upgrade: extra weight for an upgraded good power-up so it dominates
+// good picks. Debuffs (and untracked types) get no bonus.
+static int spawnWeightOf(PowerUpType t) {
+  int bonus = 0;
+  switch (t) {
+  case POWERUP_MAGNET:  bonus = SPAWN_STEP * gPuUpg[PU_MAGNET_SPAWN]; break;
+  case POWERUP_ROCKET:  bonus = SPAWN_STEP * gPuUpg[PU_ROCKET_SPAWN]; break;
+  case POWERUP_BALLOON: bonus = SPAWN_STEP * gPuUpg[PU_BALLOON_SPAWN]; break;
+  case POWERUP_SHIELD:  bonus = SPAWN_STEP * gPuUpg[PU_SHIELD_SPAWN]; break;
+  default: break;
+  }
+  return POWERUP_DEFS[t].spawnWeight + bonus;
+}
+
+// Weighted pick over spawnWeightOf(), restricted to one category (good or
+// debuff). Both categories have positive total weight, so the fallback return
+// is unreachable.
 static PowerUpType pickPowerup(bool debuff) {
   int total = 0;
   for (int k = 0; k < POWERUP_COUNT; k++) {
     if (POWERUP_DEFS[k].debuff == debuff) {
-      total += POWERUP_DEFS[k].spawnWeight;
+      total += spawnWeightOf(k);
     }
   }
   int roll = GetRandomValue(0, total - 1);
   for (PowerUpType t = 0; t < POWERUP_COUNT; t++) {
     if (POWERUP_DEFS[t].debuff == debuff) {
-      if (roll < POWERUP_DEFS[t].spawnWeight) {
+      int w = spawnWeightOf(t);
+      if (roll < w) {
         return t;
       }
-      roll -= POWERUP_DEFS[t].spawnWeight;
+      roll -= w;
     }
   }
   return POWERUP_MAGNET;
@@ -230,7 +259,10 @@ static void spawnPowerups(World *world) {
   // Debuff chance ramps with altitude: GetRandomValue(0,4) < d gives L0:0/5 bad
   // .. L3+:3/5 bad (strictly-less, so level 0 is all good pickups — unlike
   // spawnMonsters' <= d, which puts a monster on 1/5 of bands even at L0).
-  int d = difficulty(world);
+  // "Fewer Debuffs" upgrade subtracts levels from the effective altitude, so
+  // higher levels make bad pickups rarer (and clear them entirely once the
+  // level reaches d).
+  int d = difficulty(world) - gPuUpg[PU_DEBUFF_SUPPRESS];
   while (world->powerupSpawnY > world->cameraY - SCREEN_HEIGHT) {
     FIND_FREE(s, powerups, MAX_POWERUPS);
     if (s >= 0) {
@@ -312,8 +344,7 @@ static void collectCoins(World *world, Player *player) {
       if (world->combo > world->bestCombo) {
         world->bestCombo = world->combo;
       }
-      world->comboTimer = upg(UPG_COMBOGRACE) ? COMBO_TIMEOUT * 1.5f
-                                              : COMBO_TIMEOUT; // idle-reset window
+      world->comboTimer = COMBO_TIMEOUT; // idle-reset window
       world->comboBonus += world->combo - 1; // rising multiplier bonus
       int pop = 14 + world->combo * 2;
       if (pop > 40) {
@@ -347,12 +378,13 @@ static void moveCoins(World *world) {
 // Coin magnet: while active, drag nearby coins toward the player so the
 // existing overlap check sweeps them up next frame.
 static void applyMagnet(World *world, const Player *player) {
+  float radius = MAGNET_RADIUS * effectMul(PU_MAGNET_EFFECT); // Effect: wider reach
   FOREACH_ACTIVE(coins, MAX_COINS, i) {
     Vector2 c = world->coins[i].position;
     float dx = player->position.x - c.x;
     float dy = player->position.y - c.y;
     float d = sqrtf(dx * dx + dy * dy);
-    if (d > 0.0f && d < MAGNET_RADIUS) {
+    if (d > 0.0f && d < radius) {
       world->coins[i].position.x += dx / d * MAGNET_PULL;
       world->coins[i].position.y += dy / d * MAGNET_PULL;
     }
@@ -370,8 +402,13 @@ static void collectPowerups(World *world, Player *player) {
       world->flash = 1.0f;
       world->powerups[i].active = false;
       float dur = POWERUP_DEFS[t].duration;
-      if (upg(UPG_LONGBOOST) && !POWERUP_DEFS[t].debuff) {
-        dur *= 1.5f; // Long Boost: good power-ups linger longer
+      // Duration upgrade: scale each good, timed power-up by its own track.
+      switch (t) {
+      case POWERUP_MAGNET:  dur *= durMul(PU_MAGNET_DURATION); break;
+      case POWERUP_ROCKET:  dur *= durMul(PU_ROCKET_DURATION); break;
+      case POWERUP_BALLOON: dur *= durMul(PU_BALLOON_DURATION); break;
+      case POWERUP_SHIELD:  world->shieldHits = 1 + gPuUpg[PU_SHIELD_EFFECT]; break;
+      default: break; // debuffs and any untracked type keep base duration
       }
       world->powerTimer[t] = dur;
       world->shake = fmaxf(world->shake, POWERUP_DEFS[t].pickupShake);
@@ -405,7 +442,12 @@ static void updateMonsters(World *world, Player *player) {
         m->active = false;
         world->shake = fmaxf(world->shake, SHAKE_SPLAT);
         world->hitstop = 3; // brief freeze reads as impact
-        world->powerTimer[POWERUP_SHIELD] = 0.0f; // shield breaks on the hit it absorbed
+        // Shield absorbs this hit; break only once its charges run out (Effect
+        // upgrade grants extra charges). Rocket-only invincibility leaves the
+        // shield untouched (shieldHits is 0 when no shield is active).
+        if (world->powerTimer[POWERUP_SHIELD] > 0.0f && --world->shieldHits <= 0) {
+          world->powerTimer[POWERUP_SHIELD] = 0.0f;
+        }
         sfx(SFX_SPLAT);
       } else {
         // Mega-Jump-style: a hit costs coins (they scatter out) and knocks you
@@ -489,11 +531,11 @@ void updateWorld(World *world, Player *player) {
     player->velocity.y += ANCHOR_GRAVITY; // heavier pull; rocket below overrides
   }
   if (world->powerTimer[POWERUP_ROCKET] > 0.0f) {
-    player->velocity.y = ROCKET_VELOCITY;
+    player->velocity.y = ROCKET_VELOCITY * effectMul(PU_ROCKET_EFFECT); // Effect: more thrust
   }
-  if (world->powerTimer[POWERUP_BALLOON] > 0.0f &&
-      player->velocity.y > BALLOON_LIFT) {
-    player->velocity.y = BALLOON_LIFT; // never plummet; faster coin boosts win
+  float lift = BALLOON_LIFT * effectMul(PU_BALLOON_EFFECT); // Effect: stronger lift
+  if (world->powerTimer[POWERUP_BALLOON] > 0.0f && player->velocity.y > lift) {
+    player->velocity.y = lift; // never plummet; faster coin boosts win
   }
   // ...then tick every power-up timer down uniformly.
   for (int t = 0; t < POWERUP_COUNT; t++) {
@@ -710,7 +752,14 @@ static void drawPowerUp(const PowerUp *pu, float t) {
   float pulse = 0.25f + 0.12f * sinf(t * 4.0f + pu->position.y * 0.05f);
   DrawCircle(c.x, c.y, R * (1.6f + 0.15f * sinf(t * 4.0f)),
              Fade(RAYWHITE, pulse)); // pulsing halo
-  switch (pu->type) {
+  drawPowerupGlyph(pu->type, c, R, t);
+}
+
+// The glyph-only power-up icon (no halo, no bob) at center `c`, radius `R` —
+// shared by the world draw above and the SHOP upgrade cards. Colors read the
+// current gTheme. `t` drives the small self-animations (spark, spin, flame).
+void drawPowerupGlyph(PowerUpType type, Vector2 c, float R, float t) {
+  switch (type) {
   case POWERUP_MAGNET: {
     // Horseshoe: two red legs joined by a top arc, silver pole tips, a spark.
     Color red = MAGNET_RED, redDk = ColorBrightness(MAGNET_RED, -0.3f);

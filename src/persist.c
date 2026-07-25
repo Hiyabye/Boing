@@ -4,11 +4,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-// ponytail: fixed 16-key map, grow the constant if more save fields appear
+// ponytail: fixed 24-key map, grow the constant if more save fields appear
+// (currently ~20: highScore + 3 settings + 4 progress + 12 powerup tracks)
 static struct {
   char key[24];
   int val;
-} gMap[16];
+} gMap[24];
 static int gCount;
 
 static int mapFind(const char *key) {

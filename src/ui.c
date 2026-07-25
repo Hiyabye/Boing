@@ -93,6 +93,16 @@ void drawIcon(IconKind kind, float cx, float cy, float s, Color c) {
     DrawEllipse(cx, cy, s * 0.62f, s * 0.28f, c);
     DrawEllipse(cx, cy - s * 0.42f, s * 0.62f, s * 0.28f, c);
     break;
+  case ICON_MISSIONS: { // checklist: a check tick beside two task lines
+    Vector2 a = {cx - s * 0.62f, cy + s * 0.02f};
+    Vector2 b = {cx - s * 0.36f, cy + s * 0.34f};
+    Vector2 d = {cx + s * 0.02f, cy - s * 0.4f};
+    DrawLineEx(a, b, s * 0.2f, c);
+    DrawLineEx(b, d, s * 0.2f, c);
+    DrawRectangle(cx + s * 0.16f, cy - s * 0.34f, s * 0.5f, s * 0.16f, c);
+    DrawRectangle(cx + s * 0.16f, cy + s * 0.14f, s * 0.5f, s * 0.16f, c);
+    break;
+  }
   case ICON_NONE:
     break;
   }
