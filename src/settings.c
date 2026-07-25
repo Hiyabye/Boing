@@ -6,10 +6,10 @@
 #include "theme.h"
 #include "ui.h"
 
-static const int FPS_OPTIONS[] = {30, 60, 120, 144};
+static const int FPS_OPTIONS[] = {30, 60, 90, 120, 144, 165, 240};
 // Square window sizes — game renders at a fixed SCREEN_WIDTH x SCREEN_HEIGHT
 // target and is blitted scaled to the window, so any square size works.
-static const int RES_OPTIONS[] = {600, 800, 1000, 1200};
+static const int RES_OPTIONS[] = {600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400};
 #define FPS_COUNT ((int)(sizeof(FPS_OPTIONS) / sizeof(FPS_OPTIONS[0])))
 #define RES_COUNT ((int)(sizeof(RES_OPTIONS) / sizeof(RES_OPTIONS[0])))
 
@@ -124,7 +124,7 @@ static const char *formatValue(const Settings *s, int row) {
 
 Settings loadSettings(void) {
   Settings s = {.fpsIndex = 1,
-                .resIndex = 1,
+                .resIndex = 2,
                 .musicVolume = 1.0f,
                 .sfxVolume = 1.0f}; // 60fps, 800, both max
   s.fpsIndex = configGetInt("fpsIndex", s.fpsIndex);
