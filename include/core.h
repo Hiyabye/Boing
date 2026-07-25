@@ -6,6 +6,7 @@
 #define FLOOR_Y (SCREEN_HEIGHT * 4.0f / 5.0f) // starting ground line
 
 typedef enum {
+  GAMESTATE_SPLASH, // one-time startup logo, shown once before the menu
   GAMESTATE_MENU,
   GAMESTATE_SETTINGS,
   GAMESTATE_PLAYING,

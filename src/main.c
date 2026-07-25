@@ -33,8 +33,11 @@ typedef struct {
   float creditsStatic; // "change channel" static timer, runs once zoomed out
   bool creditsExiting; // BACK pressed: ramp creditsAnim back to 0, then MENU
   bool newBest;        // last run beat the high score (game-over banner)
+  float splashT;       // startup-splash elapsed seconds (GetTime is never reset)
 } Game;
 
+#define SPLASH_MIN 2.0f // splash holds at least this long (arcade beat), longer
+                        // if assets are still preloading on a slow machine
 #define FIXED_DT (1.0f / 60.0f)
 #define MAX_FRAME_TIME 0.25f // clamp on a slow frame so physics can't spiral
 
@@ -762,6 +765,7 @@ static void drawShop(Game *g) {
 // between the two gameplay tracks as the theme morphs mid-climb.
 static int trackForState(GameState state) {
   switch (state) {
+  case GAMESTATE_SPLASH:
   case GAMESTATE_MENU:
   case GAMESTATE_CREDITS:
   case GAMESTATE_SETTINGS:
@@ -775,12 +779,79 @@ static int trackForState(GameState state) {
 }
 
 // ---------------------------------------------------------------------------
+// SPLASH — one-time startup logo (gold serif "H" on white + spinning loader).
+// Cosmetic: everything here is procedural, there's nothing to actually load.
+// ---------------------------------------------------------------------------
+static void updateSplash(Game *g) {
+  // Bake one music track per frame. Each bake is heavy (a track is millions of
+  // samples), so those frames' GetFrameTime is huge — don't count them toward
+  // the arcade beat or it'd be eaten by the load and the splash would blink by.
+  // Freeze the timer until fully loaded; only smooth post-load frames count.
+  if (!audioPreloadStep())
+    return;
+  g->splashT += GetFrameTime();
+  // Loaded: hold the arcade-beat minimum, or let an impatient tap skip it.
+  if (g->splashT >= SPLASH_MIN || GetKeyPressed() ||
+      IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+    gotoState(g, GAMESTATE_MENU);
+}
+
+static void drawSplash(Game *g) {
+  (void)g; // timer lives in updateSplash; the logo draws the same every frame
+  DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, RAYWHITE);
+
+  // Solid, no fade: the logo must be visible from the first frame — through the
+  // whole preload (which freezes splashT), not just the post-load arcade beat.
+  float a = 1.0f;
+  Color hi = {255, 228, 140, 255}; // light gold (top)
+  Color lo = {198, 148, 34, 255};  // deep gold (bottom)
+  float cx = SCREEN_WIDTH / 2.0f, cy = 340.0f;
+
+  // Serif "H" as primitive rects: 2 columns + crossbar + 4 serif caps.
+  Rectangle parts[] = {
+      {cx - 90, cy - 110, 40, 220}, // left column
+      {cx + 50, cy - 110, 40, 220}, // right column
+      {cx - 50, cy - 20, 100, 40},  // crossbar
+      {cx - 105, cy - 110, 70, 16}, // serif: top-left
+      {cx - 105, cy + 94, 70, 16},  // serif: bottom-left
+      {cx + 35, cy - 110, 70, 16},  // serif: top-right
+      {cx + 35, cy + 94, 70, 16},   // serif: bottom-right
+  };
+  int n = sizeof(parts) / sizeof(parts[0]);
+
+  for (int i = 0; i < n; i++) { // soft drop shadow
+    Rectangle s = parts[i];
+    s.x += 7;
+    s.y += 7;
+    DrawRectangleRec(s, Fade(BLACK, 0.16f * a));
+  }
+  for (int i = 0; i < n; i++) // gold gradient fill
+    DrawRectangleGradientV(parts[i].x, parts[i].y, parts[i].width,
+                           parts[i].height, Fade(hi, a), Fade(lo, a));
+
+  // Thin flourish underline with end dots.
+  DrawLineEx((Vector2){cx - 100, cy + 150}, (Vector2){cx + 100, cy + 150}, 3,
+             Fade(lo, a));
+  DrawCircleV((Vector2){cx - 100, cy + 150}, 4, Fade(lo, a));
+  DrawCircleV((Vector2){cx + 100, cy + 150}, 4, Fade(lo, a));
+
+  // Spinning ring loader: faint full track + a rotating 270-degree arc.
+  Vector2 c = {cx, 590};
+  DrawRing(c, 20, 27, 0, 360, 48, Fade(lo, 0.15f * a));
+  float start = GetTime() * 180.0f;
+  DrawRing(c, 20, 27, start, start + 270, 48, Fade(lo, a));
+
+  drawCenteredText("LOADING", 636, 20, Fade(lo, a));
+}
+
+// ---------------------------------------------------------------------------
 // FSM dispatch table
 // ---------------------------------------------------------------------------
 static const struct {
   void (*update)(Game *);
   void (*draw)(Game *);
 } STATES[] = {
+    [GAMESTATE_SPLASH] = {updateSplash, drawSplash},
     [GAMESTATE_MENU] = {updateMenu, drawMenu},
     [GAMESTATE_SETTINGS] = {updateSettingsState, drawSettingsState},
     [GAMESTATE_PLAYING] = {updatePlaying, drawPlay},
@@ -811,7 +882,7 @@ int main(void) {
   Progress progress = loadProgress();
   setPlayerSkin(SKINS[progress.selectedSkin].character); // equip saved skin
   Game game = {
-      .state = GAMESTATE_MENU,
+      .state = GAMESTATE_SPLASH,
       .prevState = GAMESTATE_MENU,
       .player = createPlayer(),
       .world = createWorld(),

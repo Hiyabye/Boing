@@ -7,6 +7,12 @@ void initAudio(AudioStream *stream);
 void updateAudio(AudioStream *stream);
 void deinitAudio(AudioStream *stream);
 
+// Prerender one not-yet-baked music track per call (each is heavy — millions of
+// samples). Returns true once every track is baked. The startup splash drives
+// this so the load streams in behind the logo instead of freezing the window;
+// until a track is baked it plays as silence (updateAudio guards it).
+bool audioPreloadStep(void);
+
 // Music track ids (indices into TRACKS[] in sound.c). 0..3 are the four level
 // tracks (theme.c's THEMES[].track uses those bare literals, one per climb
 // band); menu and game over are FSM-driven (main.c), not themes.

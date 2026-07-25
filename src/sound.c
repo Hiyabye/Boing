@@ -781,8 +781,8 @@ STATIC_ASSERT(TRACK_COUNT == TRACK_GAMEOVER + 1, tracks_full);
 static float *loopBuffer[TRACK_COUNT];
 static int loopSamples[TRACK_COUNT]; // per-track loop length in samples
 static int loopPos[TRACK_COUNT];     // per-track playback position
-static int curTrack = 0;             // track fading in / currently playing
-static int prevTrack = 0;            // track fading out
+static int curTrack = TRACK_MENU;    // track fading in / currently playing
+static int prevTrack = TRACK_MENU;   // track fading out
 static float fade = 1.0f; // 0..1 weight of curTrack (1 = crossfade complete)
 // Crossfade duration in samples (~2s).
 #define FADE_SAMPLES (2 * SAMPLE_RATE)
@@ -1164,12 +1164,25 @@ void initAudio(AudioStream *stream) {
   InitAudioDevice();
   SetAudioStreamBufferSizeDefault(BUFFER_SIZE);
 
-  for (int t = 0; t < TRACK_COUNT; t++) {
-    buildLoop(t);
-  }
+  // Only the menu/splash track is baked up front (it's what plays first, and
+  // curTrack points at it). The rest stream in via audioPreloadStep() during
+  // the startup splash so the heavy prerender doesn't freeze the window.
+  buildLoop(TRACK_MENU);
 
   *stream = LoadAudioStream(SAMPLE_RATE, 32, 1);
   PlayAudioStream(*stream);
+}
+
+// Bake the next un-baked track. Marches an index forward so a failed malloc
+// (buildLoop leaves the slot NULL) isn't retried forever — it still counts as
+// done. Returns true once all TRACK_COUNT tracks have been attempted.
+bool audioPreloadStep(void) {
+  static int next = 0;
+  if (next >= TRACK_COUNT) {
+    return true;
+  }
+  buildLoop(next++); // idempotent: TRACK_MENU (already baked) is a no-op
+  return next >= TRACK_COUNT;
 }
 
 void updateAudio(AudioStream *stream) {
@@ -1181,14 +1194,19 @@ void updateAudio(AudioStream *stream) {
   for (int i = 0; i < BUFFER_SIZE; i++) {
     // Crossfade the outgoing and incoming tracks (both share loopPos/length).
     // A track whose loop failed to allocate is NULL — treat it as silence.
-    float cur =
-        loopBuffer[curTrack] ? loopBuffer[curTrack][loopPos[curTrack]] : 0.0f;
-    float prev = loopBuffer[prevTrack]
+    // A track not yet baked (splash still preloading) has loopSamples 0 — treat
+    // it as silence and skip its advance so the modulo below can't divide by 0.
+    float cur = (loopBuffer[curTrack] && loopSamples[curTrack])
+                    ? loopBuffer[curTrack][loopPos[curTrack]]
+                    : 0.0f;
+    float prev = (loopBuffer[prevTrack] && loopSamples[prevTrack])
                      ? loopBuffer[prevTrack][loopPos[prevTrack]]
                      : 0.0f;
     float music = fade * cur + (1.0f - fade) * prev;
-    loopPos[curTrack] = (loopPos[curTrack] + 1) % loopSamples[curTrack];
-    if (prevTrack != curTrack) {
+    if (loopSamples[curTrack]) {
+      loopPos[curTrack] = (loopPos[curTrack] + 1) % loopSamples[curTrack];
+    }
+    if (prevTrack != curTrack && loopSamples[prevTrack]) {
       loopPos[prevTrack] = (loopPos[prevTrack] + 1) % loopSamples[prevTrack];
     }
     if (fade < 1.0f) {
