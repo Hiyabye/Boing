@@ -74,7 +74,7 @@ const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
     [POWERUP_MAGNET] = {480.0f, SKYBLUE, "MAGNET", 3, 0.0f, false, false}, // ~8s
     [POWERUP_ROCKET] = {150.0f, ORANGE, "ROCKET", 3, SHAKE_LAUNCH, true, false}, // ~2.5s
     [POWERUP_BALLOON] = {360.0f, LIME, "BALLOON", 3, 0.0f, false, false},        // ~6s
-    [POWERUP_SHIELD] = {480.0f, GOLD, "SHIELD", 3, SHAKE_LAUNCH, true, false},   // ~8s
+    [POWERUP_SHIELD] = {1.0f, GOLD, "SHIELD", 3, SHAKE_LAUNCH, true, false}, // flag: lasts until a monster hit (excluded from the tick-down; HUD bar stays full)
     // Debuffs: no boost, no immunity, SAD reaction + SFX_HIT on pickup. All ~3s
     // (short — Anchor/Dizzy are run-ending at 5s).
     [POWERUP_ANCHOR] = {180.0f, DARKGRAY, "ANCHOR", 1, SHAKE_HIT, false, true}, // ~3s
@@ -136,7 +136,8 @@ World createWorld(void) {
   world.lastSpawnX = SCREEN_WIDTH / 2.0f;
   world.bestY = FLOOR_Y;
   if (upg(UPG_HEADSTART)) {
-    world.powerTimer[POWERUP_SHIELD] = 180.0f; // ~3s opening shield
+    world.powerTimer[POWERUP_SHIELD] =
+        POWERUP_DEFS[POWERUP_SHIELD].duration; // opening shield until first hit
   }
   return world;
 }
@@ -404,6 +405,7 @@ static void updateMonsters(World *world, Player *player) {
         m->active = false;
         world->shake = fmaxf(world->shake, SHAKE_SPLAT);
         world->hitstop = 3; // brief freeze reads as impact
+        world->powerTimer[POWERUP_SHIELD] = 0.0f; // shield breaks on the hit it absorbed
         sfx(SFX_SPLAT);
       } else {
         // Mega-Jump-style: a hit costs coins (they scatter out) and knocks you
@@ -495,12 +497,19 @@ void updateWorld(World *world, Player *player) {
   }
   // ...then tick every power-up timer down uniformly.
   for (int t = 0; t < POWERUP_COUNT; t++) {
-    if (world->powerTimer[t] > 0.0f) {
+    // Shield is a flag (no duration): it persists until a monster hit, so skip it.
+    if (t != POWERUP_SHIELD && world->powerTimer[t] > 0.0f) {
       world->powerTimer[t] -= 1.0f;
     }
   }
 
   updateMonsters(world, player);
+
+  // Dizzy face for the whole debuff: drive it from world state each frame so a
+  // coin collected mid-spin (which set EXPR_HAPPY above) can't clear it early.
+  if (world->powerTimer[POWERUP_DIZZY] > 0.0f) {
+    player->expression = EXPR_DIZZY;
+  }
 
   if (player->position.y < world->bestY) {
     world->bestY = player->position.y;

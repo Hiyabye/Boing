@@ -17,7 +17,8 @@ typedef struct Character {
 typedef enum {
   EXPR_HAPPY, // smile (default)
   EXPR_NEUTRAL,
-  EXPR_SAD, // frown
+  EXPR_SAD,   // frown
+  EXPR_DIZZY, // spiral eyes + wavy mouth (Dizzy debuff)
 } Expression;
 
 typedef struct Player {

@@ -144,20 +144,35 @@ void drawPlayer(const Player *player) {
   DrawCircle(px - rx * 0.5f, py + ry * 0.12f, r * 0.12f, blush);
   DrawCircle(px + rx * 0.5f, py + ry * 0.12f, r * 0.12f, blush);
 
-  // Googly eyes; pupils lean toward the direction of motion.
   float ex = rx * 0.38f;
   float ey = -ry * 0.18f;
-  float pupx = clampf(player->velocity.x, -3.0f, 3.0f) / 3.0f * (r * 0.09f);
-  float pupy = clampf(player->velocity.y, -8.0f, 8.0f) / 8.0f * (r * 0.07f);
-  DrawCircle(px - ex, py + ey, r * 0.2f, RAYWHITE);
-  DrawCircle(px + ex, py + ey, r * 0.2f, RAYWHITE);
-  DrawCircle(px - ex + pupx, py + ey + pupy, r * 0.1f, BLACK);
-  DrawCircle(px + ex + pupx, py + ey + pupy, r * 0.1f, BLACK);
-  // Glossy catch-light on each pupil.
-  DrawCircle(px - ex + pupx - r * 0.03f, py + ey + pupy - r * 0.03f, r * 0.035f,
-             RAYWHITE);
-  DrawCircle(px + ex + pupx - r * 0.03f, py + ey + pupy - r * 0.03f, r * 0.035f,
-             RAYWHITE);
+  if (player->expression == EXPR_DIZZY) {
+    // Dizzy: spiral eyes — a white base with two counter-rotating gapped rings
+    // per eye reads as a hypnotic swirl (primitive-only, no pupils).
+    float spin = (float)GetTime() * 220.0f;
+    for (int s = -1; s <= 1; s += 2) {
+      float cx = px + s * ex;
+      DrawCircle(cx, py + ey, r * 0.2f, RAYWHITE);
+      float a = s > 0 ? spin : -spin; // eyes swirl opposite ways
+      DrawRing((Vector2){cx, py + ey}, r * 0.12f, r * 0.16f, a, a + 300.0f, 16,
+               BLACK);
+      DrawRing((Vector2){cx, py + ey}, r * 0.04f, r * 0.08f, -a, -a + 300.0f, 16,
+               BLACK);
+    }
+  } else {
+    // Googly eyes; pupils lean toward the direction of motion.
+    float pupx = clampf(player->velocity.x, -3.0f, 3.0f) / 3.0f * (r * 0.09f);
+    float pupy = clampf(player->velocity.y, -8.0f, 8.0f) / 8.0f * (r * 0.07f);
+    DrawCircle(px - ex, py + ey, r * 0.2f, RAYWHITE);
+    DrawCircle(px + ex, py + ey, r * 0.2f, RAYWHITE);
+    DrawCircle(px - ex + pupx, py + ey + pupy, r * 0.1f, BLACK);
+    DrawCircle(px + ex + pupx, py + ey + pupy, r * 0.1f, BLACK);
+    // Glossy catch-light on each pupil.
+    DrawCircle(px - ex + pupx - r * 0.03f, py + ey + pupy - r * 0.03f,
+               r * 0.035f, RAYWHITE);
+    DrawCircle(px + ex + pupx - r * 0.03f, py + ey + pupy - r * 0.03f,
+               r * 0.035f, RAYWHITE);
+  }
 
   // Eyebrows above the eyes; inner ends tilt with the expression (HAPPY raised,
   // SAD angled down) to amplify the mouth's emotion.
@@ -184,6 +199,11 @@ void drawPlayer(const Player *player) {
   case EXPR_NEUTRAL:
     DrawLineEx((Vector2){px - mw * 0.7f, py + ry * 0.34f},
                (Vector2){px + mw * 0.7f, py + ry * 0.34f}, th, MOUTH);
+    break;
+  case EXPR_DIZZY:
+    // Dazed little open "o" mouth.
+    DrawRing((Vector2){px, py + ry * 0.34f}, mw * 0.32f - th, mw * 0.32f, 0, 360,
+             24, MOUTH);
     break;
   }
 }

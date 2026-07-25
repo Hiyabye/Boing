@@ -111,13 +111,13 @@ static Rectangle rCreditsBack(void) {
   return centeredBtn(SCREEN_HEIGHT - 110, 200, 54);
 }
 static Rectangle rResume(void) {
-  return centeredRow(SCREEN_HEIGHT / 2.0f + 40, 160, 56, 0, 2);
+  return centeredRow(SCREEN_HEIGHT / 2.0f + 40, 160, 56, 0, 3);
 }
 static Rectangle rPauseSettings(void) {
-  return centeredRow(SCREEN_HEIGHT / 2.0f + 40, 160, 56, 1, 2);
+  return centeredRow(SCREEN_HEIGHT / 2.0f + 40, 160, 56, 1, 3);
 }
 static Rectangle rPauseHome(void) {
-  return centeredBtn(SCREEN_HEIGHT / 2.0f + 108, 160, 56);
+  return centeredRow(SCREEN_HEIGHT / 2.0f + 40, 160, 56, 2, 3);
 }
 static Rectangle rRetry(void) {
   return centeredRow(SCREEN_HEIGHT * 2.0f / 3, 200, 60, 0, 2);
