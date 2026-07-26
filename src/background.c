@@ -54,7 +54,8 @@ static void drawBlockC(float x, float y, float s, Color c, float a) {
 
 // The seven tetromino footprints as (dx,dy) cells; drawTetromino stamps four
 // beveled cells so the L4 backdrop rains real shapes, not lone squares.
-static const signed char TETRO[7][4][2] = {
+#define TETRO_COUNT 7
+static const signed char TETRO[TETRO_COUNT][4][2] = {
     {{-1, 0}, {0, 0}, {1, 0}, {2, 0}}, // I
     {{0, 0}, {1, 0}, {0, 1}, {1, 1}},  // O
     {{0, 0}, {1, 0}, {2, 0}, {1, 1}},  // T
@@ -306,7 +307,7 @@ static void drawMazeBackdrop(float cameraY, float alpha) {
     float depth = 0.3f + 0.1f * i;
     float y =
         wrapf(i * 260.0f - cameraY * depth, SCREEN_HEIGHT + 240.0f) - 60.0f;
-    drawGhost(x, y, 22.0f, gTheme.confetti[i % 6], 0.7f * alpha);
+    drawGhost(x, y, 22.0f, gTheme.confetti[i % CONFETTI_COUNT], 0.7f * alpha);
   }
   { // chomping hero crossing a parallax band
     float x =
@@ -334,7 +335,7 @@ static void drawBlocksBackdrop(float cameraY, float alpha) {
         wrapf(i * 113.0f + (float)GetTime() * (20.0f * depth) - cameraY * depth,
               SCREEN_HEIGHT + 200.0f) -
         100.0f;
-    drawTetromino(x, y, cell, i % 7, gTheme.confetti[i % 6],
+    drawTetromino(x, y, cell, i % TETRO_COUNT, gTheme.confetti[i % CONFETTI_COUNT],
                   (0.8f - depth * 0.25f) * alpha);
   }
 }

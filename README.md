@@ -11,22 +11,44 @@ C99 + [raylib](https://www.raylib.com/)로 만든 수직 점프 게임.
 배포되는 게임(실행 파일 + 런타임 + 에셋)은 **1,474,560바이트(3.5" 플로피 1장)
 이하**여야 한다. 에셋 파일 대신 절차적 생성(칩튠, SFX, 배경)을 쓴다.
 
+## 플레이
+
+코인을 먹으면 위로 튀어 오르고, 화면 아래로 떨어지면 끝나는 끝없는 등반
+게임이다. 화살표 키 또는 마우스로 좌우 조작, `P`로 일시정지.
+등반 고도에 따라 4개의 레트로 시대 테마(맑은 언덕 → 밤의 블록 → 네온 미로 →
+떨어지는 블록)로 화면·음악이 연속 전환된다. 죽으면 그 판의 코인이 은행에
+적립되고, SHOP에서 스킨과 파워업 업그레이드를 살 수 있다.
+
 ## 구조
+
+화면(FSM 상태)마다 파일 하나, 그 아래에 재사용 서브시스템이 깔린다.
 
 ```
 Boing/
-├── src/                # 구현부
-│   ├── main.c          # 게임 루프 + GameState 머신, HUD/오버레이
-│   ├── player.c        # 플레이어 물리(중력, 입력, 스쿼시&스트레치)
-│   ├── world.c         # 레벨 생성, 카메라, 점수, 코인/플랫폼/몬스터/파워업/디버프
-│   ├── background.c    # 절차적 배경 — 4개 레트로 시대 테마가 등반에 따라 연속 전환
-│   ├── theme.c         # 런타임 팔레트/테마 테이블(THEMES[]) — 장면이 이어서 모핑
-│   ├── sound.c         # 절차적 칩튠 + SFX (레벨별 4트랙, 샘플 파일 없음)
-│   └── progress.c      # 코인 은행 + 스킨/파워업 업그레이드(SHOP) + 미션(메뉴 오버레이), 저장 지속
-├── include/            # 헤더 (core.h는 헤더 온리; 나머지는 .c와 1:1)
-├── lib/raylib/         # raylib (git 서브모듈)
+├── src/
+│   ├── main.c            # 게임 루프 + STATES[] 디스패치 테이블
+│   ├── game.c            # 공용 Game 컨텍스트: 상태 전환, 최고점수, 버튼 배치
+│   ├── screen_splash.c   # 스플래시 (로고 + 오디오 프리로드)
+│   ├── screen_menu.c     # 메뉴 (어트랙트 데모, 도움말/미션 오버레이)
+│   ├── screen_shop.c     # 상점 (스킨 + 파워업 업그레이드 카드)
+│   ├── screen_credits.c  # 크레딧 (CRT 줌아웃 + 스크롤 릴)
+│   ├── screen_play.c     # 플레이/일시정지/게임오버 (HUD, 결과 카드)
+│   ├── player.c          # 플레이어 물리(중력, 입력, 스쿼시&스트레치)
+│   ├── world.c           # 레벨 생성, 카메라, 점수, 코인/플랫폼/몬스터/파워업/디버프
+│   ├── background.c      # 절차적 배경 — 4개 테마가 등반에 따라 연속 전환
+│   ├── theme.c           # 런타임 팔레트/테마 테이블(THEMES[])
+│   ├── sound.c           # 절차적 칩튠 + SFX (트랙 6개, 샘플 파일 없음)
+│   ├── ui.c              # 마우스 UI(버튼/아이콘/텍스트 헬퍼)
+│   ├── settings.c        # 설정 화면(프레임률/해상도/음악·SFX 볼륨)
+│   ├── persist.c         # save.json 정수 키-값 저장소
+│   └── progress.c        # 코인 은행 + 스킨/업그레이드/미션
+├── include/              # 헤더 (core.h·game.h 외에는 .c와 1:1)
+├── lib/raylib/           # raylib (git 서브모듈)
 └── CMakeLists.txt
 ```
+
+세이브 파일 `save.json`은 실행 파일 옆에 런타임 생성되므로 용량 예산에 들지
+않는다.
 
 ## 빌드 & 실행
 
@@ -45,10 +67,14 @@ cmake --build build      # ./build/Boing 생성
 `cmake -S . -B build`를 다시 돌려야 한다. macOS에서는 Cocoa/IOKit/CoreVideo/
 OpenGL 프레임워크가 자동으로 링크된다.
 
+clang-format이 있으면 `cmake --build build --target format`으로 소스를
+일괄 정렬할 수 있고, clang-tidy가 있으면 빌드마다 자동 실행된다(둘 다
+없어도 빌드된다).
+
 ## 크기 확인
 
 기본 빌드가 `MinSizeRel` + strip이라 `build/Boing`이 곧 배포 크기다:
 
 ```sh
-ls -l build/Boing   # stripped ~500KB (512,408 B), 한도 1,474,560 B
+ls -l build/Boing   # stripped ~500KB (512,856 B), 한도 1,474,560 B
 ```

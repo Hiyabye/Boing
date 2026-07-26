@@ -16,6 +16,13 @@ typedef enum {
   BACKDROP_BLOCKS // L4: falling neon tetromino cells
 } BackdropStyle;
 
+// Number of rows in THEMES[] (theme.c static-asserts the table matches) and the
+// per-theme particle-color count. Macros, not `const int`, so tables keyed off
+// the theme list can be checked at compile time — see ERA_NAMES in
+// screen_play.c, which must stay one name per theme.
+#define THEME_COUNT 4
+#define CONFETTI_COUNT 6
+
 // One theme. Every Color must come before `backdrop` — themeUpdate() blends the
 // whole leading run of Colors generically (offsetof(Theme, backdrop)), so a new
 // color field needs no change to the lerp.
@@ -32,7 +39,7 @@ typedef struct {
   Color coinHi, coinLo, grass, grassDk, grape, grapeDk;
   Color magnetRed, rocketBody, rocketFin, flame;
   // Particle-burst colors.
-  Color confetti[6];
+  Color confetti[CONFETTI_COUNT];
   // --- non-Color fields must stay after every Color above ---
   BackdropStyle backdrop;
   int track; // music/SFX track id for this theme
@@ -41,9 +48,8 @@ typedef struct {
 // The blended palette for the current frame; the macros below read it.
 extern Theme gTheme;
 
-// The theme table and its size (defined in theme.c).
+// The theme table (defined in theme.c; THEME_COUNT rows).
 extern const Theme THEMES[];
-extern const int THEME_COUNT;
 
 // Recompute `gTheme` for the given ascent (-cameraY; 0 at the ground).
 void themeUpdate(float ascent);

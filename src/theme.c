@@ -158,7 +158,9 @@ const Theme THEMES[] = {
         .track = 3,
     },
 };
-const int THEME_COUNT = (int)(sizeof(THEMES) / sizeof(THEMES[0]));
+// THEME_COUNT is a macro (theme.h) so tables keyed off the theme list can be
+// checked at compile time; keep it honest about the table it names.
+STATIC_ASSERT(sizeof(THEMES) / sizeof(THEMES[0]) == THEME_COUNT, themes_full);
 
 Theme gTheme;
 

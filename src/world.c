@@ -283,8 +283,8 @@ static void spawnParticles(World *world, Vector2 at, Color color, int count,
     }
     float a = GetRandomValue(0, 1000) / 1000.0f * TWO_PI; // 0..2π
     float sp = GetRandomValue(2, 7);
-    Color c =
-        confetti ? gTheme.confetti[GetRandomValue(0, 5)] : color; // 6 colors
+    Color c = confetti ? gTheme.confetti[GetRandomValue(0, CONFETTI_COUNT - 1)]
+                       : color;
     world->particles[i] = (Particle){
         at, {cosf(a) * sp, sinf(a) * sp - 2.0f}, 1.0f, c}; // slight pop upward
     made++;
