@@ -8,6 +8,7 @@
 #include "game.h"
 #include "persist.h"
 #include "player.h"
+#include "post.h"
 #include "progress.h"
 #include "settings.h"
 #include "sound.h"
@@ -62,10 +63,11 @@ int main(void) {
   // draw scale below is correct. Without it, macOS reports doubled pixels for a
   // resized window while the GL drawable stays point-sized — content overflows.
   // MSAA smooths the primitive draws that are still polygon fans (the player
-  // blob, monsters, coins, backdrops, HUD bars). The vector glyphs don't need
-  // it — nanosvg antialiases when it rasterizes them — but everything else has
-  // hard stair-stepped diagonals without it. It is a hint: a driver that can't
-  // provide it silently ignores it.
+  // blob, monsters, coins, backdrops, HUD bars). It is no longer what does that
+  // work — the frame now resolves through post's supersampled offscreen target,
+  // which a multisampled *backbuffer* can't help — but it is what antialiases
+  // the fallback path when that target or its shader is unavailable. It is a
+  // hint: a driver that can't provide it silently ignores it.
   SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI);
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Boing!");
   SetExitKey(KEY_NULL); // Esc leaves the settings menu, it doesn't quit
@@ -90,8 +92,8 @@ int main(void) {
   applySettings(&game.settings); // target FPS, window size, master volume
 
   // Draw runs in fixed 800x800 logical coords; a GPU scale matrix maps them to
-  // the actual window each frame, so the resolution setting resizes the window
-  // and everything rasterizes natively (no upscaled-image blur) untouched.
+  // post's offscreen target each frame, so the resolution setting resizes the
+  // window and everything rasterizes natively (no upscaled-image blur).
   gMenuSnap =
       LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT); // CRT freeze-frame
   SetTextureFilter(gMenuSnap.texture, TEXTURE_FILTER_BILINEAR);
@@ -122,10 +124,16 @@ int main(void) {
 
     setTrack(trackForState(game.state));
 
-    // Draw 800-space, scaled to the native window (square, so width == scale).
-    float scale = GetScreenWidth() / (float)SCREEN_WIDTH;
+    // Effects are opt-in per frame: the drawing screen raises what it wants
+    // (bloom, fog, the credits CRT) into this mailbox, and postEnd consumes it.
+    // The vignette is the one always-on effect, so it starts raised here.
+    game.post = (PostFx){.vignette = 0.28f};
+
+    // Draw 800-space, scaled to the post target (square, so width == scale).
     BeginDrawing();
+    postBegin();
     ClearBackground(BLACK);
+    float scale = postScale();
     rlPushMatrix();
     rlScalef(scale, scale, 1.0f);
     STATES[game.state].draw(&game);
@@ -133,10 +141,12 @@ int main(void) {
       DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, game.fade));
     }
     rlPopMatrix();
+    postEnd(&game.post); // resolve the offscreen target back to the window
     EndDrawing();
   }
 
   UnloadRenderTexture(gMenuSnap);
+  unloadPost();
   unloadSvgCache();
   deinitAudio(&stream);
   CloseWindow();

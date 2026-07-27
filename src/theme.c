@@ -216,6 +216,18 @@ void themeBlend(int *lo, int *hi, float *f) {
 
 int themeTrack(void) { return gTheme.track; }
 
+// How much post-processing bloom this altitude wants. A separate table rather
+// than a Theme field because Theme's leading run must stay all-Color for the
+// generic lerp above; blended over the band by hand so the glow rises into the
+// neon level and falls out of it with the palette.
+static const float GLOW[THEME_COUNT] = {0.0f, 0.18f, 1.0f, 0.45f};
+STATIC_ASSERT(sizeof(GLOW) / sizeof(GLOW[0]) == THEME_COUNT,
+              theme_glow_table_complete);
+
+float themeGlow(void) {
+  return GLOW[bandLo] + (GLOW[bandHi] - GLOW[bandLo]) * bandF;
+}
+
 // 0-based level (theme band) fully entered at this ascent — increments once
 // per whole BAND_HEIGHT climbed, unbounded (levels are infinite; themes loop).
 // Pure (no global state) so gameplay can poll it.

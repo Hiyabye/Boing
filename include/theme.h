@@ -58,6 +58,9 @@ void themeUpdate(float ascent);
 void themeBlend(int *lo, int *hi, float *f);
 // The music/SFX track for the current blend (switches at the band midpoint).
 int themeTrack(void);
+// Post-processing bloom weight (0..1) for the current blend — 0 on the daylight
+// level, full on the neon one, blended across the band like the palette.
+float themeGlow(void);
 // 0-based level fully entered at `ascent` (see theme.c); unbounded — themes
 // loop once past the last band (nature->arcade->nature->…).
 int themeLevelAt(float ascent);

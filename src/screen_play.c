@@ -240,13 +240,14 @@ void drawPlay(Game *g) {
   drawPowerAura(&g->world, &g->player); // rotating rings for active power-ups
   rlPopMatrix();
 
-  // Fog debuff: dim the scene (screen space, so it's under the HUD). Fade the
-  // dim out over the last ~30 frames so it lifts smoothly instead of popping.
-  float fog = worldFog(&g->world);
-  if (fog > 0.0f) {
-    float k = fminf(fog, 30.0f) / 30.0f;
-    DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.55f * k));
-  }
+  // Post-processing for this frame. Bloom follows the altitude's theme, so the
+  // neon level glows and the daylight one doesn't. The Fog debuff is a blur +
+  // drifting haze in the same pass — which means it fogs the HUD too, unlike
+  // the flat dim rect it replaced; that's the point, it's a hazard. Fades out
+  // over the last ~30 frames so it lifts smoothly instead of popping.
+  // drawGameBackground already ran themeUpdate above, so the glow is current.
+  g->post.bloom = themeGlow();
+  g->post.fog = fminf(worldFog(&g->world), 30.0f) / 30.0f;
 
   drawHud(&g->world);
 

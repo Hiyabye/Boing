@@ -168,9 +168,14 @@ void drawCredits(Game *g) {
     drawCrtCabinet(tube, e);
   }
 
-  // Scissor is GL screen-space (the scale matrix doesn't touch it), so
-  // pre-scale the 800-space tube rect to native window pixels here only.
-  float s = GetScreenWidth() / (float)SCREEN_WIDTH;
+  // Hand the tube to the post pass: barrel bulge, chroma split, scanlines and
+  // phosphor mask, all confined to this rect and ramping in with the zoom.
+  g->post.crt = e;
+  g->post.crtRect = tube;
+
+  // Scissor is GL target-space (the scale matrix doesn't touch it), so
+  // pre-scale the 800-space tube rect to target pixels here only.
+  float s = postScale();
   BeginScissorMode((int)(tube.x * s), (int)(tube.y * s), (int)(tube.width * s),
                    (int)(tube.height * s));
   if (a < 1.0f) {
@@ -183,10 +188,6 @@ void drawCredits(Game *g) {
     drawStatic(tube);
   } else {
     drawReel(tube);
-  }
-  // CRT scanlines over whatever the tube is showing.
-  for (int y = (int)tube.y; y < tube.y + tube.height; y += 4) {
-    DrawLine((int)tube.x, y, (int)(tube.x + tube.width), y, Fade(BLACK, 0.12f));
   }
   EndScissorMode();
 

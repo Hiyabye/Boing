@@ -5,6 +5,7 @@
 
 #include "core.h"
 #include "player.h"
+#include "post.h"
 #include "progress.h"
 #include "settings.h"
 #include "world.h"
@@ -38,6 +39,8 @@ typedef struct {
   bool creditsExiting; // BACK pressed: ramp creditsAnim back to 0, then MENU
   bool newBest;        // last run beat the high score (game-over banner)
   float splashT;      // startup-splash elapsed seconds (GetTime is never reset)
+  PostFx post;        // per-frame post-FX mailbox: zeroed by main(), raised by
+                      // the drawing screen, consumed by postEnd()
   float fade;         // black-overlay alpha for a state transition (0 clear..1)
   int fadePhase;      // 0 none, 1 dipping to black, 2 lifting back in
   GameState fadeNext; // state to switch to at the bottom of the dip

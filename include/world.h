@@ -120,7 +120,7 @@ bool worldInvincible(const World *world); // any active power-up grants immunity
 float worldInputDir(
     const World *world); // -1 while Dizzy reverses steering, else +1
 float worldFog(
-    const World *world); // Fog timer (0 = clear), drives the dim overlay
+    const World *world); // Fog timer (0 = clear), drives the post-pass murk
 
 // Purchased per-powerup upgrade levels (indexed by PuTrack), set once per run
 // from saved progress before createWorld. Drives the spawn/effect/duration
