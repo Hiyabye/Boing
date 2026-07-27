@@ -659,49 +659,111 @@ static const Note NOTES_ARCADE[] = {
 // slow pentatonic melody + high sparkle (A minor, 32s loop).
 static const Note NOTES_NIGHT[] = {
     // melody (long, breathing)
-    {A4, 0.0f, 1.9f},   {C5, 2.0f, 1.9f},   {E5, 4.0f, 1.9f},
-    {D5, 6.0f, 1.9f},   {E5, 8.0f, 1.9f},   {G5, 10.0f, 1.9f},
-    {E5, 12.0f, 1.9f},  {D5, 14.0f, 1.9f},  {C5, 16.0f, 1.9f},
-    {A4, 18.0f, 1.9f},  {D5, 20.0f, 1.9f},  {E5, 22.0f, 1.9f},
-    {G5, 24.0f, 1.9f},  {E5, 26.0f, 1.9f},  {D5, 28.0f, 1.9f},
+    {A4, 0.0f, 1.9f},
+    {C5, 2.0f, 1.9f},
+    {E5, 4.0f, 1.9f},
+    {D5, 6.0f, 1.9f},
+    {E5, 8.0f, 1.9f},
+    {G5, 10.0f, 1.9f},
+    {E5, 12.0f, 1.9f},
+    {D5, 14.0f, 1.9f},
+    {C5, 16.0f, 1.9f},
+    {A4, 18.0f, 1.9f},
+    {D5, 20.0f, 1.9f},
+    {E5, 22.0f, 1.9f},
+    {G5, 24.0f, 1.9f},
+    {E5, 26.0f, 1.9f},
+    {D5, 28.0f, 1.9f},
     {C5, 30.0f, 1.9f},
     // high sparkle (offbeat)
-    {E5, 1.0f, 0.9f},   {A5, 5.0f, 0.9f},   {B5, 9.0f, 0.9f},
-    {G5, 13.0f, 0.9f},  {E5, 17.0f, 0.9f},  {A5, 21.0f, 0.9f},
-    {D6, 25.0f, 0.9f},  {B5, 29.0f, 0.9f},
+    {E5, 1.0f, 0.9f},
+    {A5, 5.0f, 0.9f},
+    {B5, 9.0f, 0.9f},
+    {G5, 13.0f, 0.9f},
+    {E5, 17.0f, 0.9f},
+    {A5, 21.0f, 0.9f},
+    {D6, 25.0f, 0.9f},
+    {B5, 29.0f, 0.9f},
     // low sustained roots: Am F C G
-    {A2, 0.0f, 3.9f},   {F2, 4.0f, 3.9f},   {C3, 8.0f, 3.9f},
-    {G2, 12.0f, 3.9f},  {A2, 16.0f, 3.9f},  {F2, 20.0f, 3.9f},
-    {C3, 24.0f, 3.9f},  {G2, 28.0f, 3.9f},
+    {A2, 0.0f, 3.9f},
+    {F2, 4.0f, 3.9f},
+    {C3, 8.0f, 3.9f},
+    {G2, 12.0f, 3.9f},
+    {A2, 16.0f, 3.9f},
+    {F2, 20.0f, 3.9f},
+    {C3, 24.0f, 3.9f},
+    {G2, 28.0f, 3.9f},
 };
 
 // Track L3 — Neon Maze: tense, driving chase riff over Am–Dm–E, staccato
 // melody stabs + walking octave bass (A minor, 16s loop).
 static const Note NOTES_MAZE[] = {
     // melody stabs
-    {A4, 0.0f, 0.45f},   {C5, 0.5f, 0.45f},   {E5, 1.0f, 0.45f},
-    {C5, 1.5f, 0.45f},   {A4, 2.0f, 0.45f},   {E5, 2.5f, 0.45f},
-    {A5, 3.0f, 0.45f},   {E5, 3.5f, 0.45f},   {D5, 4.0f, 0.45f},
-    {F5, 4.5f, 0.45f},   {A5, 5.0f, 0.45f},   {F5, 5.5f, 0.45f},
-    {D5, 6.0f, 0.45f},   {A5, 6.5f, 0.45f},   {D6, 7.0f, 0.45f},
-    {A5, 7.5f, 0.45f},   {E5, 8.0f, 0.45f},   {GS5, 8.5f, 0.45f},
-    {B5, 9.0f, 0.45f},   {GS5, 9.5f, 0.45f},  {B4, 10.0f, 0.45f},
-    {E5, 10.5f, 0.45f},  {GS5, 11.0f, 0.45f}, {B5, 11.5f, 0.45f},
-    {A4, 12.0f, 0.45f},  {C5, 12.5f, 0.45f},  {E5, 13.0f, 0.45f},
-    {A5, 13.5f, 0.45f},  {E5, 14.0f, 0.45f},  {D5, 14.5f, 0.45f},
-    {C5, 15.0f, 0.45f},  {B4, 15.5f, 0.45f},
+    {A4, 0.0f, 0.45f},
+    {C5, 0.5f, 0.45f},
+    {E5, 1.0f, 0.45f},
+    {C5, 1.5f, 0.45f},
+    {A4, 2.0f, 0.45f},
+    {E5, 2.5f, 0.45f},
+    {A5, 3.0f, 0.45f},
+    {E5, 3.5f, 0.45f},
+    {D5, 4.0f, 0.45f},
+    {F5, 4.5f, 0.45f},
+    {A5, 5.0f, 0.45f},
+    {F5, 5.5f, 0.45f},
+    {D5, 6.0f, 0.45f},
+    {A5, 6.5f, 0.45f},
+    {D6, 7.0f, 0.45f},
+    {A5, 7.5f, 0.45f},
+    {E5, 8.0f, 0.45f},
+    {GS5, 8.5f, 0.45f},
+    {B5, 9.0f, 0.45f},
+    {GS5, 9.5f, 0.45f},
+    {B4, 10.0f, 0.45f},
+    {E5, 10.5f, 0.45f},
+    {GS5, 11.0f, 0.45f},
+    {B5, 11.5f, 0.45f},
+    {A4, 12.0f, 0.45f},
+    {C5, 12.5f, 0.45f},
+    {E5, 13.0f, 0.45f},
+    {A5, 13.5f, 0.45f},
+    {E5, 14.0f, 0.45f},
+    {D5, 14.5f, 0.45f},
+    {C5, 15.0f, 0.45f},
+    {B4, 15.5f, 0.45f},
     // walking octave bass: Am Am Dm Dm E E Am E
-    {A2, 0.0f, 0.45f},   {A3, 0.5f, 0.45f},   {A2, 1.0f, 0.45f},
-    {A3, 1.5f, 0.45f},   {A2, 2.0f, 0.45f},   {A3, 2.5f, 0.45f},
-    {A2, 3.0f, 0.45f},   {A3, 3.5f, 0.45f},   {D3, 4.0f, 0.45f},
-    {D4, 4.5f, 0.45f},   {D3, 5.0f, 0.45f},   {D4, 5.5f, 0.45f},
-    {D3, 6.0f, 0.45f},   {D4, 6.5f, 0.45f},   {D3, 7.0f, 0.45f},
-    {D4, 7.5f, 0.45f},   {E2, 8.0f, 0.45f},   {E3, 8.5f, 0.45f},
-    {E2, 9.0f, 0.45f},   {E3, 9.5f, 0.45f},   {E2, 10.0f, 0.45f},
-    {E3, 10.5f, 0.45f},  {E2, 11.0f, 0.45f},  {E3, 11.5f, 0.45f},
-    {A2, 12.0f, 0.45f},  {A3, 12.5f, 0.45f},  {A2, 13.0f, 0.45f},
-    {A3, 13.5f, 0.45f},  {E2, 14.0f, 0.45f},  {E3, 14.5f, 0.45f},
-    {E2, 15.0f, 0.45f},  {E3, 15.5f, 0.45f},
+    {A2, 0.0f, 0.45f},
+    {A3, 0.5f, 0.45f},
+    {A2, 1.0f, 0.45f},
+    {A3, 1.5f, 0.45f},
+    {A2, 2.0f, 0.45f},
+    {A3, 2.5f, 0.45f},
+    {A2, 3.0f, 0.45f},
+    {A3, 3.5f, 0.45f},
+    {D3, 4.0f, 0.45f},
+    {D4, 4.5f, 0.45f},
+    {D3, 5.0f, 0.45f},
+    {D4, 5.5f, 0.45f},
+    {D3, 6.0f, 0.45f},
+    {D4, 6.5f, 0.45f},
+    {D3, 7.0f, 0.45f},
+    {D4, 7.5f, 0.45f},
+    {E2, 8.0f, 0.45f},
+    {E3, 8.5f, 0.45f},
+    {E2, 9.0f, 0.45f},
+    {E3, 9.5f, 0.45f},
+    {E2, 10.0f, 0.45f},
+    {E3, 10.5f, 0.45f},
+    {E2, 11.0f, 0.45f},
+    {E3, 11.5f, 0.45f},
+    {A2, 12.0f, 0.45f},
+    {A3, 12.5f, 0.45f},
+    {A2, 13.0f, 0.45f},
+    {A3, 13.5f, 0.45f},
+    {E2, 14.0f, 0.45f},
+    {E3, 14.5f, 0.45f},
+    {E2, 15.0f, 0.45f},
+    {E3, 15.5f, 0.45f},
 };
 
 // Track — Menu/Credits: warm, inviting sustained theme (A mixolydian, 32s).
@@ -768,9 +830,11 @@ static const Track TRACKS[] = {
     [TRACK_L1] = TRACK(NOTES_NATURE, 32.0f, TIMBRE_WARM, DRUMS_FOUR, 0.2f),
     [TRACK_L2] = TRACK(NOTES_NIGHT, 32.0f, TIMBRE_SOFT, DRUMS_NONE, 0.35f),
     [TRACK_L3] = TRACK(NOTES_MAZE, 16.0f, TIMBRE_PULSE, DRUMS_DRIVING, 0.15f),
-    [TRACK_L4] = TRACK(NOTES_ARCADE, 64.0f, TIMBRE_SQUARE, DRUMS_DRIVING, 0.15f),
+    [TRACK_L4] =
+        TRACK(NOTES_ARCADE, 64.0f, TIMBRE_SQUARE, DRUMS_DRIVING, 0.15f),
     [TRACK_MENU] = TRACK(NOTES_MENU, 32.0f, TIMBRE_WARM, DRUMS_NONE, 0.2f),
-    [TRACK_GAMEOVER] = TRACK(NOTES_GAMEOVER, 8.0f, TIMBRE_SOFT, DRUMS_NONE, 0.2f),
+    [TRACK_GAMEOVER] =
+        TRACK(NOTES_GAMEOVER, 8.0f, TIMBRE_SOFT, DRUMS_NONE, 0.2f),
 };
 #define TRACK_COUNT ((int)(sizeof(TRACKS) / sizeof(TRACKS[0])))
 // Every MusicTrack id must have a TRACKS[] row — a gap would leave a NULL loop.
@@ -896,7 +960,8 @@ static void addDrum(float *buf, int samples, DrumType d, float startSec,
 
 // Lay a track's beat pattern across the whole loop on a 0.5s grid (a whole
 // number of beats over every integer-second loop length, so the seam aligns).
-static void bakeDrums(float *buf, int samples, DrumStyle style, float duration) {
+static void bakeDrums(float *buf, int samples, DrumStyle style,
+                      float duration) {
   if (style == DRUMS_NONE) {
     return;
   }
@@ -904,7 +969,7 @@ static void bakeDrums(float *buf, int samples, DrumStyle style, float duration) 
   int beats = (int)(duration / beat + 0.5f);
   for (int b = 0; b < beats; b++) {
     float ts = b * beat;
-    addDrum(buf, samples, DRUM_KICK, ts, 0.9f);               // four-on-the-floor
+    addDrum(buf, samples, DRUM_KICK, ts, 0.9f); // four-on-the-floor
     addDrum(buf, samples, DRUM_HAT, ts + beat * 0.5f, 0.35f); // offbeat hat
     if (b % 2 == 1) {
       addDrum(buf, samples, DRUM_SNARE, ts, 0.6f); // backbeat (beats 2 & 4)
@@ -964,7 +1029,8 @@ static void buildLoop(int track) {
     for (int n = 0; n < noteCount; n++) {
       float local = t - notes[n].start;
       if (local >= 0.0f && local < notes[n].duration) {
-        sample += 0.5f * accent(notes[n].start) * adsr(local, notes[n].duration) *
+        sample += 0.5f * accent(notes[n].start) *
+                  adsr(local, notes[n].duration) *
                   tone(notes[n].frequency, local, timbre);
       }
     }
@@ -1044,7 +1110,8 @@ static const int sfxLen[] = {
     [SFX_NEWBEST] = (int)(1.10f * SAMPLE_RATE),
 };
 // Every SfxId must have a length — a 0 slot divides by zero in renderVoice.
-STATIC_ASSERT(sizeof(sfxLen) / sizeof(sfxLen[0]) == SFX_COUNT, sfx_lengths_full);
+STATIC_ASSERT(sizeof(sfxLen) / sizeof(sfxLen[0]) == SFX_COUNT,
+              sfx_lengths_full);
 
 // ponytail: fixed 8 voices; overlapping triggers past 8 drop silently — grow
 // the pool only if that's ever audible.

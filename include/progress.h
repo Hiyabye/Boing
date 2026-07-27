@@ -14,11 +14,18 @@
 // Progress so puLevel[] can be sized by PU_UPGRADE_COUNT — no magic literal.)
 #define MAX_UPG_LEVEL 5
 typedef enum {
-  PU_MAGNET_SPAWN, PU_MAGNET_EFFECT, PU_MAGNET_DURATION,
-  PU_ROCKET_SPAWN, PU_ROCKET_EFFECT, PU_ROCKET_DURATION,
-  PU_BALLOON_SPAWN, PU_BALLOON_EFFECT, PU_BALLOON_DURATION,
-  PU_SHIELD_SPAWN, PU_SHIELD_EFFECT, // Shield: no duration axis (until-hit flag)
-  PU_DEBUFF_SUPPRESS,                // shared "Fewer Debuffs"
+  PU_MAGNET_SPAWN,
+  PU_MAGNET_EFFECT,
+  PU_MAGNET_DURATION,
+  PU_ROCKET_SPAWN,
+  PU_ROCKET_EFFECT,
+  PU_ROCKET_DURATION,
+  PU_BALLOON_SPAWN,
+  PU_BALLOON_EFFECT,
+  PU_BALLOON_DURATION,
+  PU_SHIELD_SPAWN,
+  PU_SHIELD_EFFECT,   // Shield: no duration axis (until-hit flag)
+  PU_DEBUFF_SUPPRESS, // shared "Fewer Debuffs"
   PU_UPGRADE_COUNT
 } PuTrack;
 typedef struct {
@@ -73,7 +80,8 @@ Progress loadProgress(void);
 void saveProgress(const Progress *p);
 
 bool skinOwned(const Progress *p, int i);
-int upgLevel(const Progress *p, int track); // levels owned on a PuTrack (0..MAX)
+int upgLevel(const Progress *p,
+             int track); // levels owned on a PuTrack (0..MAX)
 bool missionDone(const Progress *p, int i);
 // Spend `cost` from the bank if affordable; returns whether it went through.
 // Caller sets the owning bit + saves on true.

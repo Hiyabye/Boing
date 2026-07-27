@@ -12,9 +12,10 @@
 #include <stdbool.h>
 
 // The FSM's shared surface. Each screen lives in its own screen_*.c and exposes
-// nothing but the {update, draw} pair at the bottom of this header; main.c wires
-// those into the STATES[] dispatch table and owns the loop. Anything two screens
-// both need (the context struct, transitions, button geometry) lives in game.c.
+// nothing but the {update, draw} pair at the bottom of this header; main.c
+// wires those into the STATES[] dispatch table and owns the loop. Anything two
+// screens both need (the context struct, transitions, button geometry) lives in
+// game.c.
 
 // ---------------------------------------------------------------------------
 // Game context — the whole mutable state, threaded through every FSM handler.
@@ -36,10 +37,10 @@ typedef struct {
   float creditsStatic; // "change channel" static timer, runs once zoomed out
   bool creditsExiting; // BACK pressed: ramp creditsAnim back to 0, then MENU
   bool newBest;        // last run beat the high score (game-over banner)
-  float splashT;       // startup-splash elapsed seconds (GetTime is never reset)
-  float fade;          // black-overlay alpha for a state transition (0 clear..1)
-  int fadePhase;       // 0 none, 1 dipping to black, 2 lifting back in
-  GameState fadeNext;  // state to switch to at the bottom of the dip
+  float splashT;      // startup-splash elapsed seconds (GetTime is never reset)
+  float fade;         // black-overlay alpha for a state transition (0 clear..1)
+  int fadePhase;      // 0 none, 1 dipping to black, 2 lifting back in
+  GameState fadeNext; // state to switch to at the bottom of the dip
 } Game;
 
 // ---------------------------------------------------------------------------
@@ -99,7 +100,8 @@ void updatePaused(Game *g);  // one draw handler over the live world
 void updateGameover(Game *g);
 void drawPlay(Game *g);
 
-void updateSettingsState(Game *g); // game.c — thin bridge to the settings module
+void updateSettingsState(
+    Game *g); // game.c — thin bridge to the settings module
 void drawSettingsState(Game *g);
 
 #endif // GAME_H

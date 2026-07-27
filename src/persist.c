@@ -47,7 +47,8 @@ void configLoad(const char *path) {
     return;
   }
   p = skipWs(p + 1);
-  while (*p != '}' && *p != '\0' && gCount < (int)(sizeof(gMap) / sizeof(gMap[0]))) {
+  while (*p != '}' && *p != '\0' &&
+         gCount < (int)(sizeof(gMap) / sizeof(gMap[0]))) {
     if (*p != '"') {
       return; // expected a key string
     }

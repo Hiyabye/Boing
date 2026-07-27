@@ -18,16 +18,22 @@
 static Rectangle rShopSkin(int i) { return centeredRow(175, 120, 110, i, 4); }
 
 // Power-up columns for the upgrade grid: header name, an icon (PowerUpType for
-// drawPowerupGlyph — the Debuffs card borrows the Anchor glyph), and its PuTrack
-// axes (-1 pads the ragged cards — Shield has 2 axes, Debuffs 1).
+// drawPowerupGlyph — the Debuffs card borrows the Anchor glyph), and its
+// PuTrack axes (-1 pads the ragged cards — Shield has 2 axes, Debuffs 1).
 static const struct {
   const char *name;
   int icon; // PowerUpType
   int track[3];
 } SHOP_PU[] = {
-    {"MAGNET", POWERUP_MAGNET, {PU_MAGNET_SPAWN, PU_MAGNET_EFFECT, PU_MAGNET_DURATION}},
-    {"ROCKET", POWERUP_ROCKET, {PU_ROCKET_SPAWN, PU_ROCKET_EFFECT, PU_ROCKET_DURATION}},
-    {"BALLOON", POWERUP_BALLOON, {PU_BALLOON_SPAWN, PU_BALLOON_EFFECT, PU_BALLOON_DURATION}},
+    {"MAGNET",
+     POWERUP_MAGNET,
+     {PU_MAGNET_SPAWN, PU_MAGNET_EFFECT, PU_MAGNET_DURATION}},
+    {"ROCKET",
+     POWERUP_ROCKET,
+     {PU_ROCKET_SPAWN, PU_ROCKET_EFFECT, PU_ROCKET_DURATION}},
+    {"BALLOON",
+     POWERUP_BALLOON,
+     {PU_BALLOON_SPAWN, PU_BALLOON_EFFECT, PU_BALLOON_DURATION}},
     {"SHIELD", POWERUP_SHIELD, {PU_SHIELD_SPAWN, PU_SHIELD_EFFECT, -1}},
     {"DEBUFFS", POWERUP_ANCHOR, {PU_DEBUFF_SUPPRESS, -1, -1}},
 };
@@ -112,7 +118,8 @@ void updateShop(Game *g) {
       }
       int track = SHOP_PU[pu].track[a];
       if (track < 0) {
-        continue; // padded slot (unreachable via shopPuAxes; keeps analyzer happy)
+        continue; // padded slot (unreachable via shopPuAxes; keeps analyzer
+                  // happy)
       }
       int lvl = upgLevel(p, track);
       if (lvl >= MAX_UPG_LEVEL) {
@@ -154,8 +161,8 @@ void drawShop(Game *g) {
     float cx = r.x + r.width / 2, cy = r.y + r.height / 2 - 6;
     DrawEllipse(cx, cy, 30, 28, SKINS[i].character.bodyDark);
     DrawEllipse(cx, cy - 4, 24, 22, SKINS[i].character.body);
-    const char *tag = owned ? (sel ? "EQUIPPED" : "OWNED")
-                            : TextFormat("%d", SKINS[i].cost);
+    const char *tag =
+        owned ? (sel ? "EQUIPPED" : "OWNED") : TextFormat("%d", SKINS[i].cost);
     drawTextShadow(tag, (int)(cx - MeasureText(tag, 16) / 2),
                    (int)(r.y + r.height - 22), 16, owned ? RAYWHITE : GOLD);
   }
@@ -167,10 +174,10 @@ void drawShop(Game *g) {
   for (int pu = 0; pu < SHOP_PU_N; pu++) {
     Rectangle card = rShopUpgCard(pu);
     DrawRectangleRounded(card, 0.12f, 8, Fade(BLACK, 0.35f));
-    drawTextShadow(SHOP_PU[pu].name,
-                   (int)(card.x + card.width / 2 -
-                         MeasureText(SHOP_PU[pu].name, 18) / 2),
-                   (int)card.y + 12, 18, CANDY_PINK);
+    drawTextShadow(
+        SHOP_PU[pu].name,
+        (int)(card.x + card.width / 2 - MeasureText(SHOP_PU[pu].name, 18) / 2),
+        (int)card.y + 12, 18, CANDY_PINK);
     // Power-up icon between the title and its upgrades.
     drawPowerupGlyph(SHOP_PU[pu].icon,
                      (Vector2){card.x + card.width / 2, card.y + 54}, 18.0f,
@@ -178,7 +185,8 @@ void drawShop(Game *g) {
     for (int a = 0; a < shopPuAxes(pu); a++) {
       int track = SHOP_PU[pu].track[a];
       if (track < 0) {
-        continue; // padded slot (unreachable via shopPuAxes; keeps analyzer happy)
+        continue; // padded slot (unreachable via shopPuAxes; keeps analyzer
+                  // happy)
       }
       Rectangle ax = rShopUpgAxis(pu, a);
       int lvl = upgLevel(p, track);

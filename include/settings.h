@@ -5,7 +5,8 @@
 
 // Player-adjustable options: target framerate, window resolution, and separate
 // music / SFX volumes. Persisted as keys in the shared "save.json" beside the
-// exe (via persist), so it's runtime-generated and doesn't count against the budget.
+// exe (via persist), so it's runtime-generated and doesn't count against the
+// budget.
 typedef struct {
   int fpsIndex;      // index into the framerate options (see settings.c)
   int resIndex;      // index into the resolution options (square window sizes)

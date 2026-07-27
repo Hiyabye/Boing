@@ -9,7 +9,8 @@
 static const int FPS_OPTIONS[] = {30, 60, 90, 120, 144, 165, 240};
 // Square window sizes — game renders at a fixed SCREEN_WIDTH x SCREEN_HEIGHT
 // target and is blitted scaled to the window, so any square size works.
-static const int RES_OPTIONS[] = {600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400};
+static const int RES_OPTIONS[] = {600,  700,  800,  900, 1000,
+                                  1100, 1200, 1300, 1400};
 #define FPS_COUNT ((int)(sizeof(FPS_OPTIONS) / sizeof(FPS_OPTIONS[0])))
 #define RES_COUNT ((int)(sizeof(RES_OPTIONS) / sizeof(RES_OPTIONS[0])))
 
@@ -129,7 +130,8 @@ Settings loadSettings(void) {
                 .sfxVolume = 1.0f}; // 60fps, 800, both max
   s.fpsIndex = configGetInt("fpsIndex", s.fpsIndex);
   s.resIndex = configGetInt("resIndex", s.resIndex);
-  s.musicVolume = configGetInt("musicPct", 100) / 100.0f; // stored as int percents
+  s.musicVolume =
+      configGetInt("musicPct", 100) / 100.0f; // stored as int percents
   s.sfxVolume = configGetInt("sfxPct", 100) / 100.0f;
   s.fpsIndex = wrapi(s.fpsIndex, FPS_COUNT);
   s.resIndex = wrapi(s.resIndex, RES_COUNT);

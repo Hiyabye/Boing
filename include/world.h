@@ -85,17 +85,17 @@ typedef struct World {
   float lastSpawnX;     // previous coin x, so coins form a followable trail
   float bestY;          // highest point the player has reached (smallest y)
   float powerTimer[POWERUP_COUNT]; // frames of each power-up remaining
-  int shieldHits;                  // monster hits the active Shield still absorbs
-  float shake;                     // screen-shake magnitude, decays each frame
+  int shieldHits;   // monster hits the active Shield still absorbs
+  float shake;      // screen-shake magnitude, decays each frame
   Vector2 flashPos; // where the last collect "pop" ring is centered
   float flash;      // pop-ring life, 1 at collect -> 0
   int coinsCollected;
   int level; // 0-based theme band entered; a level-up fanfare fires on increase
   int combo; // coins chained without falling to the floor / taking a hit
   float comboTimer; // frames left before an idle chain auto-resets
-  int bestCombo;  // longest chain this run (game-over summary)
-  int comboBonus; // accumulated combo bonus points, folded into getScore
-  int hitstop;    // frames of physics freeze remaining (impact juice)
+  int bestCombo;    // longest chain this run (game-over summary)
+  int comboBonus;   // accumulated combo bonus points, folded into getScore
+  int hitstop;      // frames of physics freeze remaining (impact juice)
 } World;
 
 World createWorld(void);
@@ -117,8 +117,10 @@ float worldShake(const World *world);
 int worldLevel(const World *world); // 0-based theme band the climb has entered
 float worldPowerTimer(const World *world, PowerUpType type);
 bool worldInvincible(const World *world); // any active power-up grants immunity
-float worldInputDir(const World *world);  // -1 while Dizzy reverses steering, else +1
-float worldFog(const World *world);       // Fog timer (0 = clear), drives the dim overlay
+float worldInputDir(
+    const World *world); // -1 while Dizzy reverses steering, else +1
+float worldFog(
+    const World *world); // Fog timer (0 = clear), drives the dim overlay
 
 // Purchased per-powerup upgrade levels (indexed by PuTrack), set once per run
 // from saved progress before createWorld. Drives the spawn/effect/duration

@@ -136,9 +136,9 @@ static void drawHillsBackdrop(float cameraY, float alpha) {
   drawSunRays(alpha);
   drawSun(alpha);
   for (int i = 0; i < 5; i++) {
-    float x = wrapf((float)GetTime() * 18.0f + i * 190.0f,
-                    SCREEN_WIDTH + 120.0f) -
-              60.0f;
+    float x =
+        wrapf((float)GetTime() * 18.0f + i * 190.0f, SCREEN_WIDTH + 120.0f) -
+        60.0f;
     float y = 70.0f + i * 34.0f + 8.0f * sinf((float)GetTime() * 0.8f + i);
     drawBird(x, y, 9.0f, 0.5f * alpha);
   }
@@ -240,7 +240,7 @@ static void drawStarsBackdrop(float cameraY, float alpha) {
 // A drifting arcade ghost: rounded dome, skirt, scalloped hem, and eyes.
 static void drawGhost(float x, float y, float s, Color c, float a) {
   Color body = Fade(c, a);
-  DrawCircle(x, y, s, body);             // dome
+  DrawCircle(x, y, s, body);                  // dome
   DrawRectangle(x - s, y, 2.0f * s, s, body); // skirt
   DrawCircle(x - s * 0.6f, y + s, s * 0.4f, body);
   DrawCircle(x, y + s, s * 0.4f, body);
@@ -310,8 +310,7 @@ static void drawMazeBackdrop(float cameraY, float alpha) {
     drawGhost(x, y, 22.0f, gTheme.confetti[i % CONFETTI_COUNT], 0.7f * alpha);
   }
   { // chomping hero crossing a parallax band
-    float x =
-        wrapf((float)GetTime() * 40.0f, SCREEN_WIDTH + 120.0f) - 60.0f;
+    float x = wrapf((float)GetTime() * 40.0f, SCREEN_WIDTH + 120.0f) - 60.0f;
     float y = wrapf(80.0f - cameraY * 0.35f, SCREEN_HEIGHT + 200.0f) - 60.0f;
     float mouth = 22.0f * fabsf(sinf((float)GetTime() * 6.0f));
     DrawCircleSector((Vector2){x, y}, 20.0f, mouth, 360.0f - mouth, 24,
@@ -335,7 +334,8 @@ static void drawBlocksBackdrop(float cameraY, float alpha) {
         wrapf(i * 113.0f + (float)GetTime() * (20.0f * depth) - cameraY * depth,
               SCREEN_HEIGHT + 200.0f) -
         100.0f;
-    drawTetromino(x, y, cell, i % TETRO_COUNT, gTheme.confetti[i % CONFETTI_COUNT],
+    drawTetromino(x, y, cell, i % TETRO_COUNT,
+                  gTheme.confetti[i % CONFETTI_COUNT],
                   (0.8f - depth * 0.25f) * alpha);
   }
 }

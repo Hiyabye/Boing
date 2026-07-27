@@ -15,8 +15,9 @@
 
 // ponytail: the selected shop skin lives in a module global (mirrors how this
 // file already reads the gTheme global), so createPlayer stays arg-free and its
-// 3 call sites don't change. Defaults to the Bubblegum pink until main() sets it
-// from saved progress. Literal Color (the CANDY_PINK macro is a runtime lvalue).
+// 3 call sites don't change. Defaults to the Bubblegum pink until main() sets
+// it from saved progress. Literal Color (the CANDY_PINK macro is a runtime
+// lvalue).
 static Character gSkin = {{255, 127, 176, 255}, {228, 70, 139, 255}};
 void setPlayerSkin(Character c) { gSkin = c; }
 
@@ -156,8 +157,8 @@ void drawPlayer(const Player *player) {
       float a = s > 0 ? spin : -spin; // eyes swirl opposite ways
       DrawRing((Vector2){cx, py + ey}, r * 0.12f, r * 0.16f, a, a + 300.0f, 16,
                BLACK);
-      DrawRing((Vector2){cx, py + ey}, r * 0.04f, r * 0.08f, -a, -a + 300.0f, 16,
-               BLACK);
+      DrawRing((Vector2){cx, py + ey}, r * 0.04f, r * 0.08f, -a, -a + 300.0f,
+               16, BLACK);
     }
   } else {
     // Googly eyes; pupils lean toward the direction of motion.
@@ -177,13 +178,13 @@ void drawPlayer(const Player *player) {
   // Eyebrows above the eyes; inner ends tilt with the expression (HAPPY raised,
   // SAD angled down) to amplify the mouth's emotion.
   float browY = py + ey - r * 0.32f, bw = r * 0.16f, bth = r * 0.055f;
-  float tilt = player->expression == EXPR_HAPPY  ? -r * 0.07f
-               : player->expression == EXPR_SAD  ? r * 0.09f
-                                                 : 0.0f;
-  DrawLineEx((Vector2){px - ex - bw, browY}, (Vector2){px - ex + bw, browY + tilt},
-             bth, MOUTH);
-  DrawLineEx((Vector2){px + ex + bw, browY}, (Vector2){px + ex - bw, browY + tilt},
-             bth, MOUTH);
+  float tilt = player->expression == EXPR_HAPPY ? -r * 0.07f
+               : player->expression == EXPR_SAD ? r * 0.09f
+                                                : 0.0f;
+  DrawLineEx((Vector2){px - ex - bw, browY},
+             (Vector2){px - ex + bw, browY + tilt}, bth, MOUTH);
+  DrawLineEx((Vector2){px + ex + bw, browY},
+             (Vector2){px + ex - bw, browY + tilt}, bth, MOUTH);
 
   // Mouth, below the eyes. DrawRing angle 0 is at 3 o'clock, +angle sweeps
   // clockwise (down); a smile is the bottom arc below its center, a frown the
@@ -202,8 +203,8 @@ void drawPlayer(const Player *player) {
     break;
   case EXPR_DIZZY:
     // Dazed little open "o" mouth.
-    DrawRing((Vector2){px, py + ry * 0.34f}, mw * 0.32f - th, mw * 0.32f, 0, 360,
-             24, MOUTH);
+    DrawRing((Vector2){px, py + ry * 0.34f}, mw * 0.32f - th, mw * 0.32f, 0,
+             360, 24, MOUTH);
     break;
   }
 }

@@ -65,15 +65,15 @@ static void drawMissionsOverlay(const Game *g) {
     drawTextShadow(TextFormat("%s %s", done ? "[x]" : "[ ]", MISSIONS[i].desc),
                    (int)panel.x + 40, y, 22, done ? GOLD : RAYWHITE);
     const char *rw = TextFormat("+%d", MISSIONS[i].reward);
-    drawTextShadow(rw, (int)(panel.x + panel.width - 40 - MeasureText(rw, 22)), y,
-                   22, done ? Fade(GOLD, 0.6f) : COIN_LO);
+    drawTextShadow(rw, (int)(panel.x + panel.width - 40 - MeasureText(rw, 22)),
+                   y, 22, done ? Fade(GOLD, 0.6f) : COIN_LO);
     y += 46;
   }
   uiButton(rOverlayClose(), "GOT IT", ICON_PLAY);
 }
 
 void updateMenu(Game *g) {
-  updateAttract(&g->player); // demo: blob wanders the menu
+  updateAttract(&g->player);            // demo: blob wanders the menu
   if (g->showHelp || g->showMissions) { // modal open: only close-input is live
     if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
         clicked(rOverlayClose())) {

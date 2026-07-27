@@ -18,21 +18,21 @@ const PuUpgradeDef PU_UPGRADES[PU_UPGRADE_COUNT] = {
     // label, base cost (level cost = base * (level+1)). Spawn cheapest, Effect
     // dearest; the shared debuff-suppress is the premium sink.
     // Short axis-only labels: the SHOP card header supplies the power-up name.
-    [PU_MAGNET_SPAWN] = {"Spawn", 40},   [PU_MAGNET_EFFECT] = {"Range", 60},
-    [PU_MAGNET_DURATION] = {"Time", 50},
-    [PU_ROCKET_SPAWN] = {"Spawn", 40},   [PU_ROCKET_EFFECT] = {"Thrust", 60},
-    [PU_ROCKET_DURATION] = {"Time", 50},
-    [PU_BALLOON_SPAWN] = {"Spawn", 40},  [PU_BALLOON_EFFECT] = {"Lift", 60},
-    [PU_BALLOON_DURATION] = {"Time", 50},
-    [PU_SHIELD_SPAWN] = {"Spawn", 40},   [PU_SHIELD_EFFECT] = {"Hits", 80},
-    [PU_DEBUFF_SUPPRESS] = {"Rarer", 100},
+    [PU_MAGNET_SPAWN] = {"Spawn", 40},    [PU_MAGNET_EFFECT] = {"Range", 60},
+    [PU_MAGNET_DURATION] = {"Time", 50},  [PU_ROCKET_SPAWN] = {"Spawn", 40},
+    [PU_ROCKET_EFFECT] = {"Thrust", 60},  [PU_ROCKET_DURATION] = {"Time", 50},
+    [PU_BALLOON_SPAWN] = {"Spawn", 40},   [PU_BALLOON_EFFECT] = {"Lift", 60},
+    [PU_BALLOON_DURATION] = {"Time", 50}, [PU_SHIELD_SPAWN] = {"Spawn", 40},
+    [PU_SHIELD_EFFECT] = {"Hits", 80},    [PU_DEBUFF_SUPPRESS] = {"Rarer", 100},
 };
 // Enum-indexed: a new PuTrack without a row here loops past the array end, and
 // puLevel[] in Progress must match this size (both keyed by PU_UPGRADE_COUNT).
 STATIC_ASSERT(sizeof(PU_UPGRADES) / sizeof(PU_UPGRADES[0]) == PU_UPGRADE_COUNT,
               pu_upgrades_full);
 
-int upgCost(int track, int level) { return PU_UPGRADES[track].base * (level + 1); }
+int upgCost(int track, int level) {
+  return PU_UPGRADES[track].base * (level + 1);
+}
 
 const MissionDef MISSIONS[] = {
     {"Reach the Neon Maze", MSTAT_LEVEL, 2, 100},

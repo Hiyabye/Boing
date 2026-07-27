@@ -145,8 +145,8 @@ static void drawHud(const World *world) {
   DrawRectangleRounded((Rectangle){px, py, pw * f, ph}, 0.9f, 8,
                        Fade(COIN_HI, 0.9f));
 
-  // Combo multiplier: shown centered under the level bar while a chain is going,
-  // bigger the higher it climbs.
+  // Combo multiplier: shown centered under the level bar while a chain is
+  // going, bigger the higher it climbs.
   if (world->combo > 1) {
     drawCenteredText(TextFormat("COMBO x%d", world->combo), (int)py + 22,
                      20 + (world->combo > 10 ? 10 : world->combo), GOLD);
@@ -160,7 +160,9 @@ static void drawHud(const World *world) {
       continue;
     }
     PowerUpDef d = POWERUP_DEFS[t];
-    float frac = fminf(timer / d.duration, 1.0f); // clamp: a Duration upgrade sets timer > base duration
+    float frac =
+        fminf(timer / d.duration,
+              1.0f); // clamp: a Duration upgrade sets timer > base duration
     DrawRectangleRounded((Rectangle){bx, by, bw, 26}, 0.5f, 8,
                          Fade(BLACK, 0.3f));
     DrawRectangleRounded((Rectangle){bx, by, bw * frac, 26}, 0.5f, 8,
@@ -206,8 +208,8 @@ static void drawSummaryCard(Game *g) {
   for (int i = 0; i < (int)(sizeof(rows) / sizeof(rows[0])); i++) {
     drawTextShadow(rows[i].label, (int)panel.x + 30, ry, 24, RAYWHITE);
     int vw = MeasureText(rows[i].value, 24);
-    drawTextShadow(rows[i].value, (int)(panel.x + panel.width - 30 - vw), ry, 24,
-                   COIN_LO);
+    drawTextShadow(rows[i].value, (int)(panel.x + panel.width - 30 - vw), ry,
+                   24, COIN_LO);
     ry += 40;
   }
 
