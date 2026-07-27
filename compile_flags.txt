@@ -1,3 +1,4 @@
 -std=c99
 -Iinclude
 -Ilib/raylib/src
+-Ilib/nanosvg/src

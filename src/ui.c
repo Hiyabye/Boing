@@ -1,6 +1,7 @@
 #include "ui.h"
 
 #include "core.h"
+#include "svg.h"
 #include "theme.h"
 
 #include <stddef.h>
@@ -11,6 +12,7 @@
 #define ROUND_SEGMENTS 8
 #define BTN_LIP 4.0f
 #define LABEL_PAD 12.0f // horizontal breathing room for a button's text
+#define ICON_SCALE 1.8f // drawIcon's half-extent `s` -> drawSvg's box side
 
 Vector2 virtualMouse(void) {
   int sw = GetScreenWidth(), sh = GetScreenHeight();
@@ -36,76 +38,28 @@ void drawCenteredText(const char *text, int y, int fontSize, Color color) {
   drawTextShadow(text, x, y, fontSize, color);
 }
 
+// IconKind -> vector glyph. ICON_NONE has no row: it is the enum's first value,
+// so the table is indexed by `kind - 1` and drawing it is a no-op.
+static const SvgId ICON_SVG[] = {
+    [ICON_PLAY - 1] = SVG_PLAY, [ICON_PAUSE - 1] = SVG_PAUSE,
+    [ICON_GEAR - 1] = SVG_GEAR, [ICON_RETRY - 1] = SVG_RETRY,
+    [ICON_BACK - 1] = SVG_BACK, [ICON_HOME - 1] = SVG_HOME,
+    [ICON_EXIT - 1] = SVG_EXIT, [ICON_HEART - 1] = SVG_HEART,
+    [ICON_SHOP - 1] = SVG_SHOP, [ICON_MISSIONS - 1] = SVG_MISSIONS,
+};
+// A missing row would silently draw SVG_PLAY (a zero-initialized slot) for the
+// icon that lost it, so tie the table to the enum.
+STATIC_ASSERT(sizeof(ICON_SVG) / sizeof(ICON_SVG[0]) == ICON_MISSIONS,
+              icon_svg_table_complete);
+
 void drawIcon(IconKind kind, float cx, float cy, float s, Color c) {
-  switch (kind) {
-  case ICON_PLAY:
-    DrawTriangle((Vector2){cx - s * 0.5f, cy - s * 0.6f},
-                 (Vector2){cx - s * 0.5f, cy + s * 0.6f},
-                 (Vector2){cx + s * 0.7f, cy}, c);
-    break;
-  case ICON_PAUSE:
-    DrawRectangle(cx - s * 0.45f, cy - s * 0.6f, s * 0.35f, s * 1.2f, c);
-    DrawRectangle(cx + s * 0.1f, cy - s * 0.6f, s * 0.35f, s * 1.2f, c);
-    break;
-  case ICON_GEAR: {
-    for (int i = 0; i < 6; i++) {
-      float a = i * (PI / 3.0f);
-      DrawRectanglePro((Rectangle){cx, cy, s * 0.5f, s * 1.5f},
-                       (Vector2){s * 0.25f, s * 0.75f}, a * RAD2DEG, c);
-    }
-    DrawCircle(cx, cy, s * 0.6f, c);
-    DrawCircle(cx, cy, s * 0.28f, Fade(BLACK, 0.55f));
-    break;
+  if (kind == ICON_NONE) {
+    return;
   }
-  case ICON_RETRY:
-    DrawRing((Vector2){cx, cy}, s * 0.45f, s * 0.68f, -40.0f, 220.0f, 24, c);
-    DrawTriangle((Vector2){cx + s * 0.75f, cy - s * 0.35f},
-                 (Vector2){cx + s * 0.15f, cy - s * 0.35f},
-                 (Vector2){cx + s * 0.45f, cy + s * 0.25f}, c);
-    break;
-  case ICON_BACK: // "go back" reads as a left-pointing arrow
-    DrawTriangle((Vector2){cx + s * 0.4f, cy - s * 0.55f},
-                 (Vector2){cx - s * 0.5f, cy},
-                 (Vector2){cx + s * 0.4f, cy + s * 0.55f}, c);
-    break;
-  case ICON_HOME:
-    DrawTriangle((Vector2){cx, cy - s * 0.7f},
-                 (Vector2){cx - s * 0.7f, cy - s * 0.05f},
-                 (Vector2){cx + s * 0.7f, cy - s * 0.05f}, c);    // roof
-    DrawRectangle(cx - s * 0.5f, cy - s * 0.05f, s, s * 0.7f, c); // body
-    DrawRectangle(cx - s * 0.15f, cy + s * 0.2f, s * 0.3f, s * 0.45f,
-                  Fade(BLACK, 0.55f)); // door
-    break;
-  case ICON_EXIT:
-    DrawLineEx((Vector2){cx - s * 0.5f, cy - s * 0.5f},
-               (Vector2){cx + s * 0.5f, cy + s * 0.5f}, s * 0.24f, c);
-    DrawLineEx((Vector2){cx - s * 0.5f, cy + s * 0.5f},
-               (Vector2){cx + s * 0.5f, cy - s * 0.5f}, s * 0.24f, c);
-    break;
-  case ICON_HEART:
-    DrawCircle(cx - s * 0.3f, cy - s * 0.18f, s * 0.36f, c); // left lobe
-    DrawCircle(cx + s * 0.3f, cy - s * 0.18f, s * 0.36f, c); // right lobe
-    DrawTriangle((Vector2){cx, cy + s * 0.7f}, (Vector2){cx + 0.62f * s, cy},
-                 (Vector2){cx - 0.62f * s, cy}, c); // point
-    break;
-  case ICON_SHOP: // stack of coins
-    DrawEllipse(cx, cy + s * 0.42f, s * 0.62f, s * 0.28f, c);
-    DrawEllipse(cx, cy, s * 0.62f, s * 0.28f, c);
-    DrawEllipse(cx, cy - s * 0.42f, s * 0.62f, s * 0.28f, c);
-    break;
-  case ICON_MISSIONS: { // checklist: a check tick beside two task lines
-    Vector2 a = {cx - s * 0.62f, cy + s * 0.02f};
-    Vector2 b = {cx - s * 0.36f, cy + s * 0.34f};
-    Vector2 d = {cx + s * 0.02f, cy - s * 0.4f};
-    DrawLineEx(a, b, s * 0.2f, c);
-    DrawLineEx(b, d, s * 0.2f, c);
-    DrawRectangle(cx + s * 0.16f, cy - s * 0.34f, s * 0.5f, s * 0.16f, c);
-    DrawRectangle(cx + s * 0.16f, cy + s * 0.14f, s * 0.5f, s * 0.16f, c);
-    break;
-  }
-  case ICON_NONE:
-    break;
-  }
+  // Callers size icons by half-extent (the old primitives spanned ~1.2*s tall),
+  // so the box is 2*s wide; ICON_SCALE trims it to the glyphs' 24x24 viewBox,
+  // which carries its own margin.
+  drawSvg(ICON_SVG[kind - 1], cx, cy, s * ICON_SCALE, 0.0f, c);
 }
 
 // Renders the button; clicks are detected by the caller via clicked(r).

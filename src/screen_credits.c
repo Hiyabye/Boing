@@ -28,6 +28,7 @@ static const char *REEL_LINES[] = {
     "",
     "- BUILT WITH -",
     "raylib  (raylib.com)",
+    "nanosvg  (Mikko Mononen)",
     "",
     "",
     "- INSPIRED BY -",

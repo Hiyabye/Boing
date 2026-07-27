@@ -1,13 +1,16 @@
 // Shared FSM plumbing: the state transitions, the high-score keys, and the bits
-// of screen furniture more than one screen_*.c needs. Everything screen-specific
-// lives in that screen's own file.
+// of screen furniture more than one screen_*.c needs. Everything
+// screen-specific lives in that screen's own file.
 #include "game.h"
 
 #include "persist.h"
 #include "settings.h"
 #include "sound.h"
+#include "svg.h"
 #include "theme.h"
 #include "world.h"
+
+#define COIN_GLYPH_BOX 26.0f // side of the coin glyph's 26x26 viewBox
 
 RenderTexture2D gMenuSnap;
 
@@ -72,9 +75,12 @@ Rectangle centeredRow(float y, float w, float h, int idx, int n) {
                      h};
 }
 
+// Two layers rather than one glyph: the coin's colors are theme state, so each
+// layer is authored white and tinted here. The face has a star punched out of
+// it, letting the rim beneath read through as a struck mint mark.
 void drawCoinGlyph(float x, float y) {
-  DrawEllipse(x, y, 11, 13, COIN_LO);
-  DrawEllipse(x, y, 7.5f, 9, COIN_HI);
+  drawSvg(SVG_COIN_RIM, x, y, COIN_GLYPH_BOX, 0.0f, COIN_LO);
+  drawSvg(SVG_COIN_FACE, x, y, COIN_GLYPH_BOX, 0.0f, COIN_HI);
 }
 
 // ---------------------------------------------------------------------------

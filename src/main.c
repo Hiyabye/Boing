@@ -11,6 +11,7 @@
 #include "progress.h"
 #include "settings.h"
 #include "sound.h"
+#include "svg.h"
 #include "theme.h"
 #include "world.h"
 
@@ -60,7 +61,12 @@ int main(void) {
   // crucially, keep GetScreenWidth/mouse/scissor all in logical *points* so the
   // draw scale below is correct. Without it, macOS reports doubled pixels for a
   // resized window while the GL drawable stays point-sized — content overflows.
-  SetConfigFlags(FLAG_WINDOW_HIGHDPI);
+  // MSAA smooths the primitive draws that are still polygon fans (the player
+  // blob, monsters, coins, backdrops, HUD bars). The vector glyphs don't need
+  // it — nanosvg antialiases when it rasterizes them — but everything else has
+  // hard stair-stepped diagonals without it. It is a hint: a driver that can't
+  // provide it silently ignores it.
+  SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI);
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Boing!");
   SetExitKey(KEY_NULL); // Esc leaves the settings menu, it doesn't quit
 
@@ -131,6 +137,7 @@ int main(void) {
   }
 
   UnloadRenderTexture(gMenuSnap);
+  unloadSvgCache();
   deinitAudio(&stream);
   CloseWindow();
   return 0;

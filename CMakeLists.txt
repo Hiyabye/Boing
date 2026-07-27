@@ -13,6 +13,18 @@ endif()
 # This automatically configures raylib's own targets
 add_subdirectory(lib/raylib)
 
+# nanosvg (zlib license) as its own tiny target. It is header-only and pinned as
+# a git submodule at lib/nanosvg/, so the one translation unit defining its two
+# *_IMPLEMENTATION macros lives beside the submodule rather than inside it
+# (a submodule is upstream's tree — we don't add files to it).
+#
+# Kept off the Boing target so third-party code never sees our -Wall -Wextra or
+# clang-tidy: 4750 lines of it would dominate every rebuild. Same section flags,
+# so -dead_strip still drops the parser/rasterizer entry points we never call.
+add_library(nanosvg STATIC lib/nanosvg_impl.c)
+target_include_directories(nanosvg PUBLIC lib/nanosvg/src)
+target_compile_options(nanosvg PRIVATE -ffunction-sections -fdata-sections)
+
 # 2. Define your executable targets
 file(GLOB_RECURSE SOURCES "src/*.c")
 add_executable(${PROJECT_NAME} ${SOURCES})
@@ -41,7 +53,7 @@ else()
 endif()
 
 # 4. Link raylib and macOS-specific system frameworks
-target_link_libraries(${PROJECT_NAME} PRIVATE raylib)
+target_link_libraries(${PROJECT_NAME} PRIVATE raylib nanosvg)
 
 if(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE

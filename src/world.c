@@ -3,6 +3,7 @@
 #include "core.h"
 #include "progress.h" // PuTrack + MAX_UPG_LEVEL for the upgrade hooks
 #include "sound.h"
+#include "svg.h"
 #include "theme.h"
 
 #include <math.h>
@@ -20,9 +21,11 @@ void worldSetUpgrades(const int *puLevel) {
 // Per-level effect scaling (tuning knobs — game feel lives here, not in the
 // shop table). A track's effect grows 1 + STEP*level; spawn weight grows by
 // whole points; the shared debuff-suppress subtracts levels from the bad roll.
-#define EFFECT_STEP 0.14f // +14%/level: magnet range, rocket thrust, balloon lift
-#define DUR_STEP 0.12f    // +12%/level good-power-up duration (was flat +50% LONGBOOST)
-#define SPAWN_STEP 1      // +1 spawnWeight/level for the upgraded good power-up
+#define EFFECT_STEP                                                            \
+  0.14f // +14%/level: magnet range, rocket thrust, balloon lift
+#define DUR_STEP                                                               \
+  0.12f // +12%/level good-power-up duration (was flat +50% LONGBOOST)
+#define SPAWN_STEP 1 // +1 spawnWeight/level for the upgraded good power-up
 
 // Effect multiplier (>= 1) for a good power-up's Effect axis.
 static float effectMul(PuTrack track) {
@@ -37,10 +40,12 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define COIN_RADIUS 12.0f
 #define COIN_SPACING 55.0f // vertical distance between spawned coins
 #define COIN_WANDER 150.0f // max horizontal step between consecutive coins
-#define COIN_DOUBLE_CAP 2  // levels below this get 2 coins/row (L0-L1); L2+ single
-#define COMBO_TIMEOUT 150.0f // frames (~2.5s) w/o a coin before the chain resets
+#define COIN_DOUBLE_CAP                                                        \
+  2 // levels below this get 2 coins/row (L0-L1); L2+ single
+#define COMBO_TIMEOUT                                                          \
+  150.0f                    // frames (~2.5s) w/o a coin before the chain resets
 #define COIN_PAIR_GAP 90.0f // horizontal gap of the bonus second coin
-#define SPAWN_MARGIN 40.0f // keep spawns away from screen edges
+#define SPAWN_MARGIN 40.0f  // keep spawns away from screen edges
 #define PLATFORM_BOUNCE -28.0f
 #define PLATFORM_SPACING 300.0f // vertical distance between platforms
 #define PLATFORM_WIDTH 100.0f
@@ -53,9 +58,9 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define MONSTER_DRIFT 1.5f     // horizontal speed
 #define MONSTER_COIN_LOSS 5    // coins scattered/lost on a monster hit
 // Altitude difficulty ramp (keyed on world->level; hand-tune for feel).
-#define DIFFICULTY_CAP 3        // level past which the ramp plateaus
-#define DIFFICULTY_SPEED 0.25f  // +25% monster drift per level, capped
-#define DIFFICULTY_TIGHTEN 150.0f // px closer monster bands per level
+#define DIFFICULTY_CAP 3           // level past which the ramp plateaus
+#define DIFFICULTY_SPEED 0.25f     // +25% monster drift per level, capped
+#define DIFFICULTY_TIGHTEN 150.0f  // px closer monster bands per level
 #define MONSTER_SPACING_MIN 450.0f // floor on band spacing
 #define COIN_SCATTER_R                                                         \
   60.0f // ring radius knocked-off coins start at (> collect dist)
@@ -67,7 +72,8 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define MAGNET_PULL 6.0f        // px/frame toward the player
 #define ROCKET_VELOCITY -34.0f  // upward thrust while active
 #define BALLOON_LIFT -8.0f      // gentle guaranteed rise while active
-#define ANCHOR_GRAVITY 0.9f     // extra downward vel/frame while anchored (doubles gravity)
+#define ANCHOR_GRAVITY                                                         \
+  0.9f // extra downward vel/frame while anchored (doubles gravity)
 #define PARTICLE_GRAVITY 0.3f
 #define PARTICLE_DECAY 0.03f
 #define SHAKE_HIT 14.0f   // screen shake on a monster hit
@@ -82,23 +88,31 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define TWO_PI (2.0f * PI) // raylib defines PI
 
 // Power-up table (indexed by PowerUpType). Ordered exactly as the enum.
-//              duration color       label     weight shake        invincible debuff
+//              duration color       label     weight shake        invincible
+//              debuff
 const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
     // HUD timer-bar colors are fixed (not themed): the table is static config.
     // spawnWeight only distributes picks *within* a category — pickPowerup(bad)
     // weighted-picks among the good rows or among the debuff rows. The good-vs-
     // bad ratio itself is the altitude roll in spawnPowerups (0/5 bad at L0, up
     // to 3/5 at L3+), not these weights. Tune knob.
-    [POWERUP_MAGNET] = {480.0f, SKYBLUE, "MAGNET", 3, 0.0f, false, false}, // ~8s
-    [POWERUP_ROCKET] = {150.0f, ORANGE, "ROCKET", 3, SHAKE_LAUNCH, true, false}, // ~2.5s
-    [POWERUP_BALLOON] = {360.0f, LIME, "BALLOON", 3, 0.0f, false, false},        // ~6s
-    [POWERUP_SHIELD] = {1.0f, GOLD, "SHIELD", 3, SHAKE_LAUNCH, true, false}, // flag: lasts until a monster hit (excluded from the tick-down; HUD bar stays full)
+    [POWERUP_MAGNET] = {480.0f, SKYBLUE, "MAGNET", 3, 0.0f, false,
+                        false}, // ~8s
+    [POWERUP_ROCKET] = {150.0f, ORANGE, "ROCKET", 3, SHAKE_LAUNCH, true,
+                        false}, // ~2.5s
+    [POWERUP_BALLOON] = {360.0f, LIME, "BALLOON", 3, 0.0f, false, false}, // ~6s
+    [POWERUP_SHIELD] = {1.0f, GOLD, "SHIELD", 3, SHAKE_LAUNCH, true,
+                        false}, // flag: lasts until a monster hit (excluded
+                                // from the tick-down; HUD bar stays full)
     // Debuffs: no boost, no immunity, SAD reaction + SFX_HIT on pickup. All ~3s
     // (short — Anchor/Dizzy are run-ending at 5s).
-    [POWERUP_ANCHOR] = {180.0f, DARKGRAY, "ANCHOR", 1, SHAKE_HIT, false, true}, // ~3s
-    [POWERUP_DIZZY] = {180.0f, VIOLET, "DIZZY", 1, SHAKE_HIT, false, true},     // ~3s
-    [POWERUP_FOG] = {180.0f, GRAY, "FOG", 1, SHAKE_HIT, false, true},           // ~3s
-    [POWERUP_BUTTER] = {180.0f, BROWN, "BUTTER", 1, SHAKE_HIT, false, true},    // ~3s
+    [POWERUP_ANCHOR] = {180.0f, DARKGRAY, "ANCHOR", 1, SHAKE_HIT, false,
+                        true}, // ~3s
+    [POWERUP_DIZZY] = {180.0f, VIOLET, "DIZZY", 1, SHAKE_HIT, false,
+                       true},                                         // ~3s
+    [POWERUP_FOG] = {180.0f, GRAY, "FOG", 1, SHAKE_HIT, false, true}, // ~3s
+    [POWERUP_BUTTER] = {180.0f, BROWN, "BUTTER", 1, SHAKE_HIT, false,
+                        true}, // ~3s
 };
 // A dropped row would leave a zero-duration slot (divide-by-zero in the HUD
 // timer bar) — fail the build instead.
@@ -170,9 +184,9 @@ static void spawnCoins(World *world) {
       if (world->level < COIN_DOUBLE_CAP) {
         FIND_FREE(s2, coins, MAX_COINS);
         if (s2 >= 0) {
-          float x2 = clampf(x + (GetRandomValue(0, 1) ? COIN_PAIR_GAP
-                                                       : -COIN_PAIR_GAP),
-                            SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
+          float x2 = clampf(
+              x + (GetRandomValue(0, 1) ? COIN_PAIR_GAP : -COIN_PAIR_GAP),
+              SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
           world->coins[s2] = (Coin){{x2, world->spawnY}, true, {0, 0}};
         }
       }
@@ -214,20 +228,30 @@ static void spawnMonsters(World *world) {
       }
     }
     float step = MONSTER_SPACING - DIFFICULTY_TIGHTEN * d;
-    world->monsterSpawnY -= step < MONSTER_SPACING_MIN ? MONSTER_SPACING_MIN : step;
+    world->monsterSpawnY -=
+        step < MONSTER_SPACING_MIN ? MONSTER_SPACING_MIN : step;
   }
 }
 
-// Spawn-axis upgrade: extra weight for an upgraded good power-up so it dominates
-// good picks. Debuffs (and untracked types) get no bonus.
+// Spawn-axis upgrade: extra weight for an upgraded good power-up so it
+// dominates good picks. Debuffs (and untracked types) get no bonus.
 static int spawnWeightOf(PowerUpType t) {
   int bonus = 0;
   switch (t) {
-  case POWERUP_MAGNET:  bonus = SPAWN_STEP * gPuUpg[PU_MAGNET_SPAWN]; break;
-  case POWERUP_ROCKET:  bonus = SPAWN_STEP * gPuUpg[PU_ROCKET_SPAWN]; break;
-  case POWERUP_BALLOON: bonus = SPAWN_STEP * gPuUpg[PU_BALLOON_SPAWN]; break;
-  case POWERUP_SHIELD:  bonus = SPAWN_STEP * gPuUpg[PU_SHIELD_SPAWN]; break;
-  default: break;
+  case POWERUP_MAGNET:
+    bonus = SPAWN_STEP * gPuUpg[PU_MAGNET_SPAWN];
+    break;
+  case POWERUP_ROCKET:
+    bonus = SPAWN_STEP * gPuUpg[PU_ROCKET_SPAWN];
+    break;
+  case POWERUP_BALLOON:
+    bonus = SPAWN_STEP * gPuUpg[PU_BALLOON_SPAWN];
+    break;
+  case POWERUP_SHIELD:
+    bonus = SPAWN_STEP * gPuUpg[PU_SHIELD_SPAWN];
+    break;
+  default:
+    break;
   }
   return POWERUP_DEFS[t].spawnWeight + bonus;
 }
@@ -338,13 +362,13 @@ static void collectCoins(World *world, Player *player) {
   FOREACH_ACTIVE(coins, MAX_COINS, i) {
     if (CheckCollisionCircles(player->position, player->radius,
                               world->coins[i].position, COIN_RADIUS)) {
-      // Combo: each coin chained (no fall to the floor / hit between) raises the
-      // multiplier, and with it the pop size, shake, and SFX pitch.
+      // Combo: each coin chained (no fall to the floor / hit between) raises
+      // the multiplier, and with it the pop size, shake, and SFX pitch.
       world->combo++;
       if (world->combo > world->bestCombo) {
         world->bestCombo = world->combo;
       }
-      world->comboTimer = COMBO_TIMEOUT; // idle-reset window
+      world->comboTimer = COMBO_TIMEOUT;     // idle-reset window
       world->comboBonus += world->combo - 1; // rising multiplier bonus
       int pop = 14 + world->combo * 2;
       if (pop > 40) {
@@ -378,7 +402,8 @@ static void moveCoins(World *world) {
 // Coin magnet: while active, drag nearby coins toward the player so the
 // existing overlap check sweeps them up next frame.
 static void applyMagnet(World *world, const Player *player) {
-  float radius = MAGNET_RADIUS * effectMul(PU_MAGNET_EFFECT); // Effect: wider reach
+  float radius =
+      MAGNET_RADIUS * effectMul(PU_MAGNET_EFFECT); // Effect: wider reach
   FOREACH_ACTIVE(coins, MAX_COINS, i) {
     Vector2 c = world->coins[i].position;
     float dx = player->position.x - c.x;
@@ -404,11 +429,20 @@ static void collectPowerups(World *world, Player *player) {
       float dur = POWERUP_DEFS[t].duration;
       // Duration upgrade: scale each good, timed power-up by its own track.
       switch (t) {
-      case POWERUP_MAGNET:  dur *= durMul(PU_MAGNET_DURATION); break;
-      case POWERUP_ROCKET:  dur *= durMul(PU_ROCKET_DURATION); break;
-      case POWERUP_BALLOON: dur *= durMul(PU_BALLOON_DURATION); break;
-      case POWERUP_SHIELD:  world->shieldHits = 1 + gPuUpg[PU_SHIELD_EFFECT]; break;
-      default: break; // debuffs and any untracked type keep base duration
+      case POWERUP_MAGNET:
+        dur *= durMul(PU_MAGNET_DURATION);
+        break;
+      case POWERUP_ROCKET:
+        dur *= durMul(PU_ROCKET_DURATION);
+        break;
+      case POWERUP_BALLOON:
+        dur *= durMul(PU_BALLOON_DURATION);
+        break;
+      case POWERUP_SHIELD:
+        world->shieldHits = 1 + gPuUpg[PU_SHIELD_EFFECT];
+        break;
+      default:
+        break; // debuffs and any untracked type keep base duration
       }
       world->powerTimer[t] = dur;
       world->shake = fmaxf(world->shake, POWERUP_DEFS[t].pickupShake);
@@ -445,7 +479,8 @@ static void updateMonsters(World *world, Player *player) {
         // Shield absorbs this hit; break only once its charges run out (Effect
         // upgrade grants extra charges). Rocket-only invincibility leaves the
         // shield untouched (shieldHits is 0 when no shield is active).
-        if (world->powerTimer[POWERUP_SHIELD] > 0.0f && --world->shieldHits <= 0) {
+        if (world->powerTimer[POWERUP_SHIELD] > 0.0f &&
+            --world->shieldHits <= 0) {
           world->powerTimer[POWERUP_SHIELD] = 0.0f;
         }
         sfx(SFX_SPLAT);
@@ -461,8 +496,8 @@ static void updateMonsters(World *world, Player *player) {
                      lost); // only the coins actually lost
         m->active = false;
         world->shake = SHAKE_HIT;
-        world->hitstop = 2;  // brief freeze reads as impact
-        world->combo = 0;    // hit broke the chain
+        world->hitstop = 2;            // brief freeze reads as impact
+        world->combo = 0;              // hit broke the chain
         player->velocity.y = 12.0f;    // knocked downward
         player->expression = EXPR_SAD; // shakes off on the next coin/power-up
         sfx(SFX_HIT);
@@ -528,18 +563,22 @@ void updateWorld(World *world, Player *player) {
   moveCoins(world);
   collectCoins(world, player);
   if (world->powerTimer[POWERUP_ANCHOR] > 0.0f) {
-    player->velocity.y += ANCHOR_GRAVITY; // heavier pull; rocket below overrides
+    player->velocity.y +=
+        ANCHOR_GRAVITY; // heavier pull; rocket below overrides
   }
   if (world->powerTimer[POWERUP_ROCKET] > 0.0f) {
-    player->velocity.y = ROCKET_VELOCITY * effectMul(PU_ROCKET_EFFECT); // Effect: more thrust
+    player->velocity.y =
+        ROCKET_VELOCITY * effectMul(PU_ROCKET_EFFECT); // Effect: more thrust
   }
-  float lift = BALLOON_LIFT * effectMul(PU_BALLOON_EFFECT); // Effect: stronger lift
+  float lift =
+      BALLOON_LIFT * effectMul(PU_BALLOON_EFFECT); // Effect: stronger lift
   if (world->powerTimer[POWERUP_BALLOON] > 0.0f && player->velocity.y > lift) {
     player->velocity.y = lift; // never plummet; faster coin boosts win
   }
   // ...then tick every power-up timer down uniformly.
   for (int t = 0; t < POWERUP_COUNT; t++) {
-    // Shield is a flag (no duration): it persists until a monster hit, so skip it.
+    // Shield is a flag (no duration): it persists until a monster hit, so skip
+    // it.
     if (t != POWERUP_SHIELD && world->powerTimer[t] > 0.0f) {
       world->powerTimer[t] -= 1.0f;
     }
@@ -594,8 +633,8 @@ void updateWorld(World *world, Player *player) {
   cullBelowView(world);
 }
 
-// Deterministic per-instance seed from an entity's (fixed) spawn y, so coins and
-// monsters get stable random-looking variety without extra struct fields.
+// Deterministic per-instance seed from an entity's (fixed) spawn y, so coins
+// and monsters get stable random-looking variety without extra struct fields.
 static unsigned entSeed(Vector2 p) {
   unsigned h = (unsigned)(int)fabsf(p.y) * 2654435761u;
   h ^= h >> 15;
@@ -609,9 +648,9 @@ static void drawCoin(Vector2 c, float t) {
   float w = COIN_RADIUS * (0.22f + 0.78f * spin);
   DrawCircle(c.x, c.y, COIN_RADIUS * 1.5f, Fade(COIN_HI, 0.22f)); // glow
   DrawEllipse(c.x, c.y, w * 1.12f, COIN_RADIUS * 1.12f,
-              ColorBrightness(COIN_LO, -0.35f));                    // minted rim
-  DrawEllipse(c.x, c.y, w, COIN_RADIUS, COIN_LO);                   // edge
-  DrawEllipse(c.x, c.y, w * 0.68f, COIN_RADIUS * 0.68f, COIN_HI);   // face
+              ColorBrightness(COIN_LO, -0.35f));                  // minted rim
+  DrawEllipse(c.x, c.y, w, COIN_RADIUS, COIN_LO);                 // edge
+  DrawEllipse(c.x, c.y, w * 0.68f, COIN_RADIUS * 0.68f, COIN_HI); // face
   if (w > COIN_RADIUS * 0.45f) {
     float fw = w * 0.68f, fh = COIN_RADIUS * 0.68f;
     Color emb = ColorBrightness(COIN_LO, -0.15f);
@@ -628,10 +667,9 @@ static void drawCoin(Vector2 c, float t) {
     }
     // Rotating glint streak sweeping across the face.
     float g = t * 3.0f;
-    DrawLineEx(
-        (Vector2){c.x - cosf(g) * fw * 0.7f, c.y - sinf(g) * fh * 0.7f},
-        (Vector2){c.x + cosf(g) * fw * 0.7f, c.y + sinf(g) * fh * 0.7f}, 2.0f,
-        Fade(RAYWHITE, 0.5f));
+    DrawLineEx((Vector2){c.x - cosf(g) * fw * 0.7f, c.y - sinf(g) * fh * 0.7f},
+               (Vector2){c.x + cosf(g) * fw * 0.7f, c.y + sinf(g) * fh * 0.7f},
+               2.0f, Fade(RAYWHITE, 0.5f));
     DrawCircle(c.x - w * 0.32f, c.y - COIN_RADIUS * 0.34f, 2.5f, RAYWHITE);
   }
   // Periodic sparkle beside the coin, phased by the seed.
@@ -675,8 +713,8 @@ static void drawMonster(Vector2 m, float t) {
   Color horn = ColorBrightness(GRAPE_DK, -0.15f);
 
   DrawEllipse(m.x, m.y + R * 1.05f, R * 0.8f, R * 0.24f,
-              Fade(BLACK, 0.18f));                       // drop shadow
-  DrawCircle(m.x, m.y, R * 1.35f, Fade(GRAPE, 0.22f));   // glow
+              Fade(BLACK, 0.18f));                     // drop shadow
+  DrawCircle(m.x, m.y, R * 1.35f, Fade(GRAPE, 0.22f)); // glow
 
   // Wobbling stubby legs (2 or 3, seed-picked).
   int legs = (seed & 1) ? 3 : 2;
@@ -689,8 +727,10 @@ static void drawMonster(Vector2 m, float t) {
   // Head decor: two horns / a bobbing antenna / bald, seed-picked.
   switch (seed % 3) {
   case 0:
-    DrawPoly((Vector2){m.x - R * 0.4f, m.y - R * 0.75f}, 3, R * 0.32f, -90, horn);
-    DrawPoly((Vector2){m.x + R * 0.4f, m.y - R * 0.75f}, 3, R * 0.32f, -90, horn);
+    DrawPoly((Vector2){m.x - R * 0.4f, m.y - R * 0.75f}, 3, R * 0.32f, -90,
+             horn);
+    DrawPoly((Vector2){m.x + R * 0.4f, m.y - R * 0.75f}, 3, R * 0.32f, -90,
+             horn);
     break;
   case 1: {
     float ax = m.x + sinf(t * 4.0f + m.x) * R * 0.2f;
@@ -705,7 +745,8 @@ static void drawMonster(Vector2 m, float t) {
 
   // Body: dark base, brightened rim, lit body.
   DrawEllipse(m.x, m.y, R * wob, R / wob, GRAPE_DK);
-  DrawEllipse(m.x, m.y, R * 0.9f * wob, R * 0.9f / wob, ColorBrightness(GRAPE, 0.3f));
+  DrawEllipse(m.x, m.y, R * 0.9f * wob, R * 0.9f / wob,
+              ColorBrightness(GRAPE, 0.3f));
   DrawEllipse(m.x, m.y - R * 0.1f, R * 0.78f * wob, R * 0.78f / wob, GRAPE);
 
   // Eyes, seed-picked: even / one wonky-bigger / cyclops.
@@ -721,8 +762,10 @@ static void drawMonster(Vector2 m, float t) {
     DrawCircle(m.x + 8, m.y - 4, 3, BLACK);
   }
   // Angry brows.
-  DrawLineEx((Vector2){m.x - 13, m.y - 12}, (Vector2){m.x - 4, m.y - 8}, 2.5f, BLACK);
-  DrawLineEx((Vector2){m.x + 13, m.y - 12}, (Vector2){m.x + 4, m.y - 8}, 2.5f, BLACK);
+  DrawLineEx((Vector2){m.x - 13, m.y - 12}, (Vector2){m.x - 4, m.y - 8}, 2.5f,
+             BLACK);
+  DrawLineEx((Vector2){m.x + 13, m.y - 12}, (Vector2){m.x + 4, m.y - 8}, 2.5f,
+             BLACK);
 
   // Mouth, seed-picked: zig-zag / open maw with fangs / grin.
   switch (seed % 3) {
@@ -740,7 +783,8 @@ static void drawMonster(Vector2 m, float t) {
     DrawPoly((Vector2){m.x + 3, m.y + 9}, 3, 3.0f, 90, RAYWHITE);
     break;
   default:
-    DrawLineEx((Vector2){m.x - 8, m.y + 10}, (Vector2){m.x + 8, m.y + 10}, 2.0f, BLACK);
+    DrawLineEx((Vector2){m.x - 8, m.y + 10}, (Vector2){m.x + 8, m.y + 10}, 2.0f,
+               BLACK);
     break;
   }
 }
@@ -759,23 +803,26 @@ static void drawPowerUp(const PowerUp *pu, float t) {
 // shared by the world draw above and the SHOP upgrade cards. Colors read the
 // current gTheme. `t` drives the small self-animations (spark, spin, flame).
 void drawPowerupGlyph(PowerUpType type, Vector2 c, float R, float t) {
+  // Each glyph is several theme colors and a texture tint is uniform, so a
+  // glyph is one drawSvg per color role, back to front. The layers share a
+  // 24x24 viewBox where 12 units == R, so a layer drawn at box 2*R lands
+  // exactly where the primitives it replaced did; a layer drawn smaller (the
+  // shield's plate, the dizzy lens) just scales that same box.
+  //
+  // Three effects stay procedural because they reshape every frame and no
+  // fixed picture can stand in: the rocket's flame, the balloon's wavy string,
+  // and the magnet's blinking spark.
   switch (type) {
   case POWERUP_MAGNET: {
-    // Horseshoe: two red legs joined by a top arc, silver pole tips, a spark.
-    Color red = MAGNET_RED, redDk = ColorBrightness(MAGNET_RED, -0.3f);
-    DrawRing(c, R * 0.5f, R, 180, 360, 24, redDk);
-    DrawRing(c, R * 0.5f, R, 190, 350, 24, red);
-    DrawRectangle(c.x - R, c.y, R * 0.5f, R * 0.7f, red);        // left leg
-    DrawRectangle(c.x + R * 0.5f, c.y, R * 0.5f, R * 0.7f, red); // right leg
-    DrawRectangle(c.x - R, c.y + R * 0.55f, R * 0.5f, R * 0.2f, LIGHTGRAY);
-    DrawRectangle(c.x + R * 0.5f, c.y + R * 0.55f, R * 0.5f, R * 0.2f, LIGHTGRAY);
+    // Horseshoe: one true arc now, not a 24-segment ring fan.
+    drawSvg(SVG_PU_MAGNET, c.x, c.y, R * 2.0f, 0.0f, MAGNET_RED);
+    drawSvg(SVG_PU_MAGNET_TIPS, c.x, c.y, R * 2.0f, 0.0f, LIGHTGRAY);
     if (sinf(t * 8.0f) > 0.7f) {
       DrawCircle(c.x, c.y + R * 0.95f, 2.5f, Fade(RAYWHITE, 0.9f)); // spark
     }
     break;
   }
   case POWERUP_BALLOON: {
-    // Glossy balloon on a wavy string; body recolors with the theme.
     Color body = GRASS, bodyDk = ColorBrightness(GRASS, -0.28f);
     Vector2 knot = {c.x, c.y + R * 0.9f}, a = knot;
     for (int k = 1; k <= 4; k++) { // wavy string
@@ -783,82 +830,64 @@ void drawPowerupGlyph(PowerUpType type, Vector2 c, float R, float t) {
       DrawLineEx(a, b, 2.0f, DARKGRAY);
       a = b;
     }
-    DrawEllipse(c.x, c.y, R * 0.85f, R, bodyDk); // base
-    DrawEllipse(c.x - R * 0.12f, c.y - R * 0.05f, R * 0.62f, R * 0.78f,
-                body); // lit
-    DrawEllipse(c.x - R * 0.3f, c.y - R * 0.35f, R * 0.16f, R * 0.26f,
-                Fade(RAYWHITE, 0.6f)); // specular streak
-    DrawTriangle((Vector2){c.x - 3, knot.y}, (Vector2){c.x + 3, knot.y},
-                 (Vector2){c.x, knot.y + 5}, bodyDk); // knot
+    drawSvg(SVG_PU_BALLOON_DK, c.x, c.y, R * 2.0f, 0.0f, bodyDk);
+    drawSvg(SVG_PU_BALLOON, c.x, c.y, R * 2.0f, 0.0f, body);
+    drawSvg(SVG_PU_BALLOON_GLOSS, c.x, c.y, R * 2.0f, 0.0f,
+            Fade(RAYWHITE, 0.6f));
     break;
   }
   case POWERUP_SHIELD: {
-    // Beveled crested badge; plate recolors with the theme (coin gold band).
+    // One hex glyph at four sizes: outer glow, bevel rim, plate, top sheen.
     Color plate = COIN_LO, rim = ColorBrightness(COIN_LO, -0.35f),
           sheen = COIN_HI;
-    DrawPoly(c, 6, R * 1.12f, 0, Fade(sheen, 0.3f)); // outer glow
-    DrawPoly(c, 6, R, 0, rim);                       // bevel rim
-    DrawPoly(c, 6, R * 0.82f, 0, plate);             // plate
-    DrawPoly((Vector2){c.x, c.y - R * 0.18f}, 6, R * 0.5f, 0,
-             Fade(sheen, 0.7f));                     // top sheen
-    DrawPoly(c, 5, R * 0.42f, t * 30.0f, GRAPE);     // spinning crest
+    drawSvg(SVG_PU_SHIELD_HEX, c.x, c.y, R * 2.24f, 0.0f, Fade(sheen, 0.3f));
+    drawSvg(SVG_PU_SHIELD_HEX, c.x, c.y, R * 2.0f, 0.0f, rim);
+    drawSvg(SVG_PU_SHIELD_HEX, c.x, c.y, R * 1.64f, 0.0f, plate);
+    drawSvg(SVG_PU_SHIELD_HEX, c.x, c.y - R * 0.18f, R, 0.0f,
+            Fade(sheen, 0.7f));
+    drawSvg(SVG_PU_SHIELD_CREST, c.x, c.y, R * 0.84f, t * 30.0f, GRAPE);
     break;
   }
   case POWERUP_ANCHOR: {
-    // Iron anchor: top ring, vertical shank + crossbar, two upswept flukes.
-    Color iron = DARKGRAY, ironLt = ColorBrightness(DARKGRAY, 0.35f);
-    DrawRing((Vector2){c.x, c.y - R * 0.62f}, R * 0.16f, R * 0.3f, 0, 360, 20,
-             iron); // top ring
-    DrawRectangle(c.x - R * 0.1f, c.y - R * 0.5f, R * 0.2f, R * 1.15f, iron); // shank
-    DrawRectangle(c.x - R * 0.45f, c.y - R * 0.15f, R * 0.9f, R * 0.16f,
-                  iron); // stock (crossbar)
-    DrawRing(c, R * 0.6f, R * 0.78f, 20, 160, 20, iron); // curved arms
-    DrawPoly((Vector2){c.x - R * 0.72f, c.y + R * 0.5f}, 3, R * 0.28f, 20, ironLt);
-    DrawPoly((Vector2){c.x + R * 0.72f, c.y + R * 0.5f}, 3, R * 0.28f, -20, ironLt);
+    drawSvg(SVG_PU_ANCHOR, c.x, c.y, R * 2.0f, 0.0f, DARKGRAY);
+    drawSvg(SVG_PU_ANCHOR_FLUKES, c.x, c.y, R * 2.0f, 0.0f,
+            ColorBrightness(DARKGRAY, 0.35f));
     break;
   }
   case POWERUP_DIZZY: {
-    // Spiral-swirl goggles: two hypno spirals joined by a bridge.
+    // Two lenses, each a disc drawn twice (rim, then face) under a spiral the
+    // draw call spins — opposite ways, so the two eyes counter-rotate.
     Color frame = VIOLET, dk = ColorBrightness(VIOLET, -0.4f);
     for (int e = -1; e <= 1; e += 2) {
       float ox = c.x + e * R * 0.5f;
-      DrawCircle(ox, c.y, R * 0.5f, dk);
-      DrawCircle(ox, c.y, R * 0.42f, RAYWHITE);
-      // Spiral: a few shrinking arcs stepped in angle around the eye.
-      for (int k = 0; k < 4; k++) {
-        float rr = R * (0.36f - k * 0.08f);
-        float a = t * 120.0f * e + k * 90.0f;
-        DrawRing((Vector2){ox, c.y}, rr - R * 0.05f, rr, a, a + 200.0f, 12, frame);
-      }
+      drawSvg(SVG_PU_DISC, ox, c.y, R, 0.0f, dk);
+      drawSvg(SVG_PU_DISC, ox, c.y, R * 0.84f, 0.0f, RAYWHITE);
+      drawSvg(SVG_PU_SPIRAL, ox, c.y, R * 2.0f, t * 120.0f * e, frame);
     }
-    DrawRectangle(c.x - R * 0.06f, c.y - R * 0.06f, R * 0.12f, R * 0.12f, frame); // bridge
+    DrawRectangle(c.x - R * 0.06f, c.y - R * 0.06f, R * 0.12f, R * 0.12f,
+                  frame); // bridge
     break;
   }
   case POWERUP_FOG: {
-    // A low grey mist bank: overlapping soft puffs, deliberately murky.
-    Color mist = GRAY, mistDk = ColorBrightness(GRAY, -0.3f);
-    DrawCircle(c.x - R * 0.55f, c.y + R * 0.2f, R * 0.55f, mistDk);
-    DrawCircle(c.x + R * 0.55f, c.y + R * 0.2f, R * 0.55f, mistDk);
-    DrawCircle(c.x, c.y - R * 0.1f, R * 0.7f, mist);
-    DrawCircle(c.x - R * 0.4f, c.y, R * 0.5f, mist);
-    DrawCircle(c.x + R * 0.4f, c.y, R * 0.5f, mist);
-    DrawCircle(c.x - R * 0.15f, c.y - R * 0.25f, R * 0.4f,
-               ColorBrightness(GRAY, 0.25f)); // lit crown
+    drawSvg(SVG_PU_FOG_DK, c.x, c.y, R * 2.0f, 0.0f,
+            ColorBrightness(GRAY, -0.3f));
+    drawSvg(SVG_PU_FOG, c.x, c.y, R * 2.0f, 0.0f, GRAY);
+    drawSvg(SVG_PU_FOG_CROWN, c.x, c.y, R * 2.0f, 0.0f,
+            ColorBrightness(GRAY, 0.25f));
     break;
   }
   case POWERUP_BUTTER: {
-    // A coin with a red no-entry slash: coins won't stick.
-    DrawEllipse(c.x, c.y, R * 0.7f, R * 0.8f, ColorBrightness(COIN_LO, -0.3f));
-    DrawEllipse(c.x, c.y, R * 0.55f, R * 0.64f, COIN_HI);
-    DrawRing(c, R * 0.82f, R, 0, 360, 24, RED); // prohibition ring
-    DrawLineEx((Vector2){c.x - R * 0.62f, c.y - R * 0.62f},
-               (Vector2){c.x + R * 0.62f, c.y + R * 0.62f}, R * 0.16f,
-               RED); // slash
+    // Reuses the HUD coin's two layers under a prohibition ring. The boxes
+    // differ because the rim and face fill their shared viewBox by different
+    // fractions, so each is scaled to land at the size the old ellipses had.
+    drawSvg(SVG_COIN_RIM, c.x, c.y, R * 1.6f, 0.0f,
+            ColorBrightness(COIN_LO, -0.3f));
+    drawSvg(SVG_COIN_FACE, c.x, c.y, R * 1.85f, 0.0f, COIN_HI);
+    drawSvg(SVG_PU_NO, c.x, c.y, R * 2.0f, 0.0f, RED);
     break;
   }
   case POWERUP_ROCKET:
   default: {
-    // Multi-layer exhaust under a two-tone body with fins + a shiny porthole.
     float fl = R * (0.6f + 0.35f * sinf(t * 22.0f)); // flame flicker
     DrawPoly((Vector2){c.x, c.y + R * 0.9f + fl * 0.4f}, 3, fl, 90,
              Fade(FLAME, 0.7f));
@@ -866,17 +895,12 @@ void drawPowerupGlyph(PowerUpType type, Vector2 c, float R, float t) {
              ColorBrightness(FLAME, 0.4f));
     DrawPoly((Vector2){c.x, c.y + R * 0.85f}, 3, fl * 0.3f, 90,
              Fade(RAYWHITE, 0.8f)); // hot core
-    DrawEllipse(c.x, c.y, R * 0.5f, R * 0.9f, ROCKET_BODY);
-    DrawEllipse(c.x + R * 0.16f, c.y, R * 0.2f, R * 0.82f,
-                ColorBrightness(ROCKET_BODY, -0.28f)); // shade
-    DrawPoly((Vector2){c.x - R * 0.42f, c.y + R * 0.5f}, 3, R * 0.32f, 40,
-             ROCKET_FIN); // left fin
-    DrawPoly((Vector2){c.x + R * 0.42f, c.y + R * 0.5f}, 3, R * 0.32f, -40,
-             ROCKET_FIN); // right fin
-    DrawPoly((Vector2){c.x, c.y - R * 0.6f}, 3, R * 0.5f, -90,
-             ROCKET_FIN); // nose
-    DrawCircle(c.x, c.y - R * 0.1f, R * 0.26f,
-               ColorBrightness(ROCKET_FIN, 0.35f)); // window
+    drawSvg(SVG_PU_ROCKET_BODY, c.x, c.y, R * 2.0f, 0.0f, ROCKET_BODY);
+    drawSvg(SVG_PU_ROCKET_SHADE, c.x, c.y, R * 2.0f, 0.0f,
+            ColorBrightness(ROCKET_BODY, -0.28f));
+    drawSvg(SVG_PU_ROCKET_FIN, c.x, c.y, R * 2.0f, 0.0f, ROCKET_FIN);
+    drawSvg(SVG_PU_ROCKET_WINDOW, c.x, c.y, R * 2.0f, 0.0f,
+            ColorBrightness(ROCKET_FIN, 0.35f));
     DrawCircle(c.x - R * 0.08f, c.y - R * 0.18f, R * 0.08f,
                Fade(RAYWHITE, 0.8f)); // window shine
     break;

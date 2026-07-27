@@ -5,11 +5,14 @@ C99 + [raylib](https://www.raylib.com/)로 만든 수직 점프 게임.
 영감을 받았으나, 코드·아트·오디오·이름은 모두 독자 제작이다. raylib은
 `lib/raylib/`에 git 서브모듈로 고정되어 CMake 서브디렉터리로 소스에서 함께
 빌드되므로 따로 설치할 시스템 의존성이 없다. (일반 `git clone`으로는
-서브모듈이 비어 있으니 아래 빌드 절차를 따를 것.)
+서브모듈이 비어 있으니 아래 빌드 절차를 따를 것.) 아이콘·글리프 렌더링에는
+[nanosvg](https://github.com/memononen/nanosvg)(zlib 라이선스, Mikko Mononen)를
+`lib/nanosvg/`에 git 서브모듈로 고정해 쓴다 — 서드파티 코드는 이 둘뿐이다.
 
 [2PG Arcade 1.44MB 콘테스트](https://2pgarcade.com/contest-144mb.html)를 겨냥 —
 배포되는 게임(실행 파일 + 런타임 + 에셋)은 **1,474,560바이트(3.5" 플로피 1장)
-이하**여야 한다. 에셋 파일 대신 절차적 생성(칩튠, SFX, 배경)을 쓴다.
+이하**여야 한다. 에셋 파일 대신 절차적 생성(칩튠, SFX, 배경)을 쓴다. 아이콘도
+파일이 아니라 SVG 소스 문자열을 바이너리에 박아 두고 실행 시 래스터화한다.
 
 ## 플레이
 
@@ -28,7 +31,7 @@ Boing/
 ├── src/
 │   ├── main.c            # 게임 루프 + STATES[] 디스패치 테이블
 │   ├── game.c            # 공용 Game 컨텍스트: 상태 전환, 최고점수, 버튼 배치
-│   ├── screen_splash.c   # 스플래시 (로고 + 오디오 프리로드)
+│   ├── screen_splash.c   # 스플래시 (로고 + 오디오·글리프 프리로드)
 │   ├── screen_menu.c     # 메뉴 (어트랙트 데모, 도움말/미션 오버레이)
 │   ├── screen_shop.c     # 상점 (스킨 + 파워업 업그레이드 카드)
 │   ├── screen_credits.c  # 크레딧 (CRT 줌아웃 + 스크롤 릴)
@@ -39,11 +42,14 @@ Boing/
 │   ├── theme.c           # 런타임 팔레트/테마 테이블(THEMES[])
 │   ├── sound.c           # 절차적 칩튠 + SFX (트랙 6개, 샘플 파일 없음)
 │   ├── ui.c              # 마우스 UI(버튼/아이콘/텍스트 헬퍼)
+│   ├── svg.c              # 벡터 아이콘 — SVG 소스를 텍스처로 굽고 틴트해 그림
 │   ├── settings.c        # 설정 화면(프레임률/해상도/음악·SFX 볼륨)
 │   ├── persist.c         # save.json 정수 키-값 저장소
 │   └── progress.c        # 코인 은행 + 스킨/업그레이드/미션
 ├── include/              # 헤더 (core.h·game.h 외에는 .c와 1:1)
 ├── lib/raylib/           # raylib (git 서브모듈)
+├── lib/nanosvg/          # nanosvg (git 서브모듈, 헤더 온리)
+├── lib/nanosvg_impl.c    # nanosvg 구현 TU (서브모듈 바깥, 별도 CMake 타겟)
 └── CMakeLists.txt
 ```
 
@@ -53,10 +59,10 @@ Boing/
 ## 빌드 & 실행
 
 ```sh
-# 처음 받을 때는 서브모듈(raylib)까지 함께 클론:
+# 처음 받을 때는 서브모듈(raylib, nanosvg)까지 함께 클론:
 git clone --recurse-submodules https://github.com/Hiyabye/Boing.git
 # 이미 일반 clone 했다면:
-git submodule update --init
+git submodule update --init --recursive
 
 cmake -S . -B build      # 최초 1회, 또는 .c 파일 추가/삭제 후
 cmake --build build      # ./build/Boing 생성
@@ -76,5 +82,5 @@ clang-format이 있으면 `cmake --build build --target format`으로 소스를
 기본 빌드가 `MinSizeRel` + strip이라 `build/Boing`이 곧 배포 크기다:
 
 ```sh
-ls -l build/Boing   # stripped ~500KB (512,856 B), 한도 1,474,560 B
+ls -l build/Boing   # stripped ~550KB (563,000 B), 한도 1,474,560 B
 ```
