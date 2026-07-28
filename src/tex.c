@@ -86,13 +86,35 @@ static Image genCloud(int px) {
 // they clump into bands and lanes instead of dusting evenly. The perlin costs
 // most stars most of their brightness, so the curve is aggressive — without it
 // the field is a barely-visible dusting.
+//
+// STAR_DENSITY is a *coarse* knob, and the reason is a raylib implementation
+// detail worth knowing before reaching for it: GenImageWhiteNoise tests
+// `GetRandomValue(0, 99) < (int)(factor * 100.0f)`, so the factor is quantized
+// to whole percent and everything below 0.01 truncates to **zero stars**. The
+// only steps that exist here are 1%, 2%, 3%… — 0.009 is not "slightly sparser
+// than 0.01", it is an empty sky.
+//
+// STAR_THIN is the fine knob instead. Each star's alpha comes from the perlin
+// multiply, so a gamma above 1 deletes the ones sitting in the perlin's dim
+// regions outright and keeps the ones in its bright regions at full strength —
+// the field thins into lanes and clumps (which is what the perlin was for) and
+// every surviving star stays a sharp 1px dot. Enlarging the on-screen tile in
+// background.c would also thin the field, but by magnifying 1px stars into
+// bokeh; this doesn't.
+//
+// Judging it is its own trap: the contact strip downsamples 512px to a
+// thumbnail, which eats 1px stars, so the field always looks sparser there than
+// it does in game. Judge at full resolution or in-game, never off the strip's
+// cell — that mistake is what put this at 2% and made the night sky snow.
+#define STAR_DENSITY 0.01f
+#define STAR_THIN 2.8f
 static Image genStarfield(int px) {
-  Image im = GenImageWhiteNoise(px, px, 0.025f);
+  Image im = GenImageWhiteNoise(px, px, STAR_DENSITY);
   lumaToAlpha(&im);
   Image n = GenImagePerlinNoise(px, px, 0, 0, 2.0f);
   mulAlphaLuma(&im, n);
   UnloadImage(n);
-  alphaCurve(&im, 0.4f);
+  alphaCurve(&im, STAR_THIN);
   return im;
 }
 

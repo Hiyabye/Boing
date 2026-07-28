@@ -250,12 +250,17 @@ static void drawStarfield(float cameraY, float alpha) {
   if (t.id == 0) {
     return;
   }
-  // {on-screen tile size, parallax depth, alpha, source x offset}. The far
-  // layer's tile is the texture's own pixel size so it maps 1:1 and its 1px
-  // stars stay sharp; the near one is magnified 1.5x into bigger, closer stars.
-  // The x offsets keep the two layers from being the same picture twice.
-  static const float LAYER[2][4] = {{512.0f, 0.10f, 0.55f, 0.0f},
-                                    {768.0f, 0.26f, 0.9f, 213.0f}};
+  // {on-screen tile size, parallax depth, alpha, source x offset}. The x
+  // offsets keep the two layers from being the same picture twice.
+  //
+  // The far layer's tile is the texture's own pixel size so it maps 1:1 and its
+  // 1px stars stay sharp; the near one is magnified 1.5x into bigger, closer
+  // stars. Enlarging these would thin the field — a screenful is one tile's
+  // worth however big the tile is — but magnifying a 1px star just blurs it
+  // into bokeh. Thin the field in tex.c's STAR_THIN instead, which drops whole
+  // stars and leaves the survivors sharp.
+  static const float LAYER[2][4] = {{512.0f, 0.10f, 0.7f, 0.0f},
+                                    {768.0f, 0.26f, 1.0f, 213.0f}};
   for (int i = 0; i < 2; i++) {
     float tile = LAYER[i][0];
     float scroll = wrapf(-cameraY * LAYER[i][1], tile);
