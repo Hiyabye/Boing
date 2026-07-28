@@ -1231,11 +1231,11 @@ void initAudio(AudioStream *stream) {
   InitAudioDevice();
   SetAudioStreamBufferSizeDefault(BUFFER_SIZE);
 
-  // Only the menu/splash track is baked up front (it's what plays first, and
-  // curTrack points at it). The rest stream in via audioPreloadStep() during
-  // the startup splash so the heavy prerender doesn't freeze the window.
-  buildLoop(TRACK_MENU);
-
+  // Nothing is baked here: every track streams in via audioPreloadStep()
+  // during the startup splash, so the window paints its first frame
+  // immediately instead of after a track's worth of prerender. Until a track's
+  // buffer exists updateAudio reads it as silence, and the splash is silent
+  // anyway (main skips updateAudio in that state).
   *stream = LoadAudioStream(SAMPLE_RATE, 32, 1);
   PlayAudioStream(*stream);
 }

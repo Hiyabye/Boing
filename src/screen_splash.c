@@ -9,10 +9,6 @@
 #include "svg.h"
 #include "ui.h"
 
-#define SPLASH_MIN                                                             \
-  1.5f // splash holds at least this long (arcade beat), longer
-       // if tracks are still baking on a slow machine
-
 // Wordmark placement. SVG_LOGO's 200x231 viewBox is fitted to a LOGO_BOX-sided
 // square, so LOGO_BOX is the viewBox's taller side and LOGO_CY the center that
 // puts the "H" back where the old primitive layout had it (y 263..417).
@@ -20,25 +16,19 @@
 #define LOGO_CY 378.5f
 
 void updateSplash(Game *g) {
-  // Bake one music track and rasterize one vector glyph per frame. Each bake is
-  // heavy (a track is millions of samples), so those frames' GetFrameTime is
-  // huge — don't count them toward the arcade beat or it'd be eaten by the load
-  // and the splash would blink by. Freeze the timer until fully loaded; only
-  // smooth post-load frames count. Both steppers run every frame (no
-  // short-circuit) so neither queue waits on the other to drain.
+  // The splash lasts exactly as long as the load: bake one music track and
+  // rasterize one vector glyph per frame, and leave the moment both queues
+  // report drained. There is no minimum hold — anything added to a preload
+  // queue extends the splash by its own cost and nothing else. Both steppers
+  // run every frame (no short-circuit) so neither queue waits on the other.
   bool audioReady = audioPreloadStep();
   bool artReady = svgPreloadStep();
-  if (!audioReady || !artReady)
-    return;
-  g->splashT += GetFrameTime();
-  // Loaded: hold the arcade-beat minimum, or let an impatient tap skip it.
-  if (g->splashT >= SPLASH_MIN || GetKeyPressed() ||
-      IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+  if (audioReady && artReady)
     startTransition(g, GAMESTATE_MENU); // dip to black, then reveal the menu
 }
 
 void drawSplash(Game *g) {
-  (void)g; // timer lives in updateSplash; the logo draws the same every frame
+  (void)g; // preload lives in updateSplash; the logo draws the same every frame
   DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, RAYWHITE);
 
   Color lo = {198, 148, 34, 255}; // deep gold; matches the wordmark's low stop
@@ -46,9 +36,9 @@ void drawSplash(Game *g) {
 
   // Wordmark: serif "H" with bracketed serifs plus the flourish, all one vector
   // glyph. Drawn solid, no fade — it must be visible from the first frame,
-  // through the whole preload (which freezes splashT), not just the post-load
-  // arcade beat. The gold gradient is baked into the SVG, so the shadow pass is
-  // the same glyph tinted near-black and the logo pass tints WHITE.
+  // through the whole preload, which is now the splash's entire lifetime. The
+  // gold gradient is baked into the SVG, so the shadow pass is the same glyph
+  // tinted near-black and the logo pass tints WHITE.
   drawSvg(SVG_LOGO, cx + 7, LOGO_CY + 7, LOGO_BOX, 0.0f, (Color){0, 0, 0, 41});
   drawSvg(SVG_LOGO, cx, LOGO_CY, LOGO_BOX, 0.0f, WHITE);
 
