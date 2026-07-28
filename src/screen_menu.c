@@ -26,11 +26,17 @@ static Rectangle rOverlayClose(void) {
   return centeredBtn(SCREEN_HEIGHT / 2.0f + 168, 180, 54);
 }
 
-// Static "How to Play" lines — concise, no interactive walkthrough.
+// Static "How to Play" lines — concise, no interactive walkthrough. Keep this
+// in step with what the game actually spawns: it named only Magnet and Rocket
+// long after Balloon, Shield and the four debuffs shipped.
 static const char *HELP_LINES[] = {
-    "Move:  arrow keys or mouse",          "Grab coins to launch higher",
-    "Bounce off the cloud platforms",      "Dodge the grape monsters",
-    "Magnet & Rocket power-ups boost you", "Never fall below the screen",
+    "Move:  arrow keys or mouse",
+    "Grab coins to launch higher",
+    "Bounce off the cloud platforms",
+    "Dodge the grape monsters",
+    "Magnet, Rocket, Balloon, Shield help",
+    "Anchor, Dizzy, Fog, Butterfingers hurt",
+    "Never fall below the screen",
 };
 #define HELP_LINE_COUNT ((int)(sizeof(HELP_LINES) / sizeof(HELP_LINES[0])))
 
@@ -45,12 +51,19 @@ static Rectangle overlayPanel(const char *title) {
   return panel;
 }
 
+// Line spacing is tight because the list has to clear rOverlayClose at y=568:
+// the last line starts at HELP_TOP + (n-1)*HELP_STEP and is HELP_FS tall, which
+// at seven lines lands at 542. Adding an eighth means shrinking the step again
+// (or the panel grows) — the old 44px step silently ran the text under the
+// button the moment a line was added.
+#define HELP_TOP 288
+#define HELP_STEP 38
+#define HELP_FS 26
 static void drawHelpOverlay(void) {
   overlayPanel("HOW TO PLAY");
-  int y = 300;
   for (int i = 0; i < HELP_LINE_COUNT; i++) {
-    drawCenteredText(HELP_LINES[i], y, 26, RAYWHITE);
-    y += 44;
+    drawCenteredText(HELP_LINES[i], HELP_TOP + i * HELP_STEP, HELP_FS,
+                     RAYWHITE);
   }
   uiButton(rOverlayClose(), "GOT IT", ICON_PLAY);
 }

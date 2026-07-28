@@ -1,6 +1,9 @@
 // SPLASH — one-time startup logo (gold serif "H" on white + spinning loader).
-// Cosmetic: everything in this game is procedural, so there's nothing to load
-// but the music, which bakes a track per frame behind the logo.
+// Not cosmetic: everything in this game is generated rather than loaded from
+// disk, and this screen is where that generation happens. Three queues drain
+// behind the logo, one item per frame each — a music track, a vector glyph, a
+// procedural texture — and the splash lasts exactly as long as the slowest of
+// them takes to finish.
 #include "game.h"
 
 #include "core.h"

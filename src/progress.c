@@ -26,7 +26,9 @@ const SkinDef SKINS[] = {
 };
 const int SKIN_COUNT = (int)(sizeof(SKINS) / sizeof(SKINS[0]));
 
-const PuUpgradeDef PU_UPGRADES[PU_UPGRADE_COUNT] = {
+// Unsized on purpose, here and in the progress.h declaration — see POWERUP_DEFS
+// in world.c for why both matter and for the designated-initializer limit.
+const PuUpgradeDef PU_UPGRADES[] = {
     // label, base cost (level cost = base * (level+1)). Spawn cheapest, Effect
     // dearest; the shared debuff-suppress is the premium sink.
     // Short axis-only labels: the SHOP card header supplies the power-up name.
@@ -41,6 +43,15 @@ const PuUpgradeDef PU_UPGRADES[PU_UPGRADE_COUNT] = {
 // puLevel[] in Progress must match this size (both keyed by PU_UPGRADE_COUNT).
 STATIC_ASSERT(sizeof(PU_UPGRADES) / sizeof(PU_UPGRADES[0]) == PU_UPGRADE_COUNT,
               pu_upgrades_full);
+
+// This module writes one "pu%d" key per upgrade track (saveProgress below), so
+// PuTrack is the only enum in the game whose growth eats save-file slots — and
+// running out of them is silent, not an error: configSetInt drops the key and
+// the level stops persisting. The other 9 keys are fixed: highScore, the four
+// settings, and this module's four scalars. Fail the build instead.
+#define CONFIG_FIXED_KEYS 9
+STATIC_ASSERT(CONFIG_FIXED_KEYS + PU_UPGRADE_COUNT <= CONFIG_MAX_KEYS,
+              save_keys_fit);
 
 int upgCost(int track, int level) {
   return PU_UPGRADES[track].base * (level + 1);

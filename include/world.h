@@ -56,7 +56,11 @@ typedef struct PowerUpDef {
   bool debuff;       // bad pickup: sad reaction, no boost (see collectPowerups)
 } PowerUpDef;
 
-extern const PowerUpDef POWERUP_DEFS[POWERUP_COUNT];
+// Declared unsized deliberately. Spelling the length here would give the
+// definition in world.c a composite type of exactly that length, so its
+// completeness STATIC_ASSERT would measure the declaration rather than the
+// table and could never fail. Callers only ever index it by PowerUpType.
+extern const PowerUpDef POWERUP_DEFS[];
 
 typedef struct PowerUp {
   Vector2 position;

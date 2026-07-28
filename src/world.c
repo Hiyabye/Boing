@@ -91,7 +91,17 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 // Power-up table (indexed by PowerUpType). Ordered exactly as the enum.
 //              duration color       label     weight shake        invincible
 //              debuff
-const PowerUpDef POWERUP_DEFS[POWERUP_COUNT] = {
+// Unsized on purpose, here *and* in the world.h declaration: either one
+// spelling a length gives this definition that length as its composite type,
+// and the assert below would then measure the spelling instead of the table.
+// This is the one table whose completeness matters at runtime — a missing row
+// means a zero duration, which the HUD timer bar divides by.
+//
+// Limit worth knowing: the rows are designated, so the length is the highest
+// index plus one. Dropping the *last* row fails the build; dropping one from
+// the middle leaves a zero-filled hole the assert cannot see. Adding a row to
+// the enum's end without one here is the case this actually catches.
+const PowerUpDef POWERUP_DEFS[] = {
     // HUD timer-bar colors are fixed (not themed): the table is static config.
     // spawnWeight only distributes picks *within* a category — pickPowerup(bad)
     // weighted-picks among the good rows or among the debuff rows. The good-vs-

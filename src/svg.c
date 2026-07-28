@@ -39,7 +39,18 @@ typedef struct {
   short px; // master raster size for this glyph
 } SvgDef;
 
-static const SvgDef SVG_DEFS[SVG_COUNT] = {
+// Deliberately unsized. Writing `SVG_DEFS[SVG_COUNT]` makes the completeness
+// assert below tautological — a `[N]`-sized array is N long whatever you put in
+// it — so letting the initializer set the length is what gives the assert
+// something real to catch. Same reasoning as TEX_DEFS in tex.c.
+//
+// These rows are *positional*, not designated, so this is the strongest form of
+// the guard in the codebase: dropping a row anywhere shortens the array and
+// fails the build. (Verified by deleting a middle row and watching
+// static_assert_svg_defs_table_complete fire.) The cost of positional rows is
+// that they must stay in exact SvgId order — the comment on each row is the
+// only thing naming which glyph it is.
+static const SvgDef SVG_DEFS[] = {
     // SVG_CURSOR — mouse arrow. The tip sits at the viewBox origin (the 0.8
     // inset is exactly half the stroke width, so the *outer* tip lands on 0,0),
     // which is what lets ui.c place the hotspot by offsetting half a box.

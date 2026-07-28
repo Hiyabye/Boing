@@ -11,6 +11,15 @@
 // caller's default. Every subsystem reads/writes its own keys through this one
 // map, and configSave serializes the whole map — so independent saves merge
 // instead of clobbering each other's keys.
+//
+// The map is a fixed-size array, and running out of slots is **silent**:
+// configSetInt drops the key and that field simply never persists. So the
+// capacity is public, and any module contributing a variable number of keys is
+// expected to STATIC_ASSERT its share against it — progress.c does, because its
+// one-key-per-upgrade-track scheme is the only thing here that grows when an
+// enum grows. Raise this when the budget gets tight; it costs 28 bytes a slot.
+#define CONFIG_MAX_KEYS 24
+
 void configLoad(const char *path);
 int configGetInt(const char *key, int def);
 void configSetInt(const char *key, int val);
