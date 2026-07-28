@@ -7,6 +7,7 @@
 #include "raylib.h"
 #include "sound.h"
 #include "svg.h"
+#include "tex.h"
 #include "ui.h"
 
 // Wordmark placement. SVG_LOGO's 200x231 viewBox is fitted to a LOGO_BOX-sided
@@ -16,14 +17,15 @@
 #define LOGO_CY 378.5f
 
 void updateSplash(Game *g) {
-  // The splash lasts exactly as long as the load: bake one music track and
-  // rasterize one vector glyph per frame, and leave the moment both queues
-  // report drained. There is no minimum hold — anything added to a preload
-  // queue extends the splash by its own cost and nothing else. Both steppers
-  // run every frame (no short-circuit) so neither queue waits on the other.
+  // The splash lasts exactly as long as the load: bake one music track, one
+  // vector glyph and one procedural texture per frame, and leave the moment all
+  // three queues report drained. There is no minimum hold — anything added to a
+  // preload queue extends the splash by its own cost and nothing else. Every
+  // stepper runs every frame (no short-circuit) so no queue waits on another.
   bool audioReady = audioPreloadStep();
   bool artReady = svgPreloadStep();
-  if (audioReady && artReady)
+  bool texReady = texPreloadStep();
+  if (audioReady && artReady && texReady)
     startTransition(g, GAMESTATE_MENU); // dip to black, then reveal the menu
 }
 

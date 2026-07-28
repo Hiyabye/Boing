@@ -13,6 +13,7 @@
 #include "settings.h"
 #include "sound.h"
 #include "svg.h"
+#include "tex.h"
 #include "theme.h"
 #include "ui.h"
 #include "world.h"
@@ -158,6 +159,7 @@ int main(void) {
   UnloadRenderTexture(gMenuSnap);
   unloadPost();
   unloadSvgCache();
+  unloadTexCache();
   deinitAudio(&stream);
   CloseWindow();
   return 0;
