@@ -4,6 +4,7 @@
 #include "progress.h" // PuTrack + MAX_UPG_LEVEL for the upgrade hooks
 #include "sound.h"
 #include "svg.h"
+#include "tex.h"
 #include "theme.h"
 
 #include <math.h>
@@ -641,12 +642,26 @@ static unsigned entSeed(Vector2 p) {
   return h;
 }
 
+// One additive soft-light stamp — the shared idiom behind every glow in this
+// file (coin, monster, power-up, pop ring, particles). `w` is the full box
+// width, so a glow of radius r asks for 2*r.
+//
+// The theme's bloom weight is *added to* a base rather than replacing it: the
+// day era has themeGlow() == 0, and weighting it out entirely would leave the
+// daylight coins flatter than they were before any of this. So Sunny Hills
+// keeps the light it always had and the neon eras blaze on top of it.
+static void glowStamp(Vector2 c, float w, Color tint, float base, float lit) {
+  BeginBlendMode(BLEND_ADDITIVE);
+  drawTex(TEX_PUFF, c.x, c.y, w, w, 0.0f, Fade(tint, base + lit * themeGlow()));
+  EndBlendMode();
+}
+
 static void drawCoin(Vector2 c, float t) {
   unsigned seed = entSeed(c);
   float phase = (seed & 255) / 255.0f * TWO_PI; // out-of-sync twinkle offset
   float spin = fabsf(cosf(t * 4.0f + c.y * 0.05f)); // 0 (edge-on) .. 1 (face)
   float w = COIN_RADIUS * (0.22f + 0.78f * spin);
-  DrawCircle(c.x, c.y, COIN_RADIUS * 1.5f, Fade(COIN_HI, 0.22f)); // glow
+  glowStamp(c, COIN_RADIUS * 4.5f, COIN_HI, 0.22f, 0.3f);
   DrawEllipse(c.x, c.y, w * 1.12f, COIN_RADIUS * 1.12f,
               ColorBrightness(COIN_LO, -0.35f));                  // minted rim
   DrawEllipse(c.x, c.y, w, COIN_RADIUS, COIN_LO);                 // edge
@@ -686,12 +701,15 @@ static void drawCoin(Vector2 c, float t) {
 
 static void drawCloudPad(Vector2 p) {
   float cx = p.x + PLATFORM_WIDTH / 2.0f;
-  DrawEllipse(cx, p.y + PLATFORM_HEIGHT + 6.0f, PLATFORM_WIDTH * 0.48f, 9.0f,
-              Fade(SKY_BOT_HIGH, 0.35f)); // soft shadow
-  // Cloud-puff silhouette behind the board, as a soft backing accent.
-  DrawCircle(p.x + 24.0f, p.y, 17.0f, CLOUD);
-  DrawCircle(p.x + PLATFORM_WIDTH - 24.0f, p.y, 17.0f, CLOUD);
-  DrawCircle(cx, p.y - 5.0f, 21.0f, CLOUD);
+  drawTex(TEX_PUFF, cx, p.y + PLATFORM_HEIGHT + 6.0f, PLATFORM_WIDTH * 1.5f,
+          40.0f, 0.0f, Fade(SKY_BOT_HIGH, 0.5f)); // soft shadow
+  // Cloud-puff silhouette behind the board, as a soft backing accent. Same
+  // TEX_CLOUD the backdrop's clouds are made of, so a pad reads as the same
+  // weather as the sky it hangs in.
+  drawTex(TEX_CLOUD, p.x + 24.0f, p.y, 62.0f, 50.0f, 0.0f, CLOUD);
+  drawTex(TEX_CLOUD, p.x + PLATFORM_WIDTH - 24.0f, p.y, 62.0f, 50.0f, 0.0f,
+          CLOUD);
+  drawTex(TEX_CLOUD, cx, p.y - 5.0f, 78.0f, 62.0f, 0.0f, CLOUD);
 
   // The landing board: a defined solid surface so the jump-off edge reads
   // clearly against the sky. Dark outline + body + a bright top face strip.
@@ -712,9 +730,9 @@ static void drawMonster(Vector2 m, float t) {
   float wob = 1.0f + 0.08f * sinf(t * 6.0f + m.x * 0.1f);
   Color horn = ColorBrightness(GRAPE_DK, -0.15f);
 
-  DrawEllipse(m.x, m.y + R * 1.05f, R * 0.8f, R * 0.24f,
-              Fade(BLACK, 0.18f));                     // drop shadow
-  DrawCircle(m.x, m.y, R * 1.35f, Fade(GRAPE, 0.22f)); // glow
+  drawTex(TEX_PUFF, m.x, m.y + R * 1.05f, R * 2.6f, R * 0.9f, 0.0f,
+          Fade(BLACK, 0.3f)); // drop shadow
+  glowStamp(m, R * 3.5f, GRAPE, 0.2f, 0.45f);
 
   // Wobbling stubby legs (2 or 3, seed-picked).
   int legs = (seed & 1) ? 3 : 2;
@@ -794,8 +812,8 @@ static void drawPowerUp(const PowerUp *pu, float t) {
                pu->position.y + sinf(t * 3.0f + pu->position.x * 0.1f) * 4.0f};
   float R = POWERUP_RADIUS;
   float pulse = 0.25f + 0.12f * sinf(t * 4.0f + pu->position.y * 0.05f);
-  DrawCircle(c.x, c.y, R * (1.6f + 0.15f * sinf(t * 4.0f)),
-             Fade(RAYWHITE, pulse)); // pulsing halo
+  glowStamp(c, R * (4.0f + 0.4f * sinf(t * 4.0f)), RAYWHITE, pulse,
+            0.25f); // pulsing halo
   drawPowerupGlyph(pu->type, c, R, t);
 }
 
@@ -912,14 +930,47 @@ void drawPowerupGlyph(PowerUpType type, Vector2 c, float R, float t) {
 // current space — shared by the gameplay world and the menu's attract floor.
 void drawGround(void) {
   DrawRectangle(0, FLOOR_Y, SCREEN_WIDTH, SCREEN_HEIGHT, GRASS_DK);
+  // Soil grain: TEX_ROCK tiled over the soil rect only. Tiled rather than
+  // stretched so the cell size stays put however tall the rect is, and only
+  // over the rectangle — cellular noise fills its own square box. The tile is
+  // small on purpose: TEX_ROCK is 8 cells across, so a big tile turns soil
+  // into cobblestones. At 70px a cell is ~9px and reads as grit.
+  Texture2D rock = texGet(TEX_ROCK);
+  if (rock.id != 0) {
+    const float TILE = 70.0f;
+    DrawTexturePro(rock,
+                   (Rectangle){0, 0, SCREEN_WIDTH / TILE * rock.width,
+                               SCREEN_HEIGHT / TILE * rock.height},
+                   (Rectangle){0, FLOOR_Y, SCREEN_WIDTH, SCREEN_HEIGHT},
+                   (Vector2){0, 0}, 0.0f,
+                   Fade(ColorBrightness(GRASS_DK, -0.4f), 0.28f));
+  }
   DrawRectangle(0, FLOOR_Y, SCREEN_WIDTH, 16, GRASS);
   for (int x = 0; x <= SCREEN_WIDTH; x += 28) {
     DrawCircle(x, FLOOR_Y, 11, GRASS);
   }
 }
 
-// Particles as spinning confetti flecks (on top of the scene).
+// Particles as spinning confetti flecks (on top of the scene), each over an
+// additive soft-edged streak so a burst throws light as well as paper.
+//
+// Two passes, not one loop drawing both: a blend switch flushes the batch, so
+// per-particle switching would cost 128 flushes a frame instead of two. The
+// solid fleck stays — additive alone vanishes against the daylight sky, which
+// saturates to white, and confetti is what a coin burst is supposed to be.
 static void drawParticles(const World *world) {
+  BeginBlendMode(BLEND_ADDITIVE);
+  for (int i = 0; i < MAX_PARTICLES; i++) {
+    if (world->particles[i].life <= 0.0f) {
+      continue;
+    }
+    Particle pt = world->particles[i];
+    float sz = 26.0f * pt.life;
+    float ang = atan2f(pt.velocity.y, pt.velocity.x) * RAD2DEG;
+    drawTex(TEX_PUFF, pt.position.x, pt.position.y, sz, sz * 0.5f, ang,
+            Fade(pt.color, pt.life * (0.4f + 0.6f * themeGlow())));
+  }
+  EndBlendMode();
   for (int i = 0; i < MAX_PARTICLES; i++) {
     if (world->particles[i].life <= 0.0f) {
       continue;
@@ -933,10 +984,12 @@ static void drawParticles(const World *world) {
   }
 }
 
-// The expanding "pop" ring flashed at the last coin/power-up collect.
+// The expanding "pop" ring flashed at the last coin/power-up collect, over an
+// additive bloom so the pop throws light instead of just outlining itself.
 static void drawFlash(const World *world) {
   if (world->flash > 0.0f) {
     float r = COIN_RADIUS + (1.0f - world->flash) * 42.0f;
+    glowStamp(world->flashPos, r * 2.4f, RAYWHITE, world->flash * 0.5f, 0.3f);
     DrawRing(world->flashPos, r * 0.72f, r, 0, 360, 24,
              Fade(RAYWHITE, world->flash));
   }
@@ -948,6 +1001,7 @@ static void drawFlash(const World *world) {
 void drawPowerAura(const World *world, const Player *player) {
   float t = (float)GetTime();
   int slot = 0;
+  BeginBlendMode(BLEND_ADDITIVE); // the aura is light the blob is giving off
   for (PowerUpType type = 0; type < POWERUP_COUNT; type++) {
     if (world->powerTimer[type] <= 0.0f) {
       continue;
@@ -962,6 +1016,7 @@ void drawPowerAura(const World *world, const Player *player) {
              Fade(col, 0.25f)); // faint glow doubling
     slot++;
   }
+  EndBlendMode();
 }
 
 void drawWorld(const World *world) {
@@ -991,3 +1046,128 @@ int getScore(const World *world) {
   return (int)(ascent / HEIGHT_PER_POINT) +
          world->coinsCollected * POINTS_PER_COIN + world->comboBonus;
 }
+
+#ifdef WORLD_SELFTEST
+// Contact strip of one fixed gameplay scene rendered once per era, so the
+// entities can be eyeballed without playing to 60,000 units — the sibling of
+// background.c's BG_SELFTEST, and the only way to see a monster and a power-up
+// at the neon palette without a lucky drop.
+//   cc -DWORLD_SELFTEST src/world.c src/background.c src/player.c src/theme.c \
+//      src/tex.c src/svg.c src/sound.c src/progress.c src/persist.c \
+//      lib/nanosvg_impl.c -Iinclude -Ilib/nanosvg/src -Ilib/raylib/src \
+//      build/lib/raylib/raylib/libraylib.a -lm -framework Cocoa \
+//      -framework IOKit -framework CoreVideo -framework OpenGL \
+//      -o /tmp/worldtest && /tmp/worldtest /tmp/worldstrip.png
+#include "background.h"
+
+#include <assert.h>
+#include <stdio.h>
+
+#define BAND 20000.0f // see BG_SELFTEST: only has to land inside a band
+#define CELL 400
+
+int main(int argc, char **argv) {
+  SetTraceLogLevel(LOG_WARNING);
+  InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "worldtest");
+  while (!texPreloadStep()) {
+  }
+  while (!svgPreloadStep()) {
+  }
+  RenderTexture rt = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
+  Image sheet = GenImageColor(CELL * THEME_COUNT, CELL, BLACK);
+
+  // The scene is built by assignment rather than by running the spawner, so
+  // the strip shows the same picture every run and a change to the spawn
+  // tables can't quietly empty it. cameraY stays 0, so world y == screen y.
+  World w = {0};
+  for (int i = 0; i < 8; i++) {
+    w.coins[i].position =
+        (Vector2){110.0f + i * 80.0f, 210.0f + (i % 3) * 55.0f};
+    w.coins[i].active = true;
+  }
+  w.platforms[0] = (Platform){{80.0f, 470.0f}, true};
+  w.platforms[1] = (Platform){{440.0f, 355.0f}, true};
+  w.monsters[0] = (Monster){{240.0f, 120.0f}, 1.0f, true};
+  w.monsters[1] = (Monster){{640.0f, 560.0f}, -1.0f, true};
+  for (int i = 0; i < MAX_POWERUPS; i++) {
+    w.powerups[i].position = (Vector2){130.0f + i * 190.0f, 640.0f};
+    w.powerups[i].type = (PowerUpType)i; // magnet / rocket / balloon / shield
+    w.powerups[i].active = true;
+  }
+  for (int i = 0; i < MAX_PARTICLES; i++) { // one burst, mid-flight
+    float a = i * (2.0f * PI / MAX_PARTICLES);
+    w.particles[i].position =
+        (Vector2){400.0f + cosf(a) * 70.0f, 300.0f + sinf(a) * 70.0f};
+    w.particles[i].velocity = (Vector2){cosf(a), sinf(a)};
+    w.particles[i].life = 0.4f + 0.6f * ((i % 5) / 5.0f);
+  }
+  w.flashPos = (Vector2){400.0f, 300.0f};
+  w.flash = 0.7f;
+  w.powerTimer[POWERUP_MAGNET] = 100.0f; // two aura rings around the blob
+  w.powerTimer[POWERUP_ROCKET] = 100.0f;
+
+  for (int i = 0; i < THEME_COUNT; i++) {
+    float cameraY = -(i * BAND + BAND * 0.05f);
+    // Ahead of the draw, and not once at setup: gTheme is zero-initialized
+    // until the first themeUpdate, so confetti picked before this point is
+    // pure transparent black and the whole burst renders invisible.
+    themeUpdate(-cameraY);
+    for (int k = 0; k < MAX_PARTICLES; k++) {
+      w.particles[k].color = gTheme.confetti[k % CONFETTI_COUNT];
+    }
+    Player p = createPlayer();
+    p.position = (Vector2){400.0f, 430.0f};
+    p.velocity = (Vector2){0.0f, -30.0f}; // stretched, and a trail behind it
+    for (int k = 0; k < TRAIL_LEN; k++) {
+      p.trail[k] =
+          (Vector2){400.0f - k * 4.0f, 430.0f + (TRAIL_LEN - k) * 16.0f};
+    }
+
+    BeginTextureMode(rt);
+    ClearBackground(BLACK);
+    drawGameBackground(cameraY); // also runs themeUpdate for this band
+    drawWorld(&w);
+    drawPlayer(&p);
+    drawPowerAura(&w, &p);
+    EndTextureMode();
+
+    Image im = LoadImageFromTexture(rt.texture);
+    ImageFlipVertical(&im); // framebuffer textures are bottom-up
+    // Every translucent draw blends the target's *alpha* channel down as well
+    // as its color, so the readback is a correct picture carrying junk alpha.
+    // Left alone, ImageDrawImage would then blend the cell onto the black
+    // sheet and every soft-edged sprite would read as a dark smudge — an
+    // artifact of this strip, not of the game.
+    Color *q = im.data;
+    for (int k = 0, n = im.width * im.height; k < n; k++) {
+      q[k].a = 255;
+    }
+
+    // The two failure modes this art pass can produce without crashing: a
+    // texture that never baked leaves entities invisible, and a BeginBlendMode
+    // whose EndBlendMode is missing leaks additive blending into everything
+    // drawn after it and blows the frame to white.
+    const Color *px = im.data;
+    long sum = 0;
+    int lo = 255, hi = 0;
+    for (int k = 0, n = im.width * im.height; k < n; k++) {
+      int l = (px[k].r + px[k].g + px[k].b) / 3;
+      sum += l;
+      lo = (l < lo) ? l : lo;
+      hi = (l > hi) ? l : hi;
+    }
+    int mean = (int)(sum / (im.width * im.height));
+    printf("era %d: luma %3d..%3d  mean %3d\n", i, lo, hi, mean);
+    assert(hi - lo > 32 && "scene came out flat");
+    assert(mean > 8 && mean < 247 && "scene blown to black or white");
+
+    ImageResize(&im, CELL, CELL);
+    ImageDrawImage(&sheet, im, i * CELL, 0, WHITE);
+    UnloadImage(im);
+  }
+  ExportImage(sheet, argc > 1 ? argv[1] : "worldstrip.png");
+  printf("ok — %d eras\n", THEME_COUNT);
+  CloseWindow();
+  return 0;
+}
+#endif

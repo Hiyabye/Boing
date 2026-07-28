@@ -2,6 +2,7 @@
 
 #include "core.h"
 #include "svg.h"
+#include "tex.h"
 #include "theme.h"
 
 #include <math.h>
@@ -215,13 +216,17 @@ void drawPlayer(const Player *player) {
 
   Character c = player->character;
 
-  // Motion trail: oldest (trailHead) faint & small, newest fuller.
+  // Motion trail: oldest (trailHead) faint & small, newest fuller. Soft-edged
+  // stamps rather than hard ellipses — the trail is the blob's afterimage, and
+  // eight crisp outlines behind it read as eight blobs. Boxes run wider than
+  // the old ellipses because TEX_PUFF's falloff puts its visible body well
+  // inside its own box. The blob itself stays untouched.
   for (int k = 0; k < TRAIL_LEN; k++) {
     int idx = (player->trailHead + k) % TRAIL_LEN;
     float f = (float)(k + 1) / TRAIL_LEN;
     Vector2 tp = player->trail[idx];
-    DrawEllipse(tp.x, tp.y, rx * f * 0.8f, ry * f * 0.8f,
-                Fade(c.body, 0.22f * f));
+    drawTex(TEX_PUFF, tp.x, tp.y, rx * f * 2.2f, ry * f * 2.2f, 0.0f,
+            Fade(c.body, 0.5f * f));
   }
 
   drawBlobBody(px, py, rx, ry, c);

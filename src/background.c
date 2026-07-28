@@ -512,6 +512,15 @@ int main(int argc, char **argv) {
 
     Image im = LoadImageFromTexture(rt.texture);
     ImageFlipVertical(&im); // framebuffer textures are bottom-up
+    // Every translucent draw blends the target's *alpha* channel down as well
+    // as its color, so the readback is a correct picture carrying junk alpha.
+    // Left alone, ImageDrawImage would then blend the cell onto the black
+    // sheet and every cloud would read as a dark smudge — an artifact of this
+    // strip, not of the game.
+    Color *q = im.data;
+    for (int k = 0, n = im.width * im.height; k < n; k++) {
+      q[k].a = 255;
+    }
 
     // Two failure modes this pass can actually produce, neither of which
     // crashes: a texture that never baked leaves the backdrop blank, and an

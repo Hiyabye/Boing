@@ -6,6 +6,7 @@
 #include "core.h"
 #include "raylib.h"
 #include "sound.h"
+#include "tex.h"
 #include "theme.h"
 #include "ui.h"
 
@@ -121,15 +122,29 @@ static void drawCrtCabinet(Rectangle tube, float e) {
   DrawCircle((int)cx, (int)(tube.y + tube.height * 0.80f), 6 * e, Fade(RED, e));
 }
 
-// A frame of TV snow: random bright bars over near-black. Hides the hard cut
-// from the frozen menu to the reel.
+// A frame of TV snow, hiding the hard cut from the frozen menu to the reel.
+// One TEX_STATIC blit with a per-frame jittered source offset instead of 220
+// RNG-placed bars: real per-pixel speckle, and because the texture is
+// GL_REPEAT any offset at all is a valid, seamless frame of noise. The source
+// rect is half the destination in texels, so one noise pixel covers a 2x2 block
+// — snow that reads as snow instead of shimmering to flat grey under the post
+// pass's supersampling. The sweeping roll bars are new: they are what reads as
+// a *tube* rather than as noise, and the old scattered rects never did it.
 static void drawStatic(Rectangle r) {
   DrawRectangleRec(r, (Color){20, 20, 20, 255});
-  for (int i = 0; i < 220; i++) {
-    int x = (int)r.x + GetRandomValue(0, (int)r.width - 1);
-    int y = (int)r.y + GetRandomValue(0, (int)r.height - 1);
-    unsigned char v = (unsigned char)GetRandomValue(90, 255);
-    DrawRectangle(x, y, GetRandomValue(2, 10), 2, (Color){v, v, v, 255});
+  Texture2D t = texGet(TEX_STATIC);
+  if (t.id != 0) {
+    DrawTexturePro(t,
+                   (Rectangle){(float)GetRandomValue(0, t.width),
+                               (float)GetRandomValue(0, t.height),
+                               r.width * 0.5f, r.height * 0.5f},
+                   r, (Vector2){0, 0}, 0.0f, Fade(WHITE, 0.75f));
+  }
+  for (int i = 0; i < 3; i++) { // bright roll bars sweeping the tube
+    float y = r.y + fmodf((float)GetTime() * (90.0f + i * 40.0f) + i * 200.0f,
+                          r.height);
+    DrawRectangle((int)r.x, (int)y, (int)r.width, 2 + i,
+                  Fade(WHITE, 0.35f - i * 0.08f));
   }
 }
 

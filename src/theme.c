@@ -220,7 +220,12 @@ int themeTrack(void) { return gTheme.track; }
 // than a Theme field because Theme's leading run must stay all-Color for the
 // generic lerp above; blended over the band by hand so the glow rises into the
 // neon level and falls out of it with the palette.
-static const float GLOW[THEME_COUNT] = {0.0f, 0.18f, 1.0f, 0.45f};
+//
+// It also weights every additive stamp in world.c (see glowStamp), so this is
+// the one knob for how hard the arcade eras blaze. Sunny Hills is no longer a
+// flat 0: real daylight blooms too, and the value that used to mean "no bloom"
+// now also meant "no light on the coins".
+static const float GLOW[THEME_COUNT] = {0.12f, 0.35f, 1.0f, 0.7f};
 STATIC_ASSERT(sizeof(GLOW) / sizeof(GLOW[0]) == THEME_COUNT,
               theme_glow_table_complete);
 
