@@ -90,6 +90,15 @@ Temporary Items
 # End of https://www.toptal.com/developers/gitignore/api/cmake,macos,visualstudiocode,git
 
 
-### Mega Jump ###
+### Boing ###
 build*/
+
+# Written next to the exe at runtime (high score + settings + progress).
 save.json
+
+# Per-machine Claude Code permissions. This was already being ignored, but only
+# by accident: `*.LOCAL.*` above is a merge-tool backup pattern, and it matches
+# `settings.local.json` solely because macOS is case-insensitive. Spell it out,
+# so the file doesn't become committable the moment anyone builds on a
+# case-sensitive filesystem. `.claude/skills/` stays tracked.
+.claude/settings.local.json
