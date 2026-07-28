@@ -76,31 +76,43 @@ void updateMenu(Game *g) {
   updateAttract(&g->player);            // demo: blob wanders the menu
   if (g->showHelp || g->showMissions) { // modal open: only close-input is live
     if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
-        clicked(rOverlayClose())) {
+        uiItem(rOverlayClose())) {
       g->showHelp = g->showMissions = false;
       sfx(SFX_SELECT);
     }
     return;
   }
-  if (clicked(rHelpBtn())) {
+  // Every button registers with uiItem every frame, in a stable order — an
+  // early-out chain would drop the ones below whatever was pressed and the
+  // focus ring would jump. PLAY registers first, so that's where the ring
+  // starts when the menu is entered.
+  bool play = uiItem(rMenuPlay());
+  bool shop = uiItem(rMenuShop());
+  bool missions = uiItem(rMenuMissions());
+  bool settings = uiItem(rMenuSettings());
+  bool credits = uiItem(rMenuCredits());
+  bool quit = uiItem(rMenuExit());
+  bool help = uiItem(rHelpBtn());
+
+  if (help) {
     g->showHelp = true;
     sfx(SFX_SELECT);
     return;
   }
-  if (clicked(rMenuMissions())) {
+  if (missions) {
     g->showMissions = true;
     sfx(SFX_SELECT);
     return;
   }
-  if (IsKeyPressed(KEY_SPACE) || clicked(rMenuPlay())) {
+  if (IsKeyPressed(KEY_SPACE) || play) {
     startGame(g, true);
-  } else if (clicked(rMenuShop())) {
+  } else if (shop) {
     gotoState(g, GAMESTATE_SHOP);
     sfx(SFX_SELECT);
-  } else if (IsKeyPressed(KEY_S) || clicked(rMenuSettings())) {
+  } else if (IsKeyPressed(KEY_S) || settings) {
     gotoState(g, GAMESTATE_SETTINGS);
     sfx(SFX_SELECT);
-  } else if (clicked(rMenuCredits())) {
+  } else if (credits) {
     // Freeze the current menu onto the tube, then start the zoom-out.
     BeginTextureMode(gMenuSnap);
     drawMenu(g);
@@ -110,7 +122,7 @@ void updateMenu(Game *g) {
     g->creditsExiting = false;
     gotoState(g, GAMESTATE_CREDITS);
     sfx(SFX_SELECT);
-  } else if (clicked(rMenuExit())) {
+  } else if (quit) {
     g->quit = true;
   }
 }

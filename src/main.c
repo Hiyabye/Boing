@@ -14,6 +14,7 @@
 #include "sound.h"
 #include "svg.h"
 #include "theme.h"
+#include "ui.h"
 #include "world.h"
 
 #define FADE_SPEED 3.0f // black-dip transition rate (~0.33s each direction)
@@ -71,6 +72,7 @@ int main(void) {
   SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI);
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Boing!");
   SetExitKey(KEY_NULL); // Esc leaves the settings menu, it doesn't quit
+  HideCursor();         // ui.c's drawCursor() replaces the OS arrow
 
   AudioStream stream;
   initAudio(&stream);
@@ -105,6 +107,9 @@ int main(void) {
       updateAudio(&stream);
     }
     STATES[game.state].update(&game);
+    // The screen's update() just re-registered its focusable rects via uiItem;
+    // move the ring now so this frame's draw shows where it landed.
+    uiFocusStep();
 
     // Black-dip transition: fall to black, swap state at the bottom, lift back.
     if (game.fadePhase == 1) {
@@ -137,11 +142,16 @@ int main(void) {
     rlPushMatrix();
     rlScalef(scale, scale, 1.0f);
     STATES[game.state].draw(&game);
+    uiFocusDraw(); // on top of the screen's own overlays, still in 800-space
     if (game.fade > 0.0f) { // transition dip, over the current state's draw
       DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, game.fade));
     }
     rlPopMatrix();
     postEnd(&game.post); // resolve the offscreen target back to the window
+    // Pointer last, outside the post pass: the CRT barrel would otherwise slide
+    // it off the real cursor (virtualMouse has no inverse warp) and Fog would
+    // blur it.
+    drawCursor();
     EndDrawing();
   }
 

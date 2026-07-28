@@ -1,6 +1,7 @@
 #include "player.h"
 
 #include "core.h"
+#include "svg.h"
 #include "theme.h"
 
 #include <math.h>
@@ -22,7 +23,8 @@
 // 3 call sites don't change. Defaults to the Bubblegum pink until main() sets
 // it from saved progress. Literal Color (the CANDY_PINK macro is a runtime
 // lvalue).
-static Character gSkin = {{255, 127, 176, 255}, {228, 70, 139, 255}};
+static Character gSkin = {
+    {255, 127, 176, 255}, {228, 70, 139, 255}, HAT_BOW, GLS_NONE};
 void setPlayerSkin(Character c) { gSkin = c; }
 
 Player createPlayer(void) {
@@ -143,6 +145,59 @@ void updateAttract(Player *player) {
   pushTrail(player);
 }
 
+// Accessory slot -> glyph. HAT_NONE/GLS_NONE are the enums' first values and
+// have no row, so both tables are indexed by `id - 1` (the ICON_SVG idiom).
+static const SvgId HAT_SVG[] = {
+    [HAT_CAP - 1] = SVG_ACC_CAP,
+    [HAT_CROWN - 1] = SVG_ACC_CROWN,
+    [HAT_BOW - 1] = SVG_ACC_BOW,
+};
+static const SvgId GLS_SVG[] = {
+    [GLS_ROUND - 1] = SVG_ACC_GLASSES,
+    [GLS_SHADES - 1] = SVG_ACC_SHADES,
+};
+// A missing row would silently draw glyph 0 (SVG_CURSOR) on the blob's head.
+STATIC_ASSERT(sizeof(HAT_SVG) / sizeof(HAT_SVG[0]) == HAT_COUNT - 1,
+              hat_svg_table_complete);
+STATIC_ASSERT(sizeof(GLS_SVG) / sizeof(GLS_SVG[0]) == GLS_COUNT - 1,
+              gls_svg_table_complete);
+
+// Accessory box geometry, in multiples of the *deformed* half-extents so the
+// art squashes and stretches with the body. The glyphs are authored where they
+// want to sit inside their 24x24 viewBox, so these only set size and anchor:
+// the glasses box width is what lands the lenses (authored at 12 +/- 5.8) on
+// the eyes at +/- 0.38*rx.
+#define HAT_W 2.2f
+#define HAT_H 1.5f
+// Hat anchor, tuned by eye: the hats sit ~0.17*ry into the crown. Raising it
+// further floats them off the head; lowering it drops the cap's brim onto the
+// eyes during a deep crouch (the eyes scale with the *undeformed* r, so they
+// keep their size while ry shrinks under them).
+#define HAT_Y 1.18f // box center above the blob's center, in ry
+#define GLS_W 1.6f
+#define GLS_H 1.15f
+#define GLS_Y 0.18f // matches drawPlayer's eye line, `ey`
+
+void drawBlobBody(float cx, float cy, float rx, float ry, Character c) {
+  // Solid two-tone candy fill (dark base + lighter inner). No glow/rim/sheen —
+  // a firm flat blob, not a glossy bubble.
+  DrawEllipse(cx, cy, rx, ry, c.bodyDark);
+  DrawEllipse(cx, cy - ry * 0.12f, rx * 0.82f, ry * 0.82f, c.body);
+}
+
+void drawAccessories(float cx, float cy, float rx, float ry, Character c) {
+  // Fixed-color art, so it draws tinted WHITE: a gold crown stays gold on every
+  // skin. An out-of-range slot draws nothing rather than reading past a table.
+  if (c.glasses > GLS_NONE && c.glasses < GLS_COUNT) {
+    drawSvgEx(GLS_SVG[c.glasses - 1], cx, cy - ry * GLS_Y, rx * GLS_W,
+              ry * GLS_H, 0.0f, WHITE);
+  }
+  if (c.hat > HAT_NONE && c.hat < HAT_COUNT) {
+    drawSvgEx(HAT_SVG[c.hat - 1], cx, cy - ry * HAT_Y, rx * HAT_W, ry * HAT_H,
+              0.0f, WHITE);
+  }
+}
+
 void drawPlayer(const Player *player) {
   float px = player->position.x;
   float py = player->position.y;
@@ -169,10 +224,7 @@ void drawPlayer(const Player *player) {
                 Fade(c.body, 0.22f * f));
   }
 
-  // Body: solid two-tone candy fill (dark base + lighter inner). No glow/rim/
-  // sheen — a firm flat blob, not a glossy bubble.
-  DrawEllipse(px, py, rx, ry, c.bodyDark);
-  DrawEllipse(px, py - ry * 0.12f, rx * 0.82f, ry * 0.82f, c.body);
+  drawBlobBody(px, py, rx, ry, c);
 
   // Cheek blush.
   Color blush = Fade(ColorBrightness(c.bodyDark, 0.2f), 0.4f);
@@ -208,6 +260,8 @@ void drawPlayer(const Player *player) {
     DrawCircle(px + ex + pupx - r * 0.03f, py + ey + pupy - r * 0.03f,
                r * 0.035f, RAYWHITE);
   }
+
+  drawAccessories(px, py, rx, ry, c); // glasses over the eyes, hat on the crown
 
   // Eyebrows above the eyes; inner ends tilt with the expression (HAPPY raised,
   // SAD angled down) to amplify the mouth's emotion.

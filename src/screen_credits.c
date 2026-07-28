@@ -65,7 +65,7 @@ void updateCredits(Game *g) {
   // BACK only after the tube has fully zoomed out (don't interrupt the intro).
   if (g->creditsAnim >= 1.0f &&
       (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
-       clicked(rCreditsBack()))) {
+       uiItem(rCreditsBack()))) {
     g->creditsExiting = true;
     sfx(SFX_SELECT);
   }

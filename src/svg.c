@@ -40,6 +40,17 @@ typedef struct {
 } SvgDef;
 
 static const SvgDef SVG_DEFS[SVG_COUNT] = {
+    // SVG_CURSOR — mouse arrow. The tip sits at the viewBox origin (the 0.8
+    // inset is exactly half the stroke width, so the *outer* tip lands on 0,0),
+    // which is what lets ui.c place the hotspot by offsetting half a box.
+    // Baked colors, not white: the splash is white, and a white arrow on it
+    // would be invisible.
+    {SVG_HEAD "<path fill=\"#fff\" stroke=\"#2a2233\" stroke-width=\"1.6\""
+              " stroke-linejoin=\"round\" d=\""
+              "M0.8 0.8L0.8 17.8L5.0 14.0L7.8 21.2L11.0 19.8L8.2 12.6"
+              "L14.4 12.6Z\"/></svg>",
+     SVG_ICON_PX},
+
     // SVG_PLAY — rounded right-pointing triangle.
     {SVG_HEAD
      "<path d=\"M9.3 6.6L17.2 12L9.3 17.4Z\" fill=\"#fff\" stroke=\"#fff\""
@@ -305,6 +316,69 @@ static const SvgDef SVG_DEFS[SVG_COUNT] = {
      "stroke-width=\"1.92\"/>"
      "</svg>",
      SVG_ICON_PX},
+
+    // Skin accessories. Unlike the power-up layers these bake their own colors
+    // and draw tinted WHITE — a crown that recolored with the skin would stop
+    // being a gold crown. Each is authored where it wants to sit *inside* the
+    // viewBox (rasterize() preserves that placement), and player.c picks the
+    // box aspect, so the art squashes with the blob instead of scaling square.
+
+    // SVG_ACC_CAP — baseball cap: semicircle dome, brim swept right.
+    {SVG_HEAD "<path fill=\"#e2574d\" d=\"M2.6 14.6A8.4 8.4 0 0 1 19.4 "
+              "14.6Z\"/>"
+              "<ellipse cx=\"14.6\" cy=\"15.3\" rx=\"8.7\" ry=\"2.2\" "
+              "fill=\"#c0403a\"/>"
+              "<circle cx=\"11\" cy=\"6.6\" r=\"1.3\" fill=\"#f5d06a\"/>"
+              "</svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_CROWN — five-point crown on a jewelled band.
+    {SVG_HEAD
+     "<path fill=\"#f4c64e\" stroke=\"#d29a24\" stroke-width=\"1.3\""
+     " stroke-linejoin=\"round\" d=\""
+     "M3.0 18.4L4.4 8.0L8.4 12.8L12 6.2L15.6 12.8L19.6 8.0L21.0 18.4Z\"/>"
+     "<rect x=\"3.0\" y=\"17.0\" width=\"18\" height=\"3.4\" rx=\"1.2\" "
+     "fill=\"#e0ad34\"/>"
+     "<circle cx=\"7.5\" cy=\"18.7\" r=\"1.05\" fill=\"#e0566e\"/>"
+     "<circle cx=\"12\" cy=\"18.7\" r=\"1.05\" fill=\"#66c7e8\"/>"
+     "<circle cx=\"16.5\" cy=\"18.7\" r=\"1.05\" fill=\"#8be08a\"/>"
+     "</svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_BOW — two loops and a knot. Disjoint pieces, separate paths.
+    {SVG_HEAD "<path fill=\"#ff6fa5\" stroke=\"#d94a83\" stroke-width=\"1.3\""
+              " stroke-linejoin=\"round\" d=\"M11.0 12L2.6 7.2L2.6 16.8Z\"/>"
+              "<path fill=\"#ff6fa5\" stroke=\"#d94a83\" stroke-width=\"1.3\""
+              " stroke-linejoin=\"round\" d=\"M13.0 12L21.4 7.2L21.4 16.8Z\"/>"
+              "<circle cx=\"12\" cy=\"12\" r=\"2.6\" fill=\"#e85a95\" "
+              "stroke=\"#d94a83\" stroke-width=\"1.1\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_GLASSES — round wire frames. Lens centers sit at x = 12 +/- 5.8,
+    // which is what pins them over the eyes once player.c picks the box width.
+    {SVG_HEAD
+     "<circle cx=\"6.2\" cy=\"12\" r=\"4.3\" fill=\"none\" "
+     "stroke=\"#332d3f\" stroke-width=\"1.5\"/>"
+     "<circle cx=\"17.8\" cy=\"12\" r=\"4.3\" fill=\"none\" "
+     "stroke=\"#332d3f\" stroke-width=\"1.5\"/>"
+     "<path d=\"M10.5 11.4Q12 10.4 13.5 11.4\" fill=\"none\" "
+     "stroke=\"#332d3f\" stroke-width=\"1.5\"/>"
+     "<path d=\"M1.9 11.0L0.6 9.8\" stroke=\"#332d3f\" stroke-width=\"1.5\"/>"
+     "<path d=\"M22.1 11.0L23.4 9.8\" stroke=\"#332d3f\" "
+     "stroke-width=\"1.5\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_SHADES — dark lenses, same eye spacing as SVG_ACC_GLASSES.
+    {SVG_HEAD
+     "<rect x=\"1.7\" y=\"8.5\" width=\"8.5\" height=\"6.6\" rx=\"2.4\" "
+     "fill=\"#23252e\"/>"
+     "<rect x=\"13.8\" y=\"8.5\" width=\"8.5\" height=\"6.6\" rx=\"2.4\" "
+     "fill=\"#23252e\"/>"
+     "<rect x=\"10.2\" y=\"9.7\" width=\"3.6\" height=\"1.7\" rx=\"0.8\" "
+     "fill=\"#4b4f5e\"/>"
+     "<path fill=\"#5a6070\" d=\"M3.4 13.6L6.4 9.9L8.0 9.9L5.0 13.6Z\"/>"
+     "</svg>",
+     SVG_ICON_PX},
 };
 STATIC_ASSERT(sizeof(SVG_DEFS) / sizeof(SVG_DEFS[0]) == SVG_COUNT,
               svg_defs_table_complete);
@@ -390,8 +464,8 @@ bool svgPreloadStep(void) {
   return true;
 }
 
-void drawSvg(SvgId id, float cx, float cy, float size, float rotDeg,
-             Color tint) {
+void drawSvgEx(SvgId id, float cx, float cy, float w, float h, float rotDeg,
+               Color tint) {
   if (!gBaked[id]) {
     bake(id); // lazy fallback: reached only if something drew before the splash
   }
@@ -401,8 +475,12 @@ void drawSvg(SvgId id, float cx, float cy, float size, float rotDeg,
   DrawTexturePro(
       gTex[id],
       (Rectangle){0, 0, (float)gTex[id].width, (float)gTex[id].height},
-      (Rectangle){cx, cy, size, size}, (Vector2){size * 0.5f, size * 0.5f},
-      rotDeg, tint);
+      (Rectangle){cx, cy, w, h}, (Vector2){w * 0.5f, h * 0.5f}, rotDeg, tint);
+}
+
+void drawSvg(SvgId id, float cx, float cy, float size, float rotDeg,
+             Color tint) {
+  drawSvgEx(id, cx, cy, size, size, rotDeg, tint);
 }
 
 void unloadSvgCache(void) {

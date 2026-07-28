@@ -97,22 +97,32 @@ void updatePlaying(Game *g) {
   }
 }
 
+// PLAYING registers no focusable items on purpose — the arrow keys steer the
+// blob there, and a focus ring would eat them. PAUSED and GAMEOVER register
+// theirs unconditionally so the ring never jumps mid-frame.
 void updatePaused(Game *g) {
-  if (IsKeyPressed(KEY_P) || clicked(rResume())) {
+  bool resume = uiItem(rResume());
+  bool settings = uiItem(rPauseSettings());
+  bool home = uiItem(rPauseHome());
+
+  if (IsKeyPressed(KEY_P) || IsKeyPressed(KEY_ESCAPE) || resume) {
     gotoState(g, GAMESTATE_PLAYING);
-  } else if (IsKeyPressed(KEY_S) || clicked(rPauseSettings())) {
+  } else if (IsKeyPressed(KEY_S) || settings) {
     gotoState(g, GAMESTATE_SETTINGS);
     sfx(SFX_SELECT);
-  } else if (clicked(rPauseHome())) {
+  } else if (home) {
     returnToMenu(g); // back to the menu's attract demo
     sfx(SFX_SELECT);
   }
 }
 
 void updateGameover(Game *g) {
-  if (IsKeyPressed(KEY_SPACE) || clicked(rRetry())) {
+  bool retry = uiItem(rRetry());
+  bool home = uiItem(rGameoverHome());
+
+  if (IsKeyPressed(KEY_SPACE) || retry) {
     startGame(g, false);
-  } else if (clicked(rGameoverHome())) {
+  } else if (home) {
     returnToMenu(g); // back to the menu's attract demo
     sfx(SFX_SELECT);
   }

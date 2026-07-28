@@ -13,6 +13,12 @@
 #include "ui.h"
 #include "world.h"
 
+// Half-extents of the swatch's mini blob. Kept a touch wide, like the live
+// blob's resting shape, so drawAccessories anchors the same way it does in
+// gameplay.
+#define SWATCH_RX 30.0f
+#define SWATCH_RY 28.0f
+
 // Skin swatches across one row, then one card per power-up laid out the same
 // way, each card stacking its upgrade axes vertically, then Back.
 static Rectangle rShopSkin(int i) { return centeredRow(175, 120, 110, i, 4); }
@@ -88,14 +94,12 @@ static void equipSkin(Game *g, int i) {
 // straight there.
 void updateShop(Game *g) {
   Progress *p = &g->progress;
-  if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
-      clicked(rShopBack())) {
-    gotoState(g, GAMESTATE_MENU);
-    sfx(SFX_SELECT);
-    return;
-  }
+  // The loops below visit every cell every frame, so uiItem sees the whole grid
+  // in a stable order: skins, then the upgrade axes card by card, then BACK
+  // last (BACK moved to the bottom of the function for exactly that reason —
+  // its old early-return skipped the rest of the registrations).
   for (int i = 0; i < SKIN_COUNT; i++) {
-    if (!clicked(rShopSkin(i))) {
+    if (!uiItem(rShopSkin(i))) {
       continue;
     }
     if (skinOwned(p, i)) { // equip an owned skin
@@ -113,7 +117,7 @@ void updateShop(Game *g) {
   }
   for (int pu = 0; pu < SHOP_PU_N; pu++) {
     for (int a = 0; a < shopPuAxes(pu); a++) {
-      if (!clicked(rShopUpgAxis(pu, a))) {
+      if (!uiItem(rShopUpgAxis(pu, a))) {
         continue;
       }
       int track = SHOP_PU[pu].track[a];
@@ -132,6 +136,11 @@ void updateShop(Game *g) {
         sfx(SFX_HIT);
       }
     }
+  }
+  if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
+      uiItem(rShopBack())) {
+    gotoState(g, GAMESTATE_MENU);
+    sfx(SFX_SELECT);
   }
 }
 
@@ -158,9 +167,10 @@ void drawShop(Game *g) {
     } else if (mouseInRect(r)) {
       DrawRectangleRoundedLines(r, 0.2f, 8, RAYWHITE);
     }
+    // Same draw the live blob uses, so a skin's accessories show up here too.
     float cx = r.x + r.width / 2, cy = r.y + r.height / 2 - 6;
-    DrawEllipse(cx, cy, 30, 28, SKINS[i].character.bodyDark);
-    DrawEllipse(cx, cy - 4, 24, 22, SKINS[i].character.body);
+    drawBlobBody(cx, cy, SWATCH_RX, SWATCH_RY, SKINS[i].character);
+    drawAccessories(cx, cy, SWATCH_RX, SWATCH_RY, SKINS[i].character);
     const char *tag =
         owned ? (sel ? "EQUIPPED" : "OWNED") : TextFormat("%d", SKINS[i].cost);
     drawTextShadow(tag, (int)(cx - MeasureText(tag, 16) / 2),

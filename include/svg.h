@@ -17,6 +17,13 @@
 // any window scale. Nothing ever upscales them.
 
 typedef enum {
+  // Mouse pointer. First in the enum on purpose: svgPreloadStep() bakes in
+  // enum order and the cursor is drawn from the splash's very first frame, so
+  // being first is what keeps it off drawSvg's lazy-bake fallback. Carries its
+  // own fill + outline colors (like SVG_LOGO) so it reads on any background —
+  // a white-tinted arrow would vanish on the white splash.
+  SVG_CURSOR,
+
   // UI icons — parallel to IconKind in ui.h.
   SVG_PLAY,
   SVG_PAUSE,
@@ -64,12 +71,29 @@ typedef enum {
   SVG_PU_FOG_CROWN,
   SVG_PU_NO, // prohibition ring + slash, over a reused coin
 
+  // Skin accessories, worn by the blob (player.c's HAT_SVG/GLS_SVG tables map
+  // the Character slots onto these). Fixed-color art like SVG_LOGO — they bake
+  // their own palette and draw tinted WHITE, so a mint skin doesn't turn its
+  // gold crown mint.
+  SVG_ACC_CAP,
+  SVG_ACC_CROWN,
+  SVG_ACC_BOW,
+  SVG_ACC_GLASSES,
+  SVG_ACC_SHADES,
+
   SVG_COUNT
 } SvgId;
 
-// Draws the glyph centered at (cx,cy) inside a `size` x `size` box, rotated
-// `rotDeg` about that center, multiplied by `tint`. Rasterizes on first use.
-// A glyph that failed to parse or allocate draws nothing.
+// Draws the glyph centered at (cx,cy) inside a `w` x `h` box, rotated `rotDeg`
+// about that center, multiplied by `tint`. Rasterizes on first use. A glyph
+// that failed to parse or allocate draws nothing.
+//
+// The non-square box exists for the blob's accessories: the body deforms
+// non-uniformly (rx != ry during a crouch or a fall stretch), so a hat drawn in
+// a square box would visibly detach from the head.
+void drawSvgEx(SvgId id, float cx, float cy, float w, float h, float rotDeg,
+               Color tint);
+// Square-box shorthand — what every UI icon and power-up layer uses.
 void drawSvg(SvgId id, float cx, float cy, float size, float rotDeg,
              Color tint);
 

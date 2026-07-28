@@ -3,14 +3,26 @@
 #include "core.h" // STATIC_ASSERT
 #include "persist.h"
 
-// Skin palettes: {body, bodyDark}. Literal Colors (not the gTheme macros, which
-// are runtime lvalues and can't initialize a static table). Bubblegum matches
-// the original player pink so the default look is unchanged.
+// Skin palettes: {body, bodyDark, hat, glasses}. Literal Colors (not the gTheme
+// macros, which are runtime lvalues and can't initialize a static table).
+// Bubblegum matches the original player pink so the default look is unchanged.
+//
+// The accessory slots are placeholders spread across the existing four skins to
+// show the mechanism works — they cost nothing extra and are not separately
+// purchasable, so the shop is unchanged.
 const SkinDef SKINS[] = {
-    {{{255, 127, 176, 255}, {228, 70, 139, 255}}, 0, "BUBBLEGUM"},
-    {{{120, 224, 168, 255}, {56, 168, 110, 255}}, 60, "MINT"},
-    {{{143, 155, 255, 255}, {74, 87, 208, 255}}, 150, "BLUEBERRY"},
-    {{{255, 178, 74, 255}, {224, 122, 30, 255}}, 300, "TANGERINE"},
+    {{{255, 127, 176, 255}, {228, 70, 139, 255}, HAT_BOW, GLS_NONE},
+     0,
+     "BUBBLEGUM"},
+    {{{120, 224, 168, 255}, {56, 168, 110, 255}, HAT_CAP, GLS_NONE},
+     60,
+     "MINT"},
+    {{{143, 155, 255, 255}, {74, 87, 208, 255}, HAT_NONE, GLS_ROUND},
+     150,
+     "BLUEBERRY"},
+    {{{255, 178, 74, 255}, {224, 122, 30, 255}, HAT_CROWN, GLS_SHADES},
+     300,
+     "TANGERINE"},
 };
 const int SKIN_COUNT = (int)(sizeof(SKINS) / sizeof(SKINS[0]));
 

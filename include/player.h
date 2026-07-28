@@ -5,11 +5,32 @@
 
 #define TRAIL_LEN 8
 
+// Wearable accessory slots. The art is fixed-color SVG (see the SVG_ACC_* block
+// in svg.h) and player.c maps these onto it, so adding one is a new enum value,
+// a new glyph, and one table row. HAT_NONE / GLS_NONE are first in each enum
+// and have no row — the tables are indexed by `id - 1`, same as ICON_SVG.
+typedef enum {
+  HAT_NONE,
+  HAT_CAP,
+  HAT_CROWN,
+  HAT_BOW,
+  HAT_COUNT,
+} HatId;
+
+typedef enum {
+  GLS_NONE,
+  GLS_ROUND,
+  GLS_SHADES,
+  GLS_COUNT,
+} GlassesId;
+
 // Blob appearance. Kept separate from physics so multiple characters are just
-// different palettes over the same body-drawing code.
+// different palettes (plus accessories) over the same body-drawing code.
 typedef struct Character {
-  Color body;     // main fill
-  Color bodyDark; // outline / gradient base
+  Color body;            // main fill
+  Color bodyDark;        // outline / gradient base
+  unsigned char hat;     // HatId
+  unsigned char glasses; // GlassesId
 } Character;
 
 // Face mouth shape. Drives drawPlayer's mouth so future code can react to game
@@ -53,5 +74,13 @@ void updateAttract(Player *player); // menu demo: wander horizontally + bob
 void beginJump(Player *player);
 void updateCrouch(Player *player);
 void drawPlayer(const Player *player);
+
+// The blob's two-tone body and its worn accessories, split out so the shop's
+// skin swatch shows the same thing the live blob does instead of re-deriving
+// it. Both take the deformed half-extents (rx, ry) rather than a radius: the
+// body squashes non-uniformly and the accessories have to ride that, or a hat
+// detaches from the head mid-crouch.
+void drawBlobBody(float cx, float cy, float rx, float ry, Character c);
+void drawAccessories(float cx, float cy, float rx, float ry, Character c);
 
 #endif // PLAYER_H

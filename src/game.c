@@ -8,6 +8,7 @@
 #include "sound.h"
 #include "svg.h"
 #include "theme.h"
+#include "ui.h"
 #include "world.h"
 
 #define COIN_GLYPH_BOX 26.0f // side of the coin glyph's 26x26 viewBox
@@ -20,6 +21,7 @@ RenderTexture2D gMenuSnap;
 void gotoState(Game *g, GameState next) {
   g->prevState = g->state;
   g->state = next;
+  uiFocusReset(); // the new screen registers a different set of rects
 }
 
 void startTransition(Game *g, GameState next) {
