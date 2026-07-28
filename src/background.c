@@ -2,6 +2,7 @@
 
 #include "core.h"
 #include "raylib.h"
+#include "tex.h"
 #include "theme.h"
 
 #include <math.h>
@@ -25,22 +26,45 @@ static float wrapf(float value, float range) {
 // up during a theme transition.
 static float parallaxDepth(int i) { return 0.25f + (i % 3) * 0.2f; }
 
-// Fluffy cloud: a clump of overlapping circles on a flat base.
+// Fluffy cloud: a clump of three TEX_CLOUD stamps. One quad would read as a
+// circle however much noise is inside it — the mask is radial — so the lumpy
+// silhouette still has to come from the arrangement, exactly as the old
+// five-circle stack made it. What the texture buys is the chewed edge and the
+// internal structure the flat circles never had.
 static void drawCloud(float x, float y, float s, Color c, float a) {
   Color col = Fade(c, a);
-  DrawRectangle(x - 1.7f * s, y - 0.2f * s, 3.4f * s, 1.0f * s, col);
-  DrawCircle(x - 1.6f * s, y, 1.0f * s, col);
-  DrawCircle(x - 0.6f * s, y - 0.7f * s, 1.3f * s, col);
-  DrawCircle(x + 0.6f * s, y - 0.5f * s, 1.1f * s, col);
-  DrawCircle(x + 1.6f * s, y, 1.0f * s, col);
-  DrawCircle(x, y, 1.5f * s, col);
+  drawTex(TEX_CLOUD, x - 1.3f * s, y + 0.15f * s, 2.9f * s, 2.1f * s, 0.0f,
+          col);
+  drawTex(TEX_CLOUD, x + 1.3f * s, y + 0.15f * s, 2.7f * s, 1.9f * s, 0.0f,
+          col);
+  drawTex(TEX_CLOUD, x, y - 0.3f * s, 3.9f * s, 2.9f * s, 0.0f, col);
 }
 
+// Sun/moon. The two hard-edged halo discs became one additive TEX_PUFF: a real
+// falloff instead of two visible steps, and additive so it reads as light cast
+// on the sky rather than paint laid over it.
 static void drawSun(float alpha) {
-  DrawCircle(SUN_X, SUN_Y, SUN_R * 1.9f, Fade(SUN, 0.18f * alpha));
-  DrawCircle(SUN_X, SUN_Y, SUN_R * 1.4f, Fade(SUN, 0.28f * alpha));
+  BeginBlendMode(BLEND_ADDITIVE);
+  drawTex(TEX_PUFF, SUN_X, SUN_Y, SUN_R * 8.0f, SUN_R * 8.0f, 0.0f,
+          Fade(SUN, 0.32f * alpha));
+  EndBlendMode();
   DrawCircle(SUN_X, SUN_Y, SUN_R, Fade(SUN, alpha));
   DrawCircle(SUN_X, SUN_Y, SUN_R * 0.6f, Fade(SUN_CORE, alpha));
+}
+
+// Sky haze for the three dark backdrops: one TEX_NEBULA quad wrapped
+// vertically as two stacked copies. Deliberately *not* tiled — perlin noise has
+// a hard seam at its own edges, and one scrolling pair shows that seam once per
+// 1200 units instead of at every tile line. Faint by design; it exists to stop
+// the sky gradient reading as a flat wash.
+#define NEBULA_H (SCREEN_HEIGHT * 1.5f)
+static void drawNebula(float cameraY, float alpha) {
+  float y = wrapf(-cameraY * 0.06f, NEBULA_H);
+  Color c = Fade(CLOUD, 0.13f * alpha);
+  for (int k = -1; k <= 1; k += 2) {
+    drawTex(TEX_NEBULA, SCREEN_WIDTH * 0.5f, y + k * NEBULA_H * 0.5f,
+            SCREEN_WIDTH * 1.4f, NEBULA_H, 0.0f, c);
+  }
 }
 
 // One beveled cell in an arbitrary color: dark border + body + a top sheen, so
@@ -196,6 +220,11 @@ static void drawMoon(float alpha) {
 static void drawVoxelIsland(float x, float y, float s, float a) {
   Color grassC = GRASS, dirt = GRASS_DK;
   DrawRectangle(x - s, y, 2.0f * s, s * 0.8f, Fade(dirt, a));
+  // Stone grain, over the main rectangular body only. Cellular noise is
+  // distance-to-seed, so it draws a web of veins — but it fills its own square
+  // box, so putting it on anything but a rectangle overhangs the silhouette.
+  drawTex(TEX_ROCK, x, y + s * 0.4f, 2.0f * s, s * 0.8f, 0.0f,
+          Fade(ColorBrightness(dirt, -0.45f), a * 0.5f));
   DrawRectangle(x - s * 0.6f, y + s * 0.8f, s * 1.2f, s * 0.5f,
                 Fade(ColorBrightness(dirt, -0.2f), a));
   DrawRectangle(x - s * 0.25f, y + s * 1.3f, s * 0.5f, s * 0.35f,
@@ -207,17 +236,52 @@ static void drawVoxelIsland(float x, float y, float s, float a) {
   }
 }
 
+// Two parallax layers of the tiled starfield, replacing the 35 dim single-pixel
+// stars the loop below used to draw (the 9 bright ones stay — they twinkle, and
+// a texture can't).
+//
+// Two sign traps live here. Climbing makes `cameraY` negative, and a *source
+// rect* scrolls the opposite way a position does — a growing srcY pulls content
+// up — so the offset is negated twice over to keep stars sliding down past the
+// player. The wrap is seamless because the offset is modulo one tile and the
+// texture is GL_REPEAT, which also swallows the negative coordinate.
+static void drawStarfield(float cameraY, float alpha) {
+  Texture2D t = texGet(TEX_STARFIELD);
+  if (t.id == 0) {
+    return;
+  }
+  // {on-screen tile size, parallax depth, alpha, source x offset}. The far
+  // layer's tile is the texture's own pixel size so it maps 1:1 and its 1px
+  // stars stay sharp; the near one is magnified 1.5x into bigger, closer stars.
+  // The x offsets keep the two layers from being the same picture twice.
+  static const float LAYER[2][4] = {{512.0f, 0.10f, 0.55f, 0.0f},
+                                    {768.0f, 0.26f, 0.9f, 213.0f}};
+  for (int i = 0; i < 2; i++) {
+    float tile = LAYER[i][0];
+    float scroll = wrapf(-cameraY * LAYER[i][1], tile);
+    Rectangle src = {LAYER[i][3], -scroll / tile * t.height,
+                     SCREEN_WIDTH / tile * t.width,
+                     SCREEN_HEIGHT / tile * t.height};
+    DrawTexturePro(t, src, (Rectangle){0, 0, SCREEN_WIDTH, SCREEN_HEIGHT},
+                   (Vector2){0, 0}, 0.0f, Fade(SUN_CORE, LAYER[i][2] * alpha));
+  }
+}
+
 // L2 backdrop: moon + craters, twinkling stars (some sparkling), a periodic
 // shooting star, and floating voxel islands.
 static void drawStarsBackdrop(float cameraY, float alpha) {
+  drawNebula(cameraY, alpha);
+  drawStarfield(cameraY, alpha);
   drawMoon(alpha * 0.95f);
-  for (int i = 0; i < STAR_COUNT; i++) {
+  // Only the bright sparkles remain as primitives: the starfield texture is a
+  // still image, so the twinkle has to be drawn. Same stride the old `i % 5`
+  // size test used, so these land exactly where they always did.
+  for (int i = 0; i < STAR_COUNT; i += 5) {
     float depth = 0.2f + (i % 3) * 0.12f;
     float x = wrapf(i * 71.0f, SCREEN_WIDTH);
     float y = wrapf(i * 137.0f - cameraY * depth, SCREEN_HEIGHT + 100.0f);
     float tw = (0.4f + 0.6f * fabsf(sinf((float)GetTime() * 1.6f + i))) * alpha;
-    float s = (i % 5 == 0) ? 3.5f : 1.5f + (i % 2);
-    drawStar(x, y, s, tw, SUN_CORE);
+    drawStar(x, y, 3.5f, tw, SUN_CORE);
   }
   float st = fmodf((float)GetTime(), 7.0f); // shooting star every ~7s
   if (st < 0.8f) {
@@ -264,6 +328,7 @@ static int hash2(int i, int j) {
 // L3 backdrop: a scrolling neon maze (broken corridors, not a full grid) with
 // pellets + pulsing power-pellets, drifting ghosts, and a chomping hero.
 static void drawMazeBackdrop(float cameraY, float alpha) {
+  drawNebula(cameraY, alpha);
   float sc = -cameraY * 0.4f;
   float off = wrapf(sc, MAZE_CELL);
   int scroll = (int)floorf(sc / MAZE_CELL);
@@ -272,6 +337,11 @@ static void drawMazeBackdrop(float cameraY, float alpha) {
   float t = 8.0f; // wall thickness
   Color glow = Fade(CLOUD, 0.16f * alpha);
   Color wall = Fade(ColorBrightness(CLOUD, 0.25f), 0.65f * alpha);
+  // The whole lattice goes down additively — neon *is* light, and one blend
+  // switch around the grid beats 180 of them inside it (BeginBlendMode flushes
+  // the batch). Ghosts and the hero below stay on normal blend: they are
+  // characters lit by the maze, not part of it.
+  BeginBlendMode(BLEND_ADDITIVE);
   for (int gy = 0; gy < rows; gy++) {
     for (int gx = 0; gx < cols; gx++) {
       float cx = gx * MAZE_CELL - MAZE_CELL;
@@ -294,12 +364,17 @@ static void drawMazeBackdrop(float cameraY, float alpha) {
       float px = cx + MAZE_CELL / 2, py = cy + MAZE_CELL / 2;
       if (h & 4) { // pulsing power-pellet
         float pr = 6.0f + 2.0f * sinf((float)GetTime() * 4.0f + h);
+        drawTex(TEX_PUFF, px, py, pr * 6.0f, pr * 6.0f, 0.0f,
+                Fade(COIN_HI, 0.5f * alpha));
         DrawCircle(px, py, pr, Fade(COIN_HI, 0.8f * alpha));
       } else {
+        drawTex(TEX_PUFF, px, py, 22.0f, 22.0f, 0.0f,
+                Fade(COIN_HI, 0.3f * alpha));
         DrawCircle(px, py, 3.0f, Fade(COIN_HI, 0.55f * alpha));
       }
     }
   }
+  EndBlendMode();
   for (int i = 0; i < 4; i++) { // drifting ghosts
     float x = wrapf((float)GetTime() * (14.0f + i * 4) + i * 220.0f,
                     SCREEN_WIDTH + 160.0f) -
@@ -321,6 +396,7 @@ static void drawMazeBackdrop(float cameraY, float alpha) {
 // L4 backdrop: a faint playfield "well" grid with real tetrominoes raining in
 // the theme's tetromino colors (parallax fall, same idiom as the clouds).
 static void drawBlocksBackdrop(float cameraY, float alpha) {
+  drawNebula(cameraY, alpha);
   for (int i = 0; i * 44 <= SCREEN_WIDTH; i++) {
     DrawRectangle(i * 44, 0, 1, SCREEN_HEIGHT, Fade(CLOUD, 0.05f * alpha));
   }
@@ -400,3 +476,67 @@ void drawGameBackground(float cameraY) {
   drawBackdrop(THEMES[lo].backdrop, cameraY, 1.0f - fx);
   drawBackdrop(THEMES[hi].backdrop, cameraY, fx);
 }
+
+#ifdef BG_SELFTEST
+// Contact strip of all four backdrops, so L2/L3/L4 can be eyeballed without
+// climbing 60,000 units. Same reason the `post` selftest exists. Needs a real
+// GL context (unlike the svg/tex ones) because it renders the actual draw path.
+//   cc -DBG_SELFTEST src/background.c src/theme.c src/tex.c \
+//      -Iinclude -Ilib/raylib/src build/lib/raylib/raylib/libraylib.a -lm \
+//      -framework Cocoa -framework IOKit -framework CoreVideo -framework OpenGL
+//      \ -o /tmp/bgtest && /tmp/bgtest /tmp/bgstrip.png
+#include <assert.h>
+#include <stdio.h>
+
+// Only has to land *inside* each band, so a change to BAND_HEIGHT in theme.c
+// degrades the strip rather than breaking it. Sampled just past each band's
+// *start*, not its midpoint: the palette lerps continuously across the whole
+// band, so a midpoint sample shows every theme half-morphed into the next one
+// (grey clouds on the day level) and tells you nothing about the art.
+#define BAND 20000.0f
+#define CELL 300
+
+int main(int argc, char **argv) {
+  SetTraceLogLevel(LOG_WARNING);
+  InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "bgtest");
+  while (!texPreloadStep()) {
+  }
+  RenderTexture rt = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
+  Image sheet = GenImageColor(CELL * THEME_COUNT, CELL, BLACK);
+
+  for (int i = 0; i < THEME_COUNT; i++) {
+    BeginTextureMode(rt);
+    ClearBackground(BLACK);
+    drawGameBackground(-(i * BAND + BAND * 0.05f)); // just inside the band
+    EndTextureMode();
+
+    Image im = LoadImageFromTexture(rt.texture);
+    ImageFlipVertical(&im); // framebuffer textures are bottom-up
+
+    // Two failure modes this pass can actually produce, neither of which
+    // crashes: a texture that never baked leaves the backdrop blank, and an
+    // additive pass left un-ended blows the whole frame to white.
+    const Color *p = im.data;
+    long sum = 0;
+    int lo = 255, hi = 0;
+    for (int k = 0, n = im.width * im.height; k < n; k++) {
+      int l = (p[k].r + p[k].g + p[k].b) / 3;
+      sum += l;
+      lo = (l < lo) ? l : lo;
+      hi = (l > hi) ? l : hi;
+    }
+    int mean = (int)(sum / (im.width * im.height));
+    printf("theme %d: luma %3d..%3d  mean %3d\n", i, lo, hi, mean);
+    assert(hi - lo > 32 && "backdrop came out flat");
+    assert(mean > 8 && mean < 247 && "backdrop blown to black or white");
+
+    ImageResize(&im, CELL, CELL);
+    ImageDrawImage(&sheet, im, i * CELL, 0, WHITE);
+    UnloadImage(im);
+  }
+  ExportImage(sheet, argc > 1 ? argv[1] : "bgstrip.png");
+  printf("ok — %d backdrops\n", THEME_COUNT);
+  CloseWindow();
+  return 0;
+}
+#endif
