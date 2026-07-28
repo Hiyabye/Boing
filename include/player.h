@@ -32,6 +32,8 @@ typedef struct Player {
   Expression expression;    // current face; drawPlayer renders the mouth
   float attractTimer;       // menu-demo: time until next wander target
   float attractTarget;      // menu-demo: x the blob is strolling toward
+  int crouch;   // fixed-steps of pre-jump crouch left (play loop skips physics)
+  float squash; // draw-only body deform: >0 crouching down, <0 popping tall
 } Player;
 
 Player createPlayer(void);
@@ -44,6 +46,12 @@ void setPlayerSkin(Character c);
 void handlePlayerInput(Player *player, float targetX, float dir);
 void updatePlayer(Player *player);
 void updateAttract(Player *player); // menu demo: wander horizontally + bob
+// Pre-jump anticipation. beginJump plants the blob on the floor and starts the
+// crouch; while `crouch` > 0 the play loop calls updateCrouch instead of
+// input+gravity. At 0 the pin lifts and world.c's floor bounce launches the
+// blob on the next step — with its particles, shake and SFX.
+void beginJump(Player *player);
+void updateCrouch(Player *player);
 void drawPlayer(const Player *player);
 
 #endif // PLAYER_H

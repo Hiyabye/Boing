@@ -66,6 +66,14 @@ void updatePlaying(Game *g) {
       g->world.hitstop--; // impact freeze: hold everything for a few frames
       continue;
     }
+    // Run-start anticipation: the blob is pinned to the grass squishing down,
+    // so it takes no input and no gravity — but the world still runs, or the
+    // coins and platforms it spawns would all pop in at once on release.
+    if (g->player.crouch > 0) {
+      updateCrouch(&g->player);
+      updateWorld(&g->world, &g->player);
+      continue;
+    }
     handlePlayerInput(&g->player, mouseX, worldInputDir(&g->world));
     updatePlayer(&g->player);
     updateWorld(&g->world, &g->player);

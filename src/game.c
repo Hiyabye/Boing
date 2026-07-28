@@ -43,6 +43,7 @@ void startGame(Game *g, bool fromMenu) {
   if (!fromMenu) {
     g->player = createPlayer();
   }
+  beginJump(&g->player); // wind up on the grass; the floor bounce launches it
   g->accumulator = 0.0f;
   g->newBest = false;
   gotoState(g, GAMESTATE_PLAYING);

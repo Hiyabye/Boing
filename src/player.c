@@ -12,6 +12,10 @@
 #define FOLLOW_K 0.18f     // mouse-follow steering stiffness
 #define ATTRACT_SPEED 2.6f // menu demo wander pace
 #define ATTRACT_BOB 10.0f  // menu demo vertical bob amplitude
+#define CROUCH_FRAMES 26   // ~0.43s of pre-jump anticipation @60Hz
+#define CROUCH_DEPTH 0.8f  // peak compression: height traded for width
+#define POP_STRETCH 0.5f   // stretch on the release frame
+#define SQUASH_DECAY 0.86f // per-step decay of squash back to a round blob
 
 // ponytail: the selected shop skin lives in a module global (mirrors how this
 // file already reads the gTheme global), so createPlayer stays arg-free and its
@@ -82,10 +86,35 @@ void updatePlayer(Player *player) {
   player->position.y += player->velocity.y;
 
   player->velocity.x *= HORIZONTAL_DAMPING;
+  player->squash *= SQUASH_DECAY; // the launch pop relaxes back to round
 
   wrapHorizontal(player);
 
   pushTrail(player);
+}
+
+// Start of a run: plant the blob on the grass and wind up. The 1px gap above
+// the floor line is load-bearing — updateWorld's floor-bounce test (which is
+// what actually launches the blob, particles and all) must stay false until the
+// crouch releases. The snap also absorbs the attract blob's bob offset, on the
+// frame the menu cuts away.
+void beginJump(Player *player) {
+  player->crouch = CROUCH_FRAMES;
+  player->velocity = (Vector2){0.0f, 0.0f};
+  player->position.y = FLOOR_Y - player->radius - 1.0f;
+  player->squash = 0.0f;
+  player->expression = EXPR_HAPPY;
+}
+
+// One crouch step. Ease-out, so the blob presses down fast and holds near full
+// compression; the frame the counter empties it snaps tall instead, and the
+// next physics step drops it onto the floor to launch.
+void updateCrouch(Player *player) {
+  float t = 1.0f - (float)(--player->crouch) / CROUCH_FRAMES; // 0 -> 1
+  player->squash = CROUCH_DEPTH * t * (2.0f - t);
+  if (player->crouch == 0) {
+    player->squash = -POP_STRETCH;
+  }
 }
 
 // Menu demo: pick a new random target every ~1.5s, stroll toward it at a steady
@@ -119,10 +148,15 @@ void drawPlayer(const Player *player) {
   float py = player->position.y;
   float r = player->radius;
 
-  // Squash & stretch: moving fast vertically stretches the blob tall & narrow.
-  float st = clampf(player->velocity.y / 45.0f, -0.45f, 0.45f);
-  float rx = r * (1.0f - 0.5f * st);
-  float ry = r * (1.0f + 0.5f * st);
+  // Squash & stretch: moving fast vertically stretches the blob tall & narrow —
+  // magnitude, not sign, so a rise stretches like a fall does. On top of that,
+  // `squash` is the explicit pre-jump deform: >0 crouches (wide and low, feet
+  // planted), <0 pops tall.
+  float st = clampf(fabsf(player->velocity.y) / 45.0f, 0.0f, 0.45f);
+  float sq = player->squash;
+  float rx = r * (1.0f - 0.5f * st + 0.45f * sq);
+  float ry = r * (1.0f + 0.5f * st - 0.45f * sq);
+  py += 0.45f * r * sq; // keep the feet planted while the body deforms
 
   Character c = player->character;
 
