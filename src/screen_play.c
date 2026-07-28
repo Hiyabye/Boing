@@ -131,6 +131,15 @@ void updateGameover(Game *g) {
 // ---------------------------------------------------------------------------
 // HUD + game-over card
 // ---------------------------------------------------------------------------
+// Era names in climb order — one per THEMES[] row (theme.c), same order. Themes
+// loop, so callers index worldEra(). Homage to a genre/era each, never a named
+// product.
+static const char *ERA_NAMES[] = {"SUNNY HILLS", "NIGHT BLOCKS", "NEON MAZE",
+                                  "FALLING BLOCKS"};
+// A theme without a name here would show the wrong era (or read past the end).
+STATIC_ASSERT(sizeof(ERA_NAMES) / sizeof(ERA_NAMES[0]) == THEME_COUNT,
+              era_names_full);
+
 // Score badge + coin tally + level bar + power-up timer bars, in screen space
 // (drawn after the world's rlPopMatrix, in the frame's scaled 800x800 space).
 static void drawHud(const World *world) {
@@ -170,6 +179,14 @@ static void drawHud(const World *world) {
                      20 + (world->combo > 10 ? 10 : world->combo), GOLD);
   }
 
+  // Era callout: each band changes the *rules*, not just the palette, so the
+  // level-up says which era you just walked into. Fades out over its last
+  // ~0.7s; sits clear of the combo readout above it.
+  if (world->levelBanner > 0.0f) {
+    float a = fminf(world->levelBanner / 40.0f, 1.0f);
+    drawCenteredText(ERA_NAMES[worldEra(world)], 112, 34, Fade(GOLD, a));
+  }
+
   // One timer bar per active power-up, stacked (magnet + rocket can overlap).
   int bx = 12, by = 98, bw = 150; // below the score + coin badges
   for (PowerUpType t = 0; t < POWERUP_COUNT; t++) {
@@ -189,15 +206,6 @@ static void drawHud(const World *world) {
     by += 32;
   }
 }
-
-// Era names in climb order — one per THEMES[] row (theme.c), same order. Themes
-// loop, so the summary indexes worldLevel % THEME_COUNT. Homage to a genre/era
-// each, never a named product.
-static const char *ERA_NAMES[] = {"SUNNY HILLS", "NIGHT BLOCKS", "NEON MAZE",
-                                  "FALLING BLOCKS"};
-// A theme without a name here would show the wrong era (or read past the end).
-STATIC_ASSERT(sizeof(ERA_NAMES) / sizeof(ERA_NAMES[0]) == THEME_COUNT,
-              era_names_full);
 
 // Game-over run summary: a rounded card with height, coins, best combo, and the
 // era reached — closure + a screenshot-worthy moment.
@@ -220,7 +228,7 @@ static void drawSummaryCard(Game *g) {
       {"HEIGHT", TextFormat("%d m", (int)((FLOOR_Y - w->bestY) / 10.0f))},
       {"COINS", TextFormat("%d", w->coinsCollected)},
       {"BEST COMBO", TextFormat("x%d", w->bestCombo)},
-      {"ERA", ERA_NAMES[worldLevel(w) % THEME_COUNT]},
+      {"ERA", ERA_NAMES[worldEra(w)]},
   };
   int ry = 268;
   for (int i = 0; i < (int)(sizeof(rows) / sizeof(rows[0])); i++) {

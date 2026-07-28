@@ -19,14 +19,25 @@ typedef struct Coin {
 } Coin;
 
 typedef struct Platform {
-  Vector2 position; // top-left corner
+  Vector2 position; // top-left cell's corner
   bool active;
+  // Per-era behaviour, stamped at spawn from the era gate (see worldEra):
+  bool fragile; // Night Blocks: crumbles a beat after it is landed on
+  float fuse; // frames left before a landed-on fragile pad breaks (0 = intact)
+  float vy;   // Falling Blocks: downward drift; > 0 also makes the pad crush
+  int shape;  // Falling Blocks: index into TETRO[] — the pad *is* that piece,
+              // so it is both the collision boxes and the color. Ignored while
+              // vy == 0 (a plain board).
 } Platform;
 
 typedef struct Monster {
   Vector2 position;
   float vx; // horizontal drift
   bool active;
+  float vy;      // vertical drift — 0 except while ghost-chasing on Neon Maze
+  unsigned seed; // spawn-time look (horns/eyes/mouth/legs). A field, not a hash
+                 // of the live position like entSeed: a ghost *moves*, and a
+                 // seed derived from y re-rolls its whole face every frame.
 } Monster;
 
 typedef enum {
@@ -34,6 +45,7 @@ typedef enum {
   POWERUP_ROCKET,
   POWERUP_BALLOON,
   POWERUP_SHIELD,
+  POWERUP_PELLET, // Neon Maze only: frightens the ghosts so you can eat them
   // Debuffs (bad pickups to dodge): flagged `debuff` in POWERUP_DEFS.
   POWERUP_ANCHOR, // heavier gravity, falls faster
   POWERUP_DIZZY,  // reversed steering
@@ -96,10 +108,12 @@ typedef struct World {
   int coinsCollected;
   int level; // 0-based theme band entered; a level-up fanfare fires on increase
   int combo; // coins chained without falling to the floor / taking a hit
-  float comboTimer; // frames left before an idle chain auto-resets
-  int bestCombo;    // longest chain this run (game-over summary)
-  int comboBonus;   // accumulated combo bonus points, folded into getScore
-  int hitstop;      // frames of physics freeze remaining (impact juice)
+  float comboTimer;  // frames left before an idle chain auto-resets
+  int bestCombo;     // longest chain this run (game-over summary)
+  int comboBonus;    // accumulated combo bonus points, folded into getScore
+  int hitstop;       // frames of physics freeze remaining (impact juice)
+  int ghostChain;    // monsters eaten on the current pellet (doubling bonus)
+  float levelBanner; // frames left on the "you're in a new era" HUD callout
 } World;
 
 World createWorld(void);
@@ -119,6 +133,10 @@ int getScore(const World *world);
 float worldCameraY(const World *world);
 float worldShake(const World *world);
 int worldLevel(const World *world); // 0-based theme band the climb has entered
+// Which era's *mechanics* are live: worldLevel() wrapped into THEMES[] (levels
+// are infinite, themes loop), so gameplay cycles in step with the art. Every
+// per-era rule in world.c gates on this one query.
+int worldEra(const World *world);
 float worldPowerTimer(const World *world, PowerUpType type);
 bool worldInvincible(const World *world); // any active power-up grants immunity
 float worldInputDir(

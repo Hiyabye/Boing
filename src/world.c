@@ -1,5 +1,8 @@
 #include "world.h"
 
+#include "background.h" // TETRO[] + drawTetromino: a Falling Blocks pad *is* a
+                        // tetromino, and shares the backdrop's shape table so
+                        // the piece you land on is the piece you can see
 #include "core.h"
 #include "progress.h" // PuTrack + MAX_UPG_LEVEL for the upgrade hooks
 #include "sound.h"
@@ -51,6 +54,12 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define PLATFORM_SPACING 300.0f // vertical distance between platforms
 #define PLATFORM_WIDTH 100.0f
 #define PLATFORM_HEIGHT 16.0f
+// Per-era platform mechanics (stamped at spawn, see worldEra). Era 0 uses
+// neither, so the baseline jumper is exactly what it always was.
+#define CRUMBLE_FRAMES 24.0f // Night Blocks: frames from landing to break
+#define CRUMBLE_JITTER 2.0f  // px of death-rattle shake while it crumbles
+#define BLOCK_FALL 1.4f      // Falling Blocks: px/frame a pad descends
+#define TETRO_CELL 25.0f     // one tetromino cell (a piece is 2-4 cells wide)
 #define HEIGHT_PER_POINT 10.0f
 #define POINTS_PER_COIN 5
 
@@ -58,6 +67,14 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define MONSTER_SPACING 900.0f // vertical distance between monster bands
 #define MONSTER_DRIFT 1.5f     // horizontal speed
 #define MONSTER_COIN_LOSS 5    // coins scattered/lost on a monster hit
+// Neon Maze: a monster stops drifting and hunts the blob (see updateMonsters).
+#define GHOST_ACCEL 0.14f // steering accel toward (or away from) the player
+#define GHOST_VX 3.4f     // horizontal chase speed cap
+#define GHOST_VY                                                               \
+  1.2f                     // vertical cap — deliberately far under climb speed,
+                           // so a ghost crowds you but can never follow forever
+#define GHOST_FLEE 0.55f   // speed multiplier while frightened by a pellet
+#define GHOST_EAT_BONUS 25 // points for the first ghost eaten, doubling after
 // Altitude difficulty ramp (keyed on world->level; hand-tune for feel).
 #define DIFFICULTY_CAP 3           // level past which the ramp plateaus
 #define DIFFICULTY_SPEED 0.25f     // +25% monster drift per level, capped
@@ -77,11 +94,12 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
   0.9f // extra downward vel/frame while anchored (doubles gravity)
 #define PARTICLE_GRAVITY 0.3f
 #define PARTICLE_DECAY 0.03f
-#define SHAKE_HIT 14.0f   // screen shake on a monster hit
-#define SHAKE_SPLAT 9.0f  // shake on an invincible plow-through splat
-#define SHAKE_LAUNCH 6.0f // shake on floor bounce / rocket pickup
-#define SHAKE_DECAY 0.85f // per-frame shake falloff
-#define FLASH_DECAY 0.08f // pop-ring fade per frame
+#define SHAKE_HIT 14.0f            // screen shake on a monster hit
+#define SHAKE_SPLAT 9.0f           // shake on an invincible plow-through splat
+#define SHAKE_LAUNCH 6.0f          // shake on floor bounce / rocket pickup
+#define SHAKE_DECAY 0.85f          // per-frame shake falloff
+#define FLASH_DECAY 0.08f          // pop-ring fade per frame
+#define LEVEL_BANNER_FRAMES 120.0f // ~2s of era name under the HUD level bar
 #define DEATH_DROP                                                             \
   700.0f // how far below the peak view the camera chases a fall
 #define BOTTOM_MARGIN                                                          \
@@ -115,6 +133,10 @@ const PowerUpDef POWERUP_DEFS[] = {
     [POWERUP_SHIELD] = {1.0f, GOLD, "SHIELD", 3, SHAKE_LAUNCH, true,
                         false}, // flag: lasts until a monster hit (excluded
                                 // from the tick-down; HUD bar stays full)
+    // Neon Maze's power pellet. Weight 0 here and overridden per-era in
+    // spawnWeightOf, so it can only ever drop on the era that has ghosts.
+    [POWERUP_PELLET] = {360.0f, YELLOW, "PELLET", 0, SHAKE_LAUNCH, true,
+                        false}, // ~6s of frightened ghosts
     // Debuffs: no boost, no immunity, SAD reaction + SFX_HIT on pickup. All ~3s
     // (short — Anchor/Dizzy are run-ending at 5s).
     [POWERUP_ANCHOR] = {180.0f, DARKGRAY, "ANCHOR", 1, SHAKE_HIT, false,
@@ -133,6 +155,12 @@ STATIC_ASSERT(sizeof(POWERUP_DEFS) / sizeof(POWERUP_DEFS[0]) == POWERUP_COUNT,
 float worldCameraY(const World *world) { return world->cameraY; }
 float worldShake(const World *world) { return world->shake; }
 int worldLevel(const World *world) { return world->level; } // 0-based band
+
+// The gameplay counterpart of the palette's band index: levels are infinite and
+// themes loop, so the mechanics loop with them. Every per-era rule below reads
+// this — spawn gates stamp it onto the entity, so an entity keeps the behaviour
+// of the era it was born in even as the boundary passes under it.
+int worldEra(const World *world) { return world->level % THEME_COUNT; }
 
 float worldPowerTimer(const World *world, PowerUpType type) {
   return world->powerTimer[type];
@@ -169,6 +197,46 @@ float worldFog(const World *world) { return world->powerTimer[POWERUP_FOG]; }
       slot = fi_;                                                              \
       break;                                                                   \
     }
+
+// Deterministic per-instance seed from an entity's spawn y, so coins get stable
+// random-looking variety without a struct field. **Only valid for an entity
+// that never moves vertically** — a monster on Neon Maze does, which is why it
+// carries a `seed` field stamped from this at spawn instead of calling it live.
+static unsigned entSeed(Vector2 p) {
+  unsigned h = (unsigned)(int)fabsf(p.y) * 2654435761u;
+  h ^= h >> 15;
+  return h;
+}
+
+// A pad's collision boxes: one board for a plain platform, one per cell for a
+// Falling Blocks tetromino. Built from the same offsets drawTetromino draws
+// with, so the art and the collision cannot drift apart.
+#define PAD_BOXES 4
+static int padBoxes(const Platform *pl, Rectangle *out) {
+  if (pl->vy <= 0.0f) {
+    out[0] = (Rectangle){pl->position.x, pl->position.y, PLATFORM_WIDTH,
+                         PLATFORM_HEIGHT};
+    return 1;
+  }
+  for (int k = 0; k < PAD_BOXES; k++) {
+    out[k] = (Rectangle){pl->position.x + TETRO[pl->shape][k][0] * TETRO_CELL,
+                         pl->position.y + TETRO[pl->shape][k][1] * TETRO_CELL,
+                         TETRO_CELL, TETRO_CELL};
+  }
+  return PAD_BOXES;
+}
+
+// Px width of a shape — the spawn clamp needs it, since an I is four cells wide
+// and an O is two.
+static float tetroWidth(int shape) {
+  int w = 0;
+  for (int k = 0; k < PAD_BOXES; k++) {
+    if (TETRO[shape][k][0] + 1 > w) {
+      w = TETRO[shape][k][0] + 1;
+    }
+  }
+  return (float)w * TETRO_CELL;
+}
 
 World createWorld(void) {
   World world = {0};
@@ -207,12 +275,21 @@ static void spawnCoins(World *world) {
 }
 
 static void spawnPlatforms(World *world) {
+  // The era is stamped on the pad at birth rather than read at landing time, so
+  // a Night Blocks pad can *look* cracked before you commit to it and a pad
+  // never changes the rules underfoot as the band boundary passes.
+  int e = worldEra(world);
   while (world->platformSpawnY > world->cameraY - SCREEN_HEIGHT) {
     FIND_FREE(s, platforms, MAX_PLATFORMS);
     if (s >= 0) {
-      float x = GetRandomValue(SPAWN_MARGIN,
-                               SCREEN_WIDTH - SPAWN_MARGIN - PLATFORM_WIDTH);
-      world->platforms[s] = (Platform){{x, world->platformSpawnY}, true};
+      // Every piece is drawn, so the clamp has to use *its* width — an I spans
+      // four cells and an O two.
+      int shape = GetRandomValue(0, TETRO_COUNT - 1);
+      float w = (e == 3) ? tetroWidth(shape) : PLATFORM_WIDTH;
+      float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN - w);
+      world->platforms[s] =
+          (Platform){{x, world->platformSpawnY}, true, e == 1, 0.0f,
+                     e == 3 ? BLOCK_FALL : 0.0f, shape};
     }
     world->platformSpawnY -= PLATFORM_SPACING;
   }
@@ -235,7 +312,10 @@ static void spawnMonsters(World *world) {
         float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
         float speed = MONSTER_DRIFT * (1.0f + DIFFICULTY_SPEED * d);
         float vx = GetRandomValue(0, 1) ? speed : -speed;
-        world->monsters[s] = (Monster){{x, world->monsterSpawnY}, vx, true};
+        // vy stays 0: only a Neon Maze ghost ever leaves its spawn row, and
+        // steerGhost is what gives it one.
+        Vector2 at = {x, world->monsterSpawnY};
+        world->monsters[s] = (Monster){at, vx, true, 0.0f, entSeed(at)};
       }
     }
     float step = MONSTER_SPACING - DIFFICULTY_TIGHTEN * d;
@@ -246,9 +326,14 @@ static void spawnMonsters(World *world) {
 
 // Spawn-axis upgrade: extra weight for an upgraded good power-up so it
 // dominates good picks. Debuffs (and untracked types) get no bonus.
-static int spawnWeightOf(PowerUpType t) {
+static int spawnWeightOf(PowerUpType t, int era) {
   int bonus = 0;
   switch (t) {
+  case POWERUP_PELLET:
+    // Era-gated rather than table-weighted: the pellet only means anything
+    // where there are ghosts to frighten, and a 0 total weight is enough to
+    // make pickPowerup unable to choose it anywhere else.
+    return era == 2 ? 4 : 0;
   case POWERUP_MAGNET:
     bonus = SPAWN_STEP * gPuUpg[PU_MAGNET_SPAWN];
     break;
@@ -270,17 +355,17 @@ static int spawnWeightOf(PowerUpType t) {
 // Weighted pick over spawnWeightOf(), restricted to one category (good or
 // debuff). Both categories have positive total weight, so the fallback return
 // is unreachable.
-static PowerUpType pickPowerup(bool debuff) {
+static PowerUpType pickPowerup(bool debuff, int era) {
   int total = 0;
   for (int k = 0; k < POWERUP_COUNT; k++) {
     if (POWERUP_DEFS[k].debuff == debuff) {
-      total += spawnWeightOf(k);
+      total += spawnWeightOf(k, era);
     }
   }
   int roll = GetRandomValue(0, total - 1);
   for (PowerUpType t = 0; t < POWERUP_COUNT; t++) {
     if (POWERUP_DEFS[t].debuff == debuff) {
-      int w = spawnWeightOf(t);
+      int w = spawnWeightOf(t, era);
       if (roll < w) {
         return t;
       }
@@ -298,11 +383,12 @@ static void spawnPowerups(World *world) {
   // higher levels make bad pickups rarer (and clear them entirely once the
   // level reaches d).
   int d = difficulty(world) - gPuUpg[PU_DEBUFF_SUPPRESS];
+  int e = worldEra(world);
   while (world->powerupSpawnY > world->cameraY - SCREEN_HEIGHT) {
     FIND_FREE(s, powerups, MAX_POWERUPS);
     if (s >= 0) {
       float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
-      PowerUpType t = pickPowerup(GetRandomValue(0, 4) < d);
+      PowerUpType t = pickPowerup(GetRandomValue(0, 4) < d, e);
       world->powerups[s] = (PowerUp){{x, world->powerupSpawnY}, t, true};
     }
     world->powerupSpawnY -= POWERUP_SPACING;
@@ -471,10 +557,67 @@ static void collectPowerups(World *world, Player *player) {
   }
 }
 
+// Taking a hit — the one definition of it, shared by monster contact and a
+// Falling Blocks crush. Mega-Jump-style: it costs coins (they scatter out) and
+// knocks you down, but does NOT kill; only a fall ends the run.
+static void hitPlayer(World *world, Player *player) {
+  int lost = world->coinsCollected < MONSTER_COIN_LOSS ? world->coinsCollected
+                                                       : MONSTER_COIN_LOSS;
+  world->coinsCollected -= lost;
+  scatterCoins(world, player->position, lost); // only the coins actually lost
+  world->shake = SHAKE_HIT;
+  world->hitstop = 2;            // brief freeze reads as impact
+  world->combo = 0;              // hit broke the chain
+  player->velocity.y = 12.0f;    // knocked downward
+  player->expression = EXPR_SAD; // shakes off on the next coin/power-up
+  sfx(SFX_HIT);
+}
+
+// Plowing through a monster while invincible. Also the ghost-eat on Neon Maze:
+// there it chains, each ghost on one pellet worth double the last.
+static void splatMonster(World *world, Monster *m) {
+  spawnParticles(world, m->position, GRAPE, 12, false);
+  m->active = false;
+  world->shake = fmaxf(world->shake, SHAKE_SPLAT);
+  world->hitstop = 3; // brief freeze reads as impact
+  // Shield absorbs this hit; break only once its charges run out (Effect
+  // upgrade grants extra charges). Rocket-only invincibility leaves the
+  // shield untouched (shieldHits is 0 when no shield is active).
+  if (world->powerTimer[POWERUP_SHIELD] > 0.0f && --world->shieldHits <= 0) {
+    world->powerTimer[POWERUP_SHIELD] = 0.0f;
+  }
+  float pitch = 1.0f;
+  if (world->powerTimer[POWERUP_PELLET] > 0.0f) {
+    int n = world->ghostChain < 3 ? world->ghostChain : 3; // 25/50/100/200
+    world->comboBonus += GHOST_EAT_BONUS << n;
+    world->ghostChain++;
+    pitch += 0.15f * (float)n;
+  }
+  sfxPitched(SFX_SPLAT, pitch);
+}
+
+// Neon Maze steering: the drifting monster becomes a ghost that hunts the blob,
+// and runs from it while a pellet is lit. The vertical cap is the whole reason
+// this is survivable — a ghost crowds your climb, it never keeps pace with it.
+static void steerGhost(Monster *m, const Player *player, bool frightened) {
+  float dir = frightened ? -1.0f : 1.0f;
+  float top = frightened ? GHOST_FLEE : 1.0f;
+  m->vx += copysignf(GHOST_ACCEL, (player->position.x - m->position.x) * dir);
+  m->vy += copysignf(GHOST_ACCEL, (player->position.y - m->position.y) * dir);
+  m->vx = clampf(m->vx, -GHOST_VX * top, GHOST_VX * top);
+  m->vy = clampf(m->vy, -GHOST_VY * top, GHOST_VY * top);
+}
+
 static void updateMonsters(World *world, Player *player) {
+  bool ghosts = worldEra(world) == 2;
+  bool frightened = world->powerTimer[POWERUP_PELLET] > 0.0f;
   FOREACH_ACTIVE(monsters, MAX_MONSTERS, i) {
     Monster *m = &world->monsters[i];
+    if (ghosts) {
+      steerGhost(m, player, frightened);
+    }
     m->position.x += m->vx;
+    m->position.y += m->vy;
     if (m->position.x < MONSTER_RADIUS ||
         m->position.x > SCREEN_WIDTH - MONSTER_RADIUS) {
       m->vx = -m->vx;
@@ -482,36 +625,10 @@ static void updateMonsters(World *world, Player *player) {
     if (CheckCollisionCircles(player->position, player->radius, m->position,
                               MONSTER_RADIUS)) {
       if (worldInvincible(world)) {
-        // Invincible (rocket etc.): plow through, splatter the monster.
-        spawnParticles(world, m->position, GRAPE, 12, false);
-        m->active = false;
-        world->shake = fmaxf(world->shake, SHAKE_SPLAT);
-        world->hitstop = 3; // brief freeze reads as impact
-        // Shield absorbs this hit; break only once its charges run out (Effect
-        // upgrade grants extra charges). Rocket-only invincibility leaves the
-        // shield untouched (shieldHits is 0 when no shield is active).
-        if (world->powerTimer[POWERUP_SHIELD] > 0.0f &&
-            --world->shieldHits <= 0) {
-          world->powerTimer[POWERUP_SHIELD] = 0.0f;
-        }
-        sfx(SFX_SPLAT);
+        splatMonster(world, m);
       } else {
-        // Mega-Jump-style: a hit costs coins (they scatter out) and knocks you
-        // down + pops the monster, but does NOT kill — only a fall ends the
-        // run.
-        int lost = world->coinsCollected < MONSTER_COIN_LOSS
-                       ? world->coinsCollected
-                       : MONSTER_COIN_LOSS;
-        world->coinsCollected -= lost;
-        scatterCoins(world, player->position,
-                     lost); // only the coins actually lost
         m->active = false;
-        world->shake = SHAKE_HIT;
-        world->hitstop = 2;            // brief freeze reads as impact
-        world->combo = 0;              // hit broke the chain
-        player->velocity.y = 12.0f;    // knocked downward
-        player->expression = EXPR_SAD; // shakes off on the next coin/power-up
-        sfx(SFX_HIT);
+        hitPlayer(world, player);
       }
     }
   }
@@ -539,15 +656,89 @@ static void bounceOnPlatforms(World *world, Player *player) {
   float feet = player->position.y + player->radius;
   float prevFeet = feet - player->velocity.y;
   FOREACH_ACTIVE(platforms, MAX_PLATFORMS, i) {
-    Vector2 p = world->platforms[i].position;
-    if (prevFeet <= p.y && feet >= p.y && player->position.x >= p.x &&
-        player->position.x <= p.x + PLATFORM_WIDTH) {
-      player->position.y = p.y - player->radius;
+    Platform *pl = &world->platforms[i];
+    Rectangle box[PAD_BOXES];
+    int n = padBoxes(pl, box);
+    // Land on the *topmost* crossed box: a tetromino stacks cells in a column
+    // (S and Z leave a lower cell exposed, the rest do not), and dropping onto
+    // a buried cell would put the blob inside the piece.
+    float top = 0.0f;
+    bool landed = false;
+    for (int k = 0; k < n; k++) {
+      // The sweep is in the *platform's* frame: updatePlatforms has already
+      // moved it this step, so a box's previous top edge is box.y - vy. A
+      // falling pad would otherwise be tunnelled by its own motion.
+      if (prevFeet <= box[k].y - pl->vy && feet >= box[k].y &&
+          player->position.x >= box[k].x &&
+          player->position.x <= box[k].x + box[k].width &&
+          (!landed || box[k].y < top)) {
+        top = box[k].y;
+        landed = true;
+      }
+    }
+    if (landed) {
+      player->position.y = top - player->radius;
       player->velocity.y = PLATFORM_BOUNCE;
-      spawnParticles(world, (Vector2){player->position.x, p.y}, CLOUD, 8,
+      spawnParticles(world, (Vector2){player->position.x, top}, CLOUD, 8,
                      false);
       sfx(SFX_BOUNCE);
+      if (pl->fragile && pl->fuse <= 0.0f) {
+        pl->fuse =
+            CRUMBLE_FRAMES; // Night Blocks: it holds for a beat, then goes
+      }
       return;
+    }
+  }
+}
+
+// Platform motion + the Night Blocks crumble countdown. Runs before
+// bounceOnPlatforms so a moving pad's landing test sees this step's position.
+static void updatePlatforms(World *world) {
+  FOREACH_ACTIVE(platforms, MAX_PLATFORMS, i) {
+    Platform *pl = &world->platforms[i];
+    pl->position.y += pl->vy;
+
+    if (pl->fuse > 0.0f && (pl->fuse -= 1.0f) <= 0.0f) {
+      spawnParticles(world,
+                     (Vector2){pl->position.x + PLATFORM_WIDTH / 2.0f,
+                               pl->position.y + PLATFORM_HEIGHT / 2.0f},
+                     CLOUD, 10, false);
+      sfxPitched(SFX_BOUNCE, 0.55f); // pitched down, so it reads as a crunch
+      pl->active = false;
+      continue;
+    }
+  }
+}
+
+// Falling Blocks: a descending piece caught from below or the side. Runs
+// *after* bounceOnPlatforms, which is what makes the exclusion test trivial —
+// a legitimate landing has already snapped the player's center a full radius
+// above the surface, so anything still overlapping came in the wrong way.
+// (Ordered before it instead, a fast enough fall would put the center inside
+// the cell on the contact frame and get crushed by a pad it should have
+// bounced off.)
+static void crushOnBlocks(World *world, Player *player) {
+  FOREACH_ACTIVE(platforms, MAX_PLATFORMS, i) {
+    Platform *pl = &world->platforms[i];
+    if (pl->vy <= 0.0f) {
+      continue;
+    }
+    // Per cell, so the notch in a T or an L is genuinely empty space.
+    Rectangle box[PAD_BOXES];
+    int n = padBoxes(pl, box);
+    for (int k = 0; k < n; k++) {
+      if (player->position.y > box[k].y + 4.0f &&
+          CheckCollisionCircleRec(player->position, player->radius, box[k])) {
+        spawnParticles(world, player->position, CLOUD, 10, false);
+        pl->active = false;
+        if (worldInvincible(world)) {
+          world->shake = fmaxf(world->shake, SHAKE_SPLAT);
+          sfx(SFX_SPLAT);
+        } else {
+          hitPlayer(world, player);
+        }
+        return;
+      }
     }
   }
 }
@@ -564,7 +755,9 @@ void updateWorld(World *world, Player *player) {
     sfx(SFX_BOUNCE);
   }
 
+  updatePlatforms(world);
   bounceOnPlatforms(world, player);
+  crushOnBlocks(world, player);
   collectPowerups(world, player);
 
   // Per-type active effects (the physics is inherently type-specific)...
@@ -594,6 +787,12 @@ void updateWorld(World *world, Player *player) {
       world->powerTimer[t] -= 1.0f;
     }
   }
+  // The eat-chain belongs to one pellet. Clearing it whenever no pellet is lit
+  // covers both ends: it can't survive the timer running out, and it is already
+  // zero by the time the next pellet is picked up.
+  if (world->powerTimer[POWERUP_PELLET] <= 0.0f) {
+    world->ghostChain = 0;
+  }
 
   updateMonsters(world, player);
 
@@ -621,6 +820,8 @@ void updateWorld(World *world, Player *player) {
   int lvl = themeLevelAt(-peakY);
   if (lvl > world->level) {
     world->level = lvl;
+    world->levelBanner = LEVEL_BANNER_FRAMES; // the era's rules just changed;
+                                              // the HUD says which era it is
     sfx(SFX_LEVELUP);
   }
 
@@ -637,19 +838,14 @@ void updateWorld(World *world, Player *player) {
   if (world->flash > 0.0f) {
     world->flash -= FLASH_DECAY;
   }
+  if (world->levelBanner > 0.0f) {
+    world->levelBanner -= 1.0f;
+  }
   spawnCoins(world);
   spawnPlatforms(world);
   spawnMonsters(world);
   spawnPowerups(world);
   cullBelowView(world);
-}
-
-// Deterministic per-instance seed from an entity's (fixed) spawn y, so coins
-// and monsters get stable random-looking variety without extra struct fields.
-static unsigned entSeed(Vector2 p) {
-  unsigned h = (unsigned)(int)fabsf(p.y) * 2654435761u;
-  h ^= h >> 15;
-  return h;
 }
 
 // One additive soft-light stamp — the shared idiom behind every glow in this
@@ -666,7 +862,16 @@ static void glowStamp(Vector2 c, float w, Color tint, float base, float lit) {
   EndBlendMode();
 }
 
-static void drawCoin(Vector2 c, float t) {
+static void drawCoin(Vector2 c, float t, bool pellet) {
+  if (pellet) {
+    // Neon Maze: the coin trail is a pellet lane. A pellet is a dot — the
+    // minted-coin art below would fight the backdrop's own pellets.
+    float r = COIN_RADIUS * 0.55f;
+    glowStamp(c, COIN_RADIUS * 3.5f, COIN_HI, 0.25f, 0.45f);
+    DrawCircle(c.x, c.y, r, COIN_HI);
+    DrawCircle(c.x - r * 0.3f, c.y - r * 0.3f, r * 0.34f, RAYWHITE);
+    return;
+  }
   unsigned seed = entSeed(c);
   float phase = (seed & 255) / 255.0f * TWO_PI; // out-of-sync twinkle offset
   float spin = fabsf(cosf(t * 4.0f + c.y * 0.05f)); // 0 (edge-on) .. 1 (face)
@@ -709,47 +914,92 @@ static void drawCoin(Vector2 c, float t) {
   }
 }
 
-static void drawCloudPad(Vector2 p) {
+// Falling Blocks pads are literal tetrominoes, drawn by the backdrop's own
+// helper from the same TETRO offsets padBoxes collides with. Color keys off the
+// *shape* (one color per piece type, as the genre does) rather than off the
+// position — a falling pad's y changes every frame, so an entSeed color would
+// strobe.
+static void drawFallingPiece(const Platform *pl, Vector2 p, float a) {
+  Color c = gTheme.confetti[pl->shape % CONFETTI_COUNT];
+  float w = tetroWidth(pl->shape);
+  glowStamp((Vector2){p.x + w * 0.5f, p.y + TETRO_CELL}, w * 1.4f, c, 0.10f * a,
+            0.30f * a);
+  drawTetromino(p.x, p.y, TETRO_CELL, pl->shape, c, a);
+}
+
+static void drawCloudPad(const Platform *pl) {
+  Vector2 p = pl->position;
+  float a = 1.0f;
+  if (pl->fuse > 0.0f) {
+    // Death rattle: the pad shakes and thins out over its fuse, so the break is
+    // telegraphed for the whole beat it takes rather than just happening.
+    a = pl->fuse / CRUMBLE_FRAMES;
+    p.x += GetRandomValue(-100, 100) / 100.0f * CRUMBLE_JITTER;
+    p.y += GetRandomValue(-100, 100) / 100.0f * CRUMBLE_JITTER;
+  }
+  if (pl->vy > 0.0f) {
+    drawFallingPiece(pl, p, a);
+    return;
+  }
   float cx = p.x + PLATFORM_WIDTH / 2.0f;
   drawTex(TEX_PUFF, cx, p.y + PLATFORM_HEIGHT + 6.0f, PLATFORM_WIDTH * 1.5f,
-          40.0f, 0.0f, Fade(SKY_BOT_HIGH, 0.5f)); // soft shadow
+          40.0f, 0.0f, Fade(SKY_BOT_HIGH, 0.5f * a)); // soft shadow
   // Cloud-puff silhouette behind the board, as a soft backing accent. Same
   // TEX_CLOUD the backdrop's clouds are made of, so a pad reads as the same
   // weather as the sky it hangs in.
-  drawTex(TEX_CLOUD, p.x + 24.0f, p.y, 62.0f, 50.0f, 0.0f, CLOUD);
+  drawTex(TEX_CLOUD, p.x + 24.0f, p.y, 62.0f, 50.0f, 0.0f, Fade(CLOUD, a));
   drawTex(TEX_CLOUD, p.x + PLATFORM_WIDTH - 24.0f, p.y, 62.0f, 50.0f, 0.0f,
-          CLOUD);
-  drawTex(TEX_CLOUD, cx, p.y - 5.0f, 78.0f, 62.0f, 0.0f, CLOUD);
+          Fade(CLOUD, a));
+  drawTex(TEX_CLOUD, cx, p.y - 5.0f, 78.0f, 62.0f, 0.0f, Fade(CLOUD, a));
 
   // The landing board: a defined solid surface so the jump-off edge reads
   // clearly against the sky. Dark outline + body + a bright top face strip.
   Rectangle board = {p.x, p.y, PLATFORM_WIDTH, PLATFORM_HEIGHT};
-  DrawRectangleRounded(board, 0.6f, 8, CLOUD);
+  DrawRectangleRounded(board, 0.6f, 8,
+                       Fade(pl->fragile ? CLOUD_SHADE : CLOUD, a));
   DrawRectangleRounded(
       (Rectangle){p.x, p.y, PLATFORM_WIDTH, PLATFORM_HEIGHT * 0.4f}, 0.9f, 8,
-      RAYWHITE); // lit top face (where feet land)
+      Fade(RAYWHITE, a)); // lit top face (where feet land)
   DrawRectangleRounded((Rectangle){p.x, p.y + PLATFORM_HEIGHT * 0.55f,
                                    PLATFORM_WIDTH, PLATFORM_HEIGHT * 0.45f},
-                       0.9f, 8, Fade(CLOUD_SHADE, 0.85f)); // shaded underside
-  DrawRectangleRoundedLines(board, 0.6f, 8, GRASS_DK);     // crisp rim
+                       0.9f, 8, Fade(CLOUD_SHADE, 0.85f * a));  // shaded under
+  DrawRectangleRoundedLines(board, 0.6f, 8, Fade(GRASS_DK, a)); // crisp rim
+  if (pl->fragile) {
+    // Two cracks: the pad announces it will break *before* you commit to it.
+    Color crack = Fade(GRASS_DK, 0.8f * a);
+    DrawLineEx((Vector2){p.x + 30.0f, p.y + 1.0f},
+               (Vector2){p.x + 22.0f, p.y + PLATFORM_HEIGHT - 1.0f}, 2.0f,
+               crack);
+    DrawLineEx((Vector2){p.x + 64.0f, p.y + 1.0f},
+               (Vector2){p.x + 72.0f, p.y + PLATFORM_HEIGHT - 1.0f}, 2.0f,
+               crack);
+  }
 }
 
-static void drawMonster(Vector2 m, float t) {
+// `pellet` is the frightened timer (0 = hunting): on Neon Maze a lit pellet
+// turns the monsters blue and running, flashing white as it wears off — the
+// player's cue that the window is closing.
+static void drawMonster(Vector2 m, float t, float pellet, unsigned seed) {
   float R = MONSTER_RADIUS;
-  unsigned seed = entSeed(m);
   float wob = 1.0f + 0.08f * sinf(t * 6.0f + m.x * 0.1f);
-  Color horn = ColorBrightness(GRAPE_DK, -0.15f);
+  Color body = GRAPE, bodyDk = GRAPE_DK;
+  if (pellet > 0.0f) {
+    bool blink = pellet < 60.0f && fmodf(pellet, 16.0f) < 8.0f;
+    body = blink ? RAYWHITE : (Color){0x3A, 0x4C, 0xF0, 0xFF};
+    bodyDk = blink ? LIGHTGRAY : (Color){0x1B, 0x22, 0x99, 0xFF};
+  }
+  Color horn = ColorBrightness(bodyDk, -0.15f);
 
   drawTex(TEX_PUFF, m.x, m.y + R * 1.05f, R * 2.6f, R * 0.9f, 0.0f,
           Fade(BLACK, 0.3f)); // drop shadow
-  glowStamp(m, R * 3.5f, GRAPE, 0.2f, 0.45f);
+  glowStamp(m, R * 3.5f, body, 0.2f, 0.45f);
 
   // Wobbling stubby legs (2 or 3, seed-picked).
   int legs = (seed & 1) ? 3 : 2;
   for (int k = 0; k < legs; k++) {
     float lx = m.x + (k - (legs - 1) * 0.5f) * R * 0.5f;
     float ly = m.y + R * 0.7f + sinf(t * 7.0f + k + m.x * 0.1f) * R * 0.14f;
-    DrawCircle(lx, ly + R * 0.18f, R * 0.2f, GRAPE_DK);
+    DrawCircle(lx, ly + R * 0.18f, R * 0.2f, bodyDk);
   }
 
   // Head decor: two horns / a bobbing antenna / bald, seed-picked.
@@ -764,7 +1014,7 @@ static void drawMonster(Vector2 m, float t) {
     float ax = m.x + sinf(t * 4.0f + m.x) * R * 0.2f;
     DrawLineEx((Vector2){m.x, m.y - R * 0.7f}, (Vector2){ax, m.y - R * 1.25f},
                3.0f, horn);
-    DrawCircle(ax, m.y - R * 1.3f, R * 0.16f, GRAPE);
+    DrawCircle(ax, m.y - R * 1.3f, R * 0.16f, body);
     break;
   }
   default:
@@ -772,10 +1022,10 @@ static void drawMonster(Vector2 m, float t) {
   }
 
   // Body: dark base, brightened rim, lit body.
-  DrawEllipse(m.x, m.y, R * wob, R / wob, GRAPE_DK);
+  DrawEllipse(m.x, m.y, R * wob, R / wob, bodyDk);
   DrawEllipse(m.x, m.y, R * 0.9f * wob, R * 0.9f / wob,
-              ColorBrightness(GRAPE, 0.3f));
-  DrawEllipse(m.x, m.y - R * 0.1f, R * 0.78f * wob, R * 0.78f / wob, GRAPE);
+              ColorBrightness(body, 0.3f));
+  DrawEllipse(m.x, m.y - R * 0.1f, R * 0.78f * wob, R * 0.78f / wob, body);
 
   // Eyes, seed-picked: even / one wonky-bigger / cyclops.
   int eyeStyle = seed % 3;
@@ -874,6 +1124,14 @@ void drawPowerupGlyph(PowerUpType type, Vector2 c, float R, float t) {
     drawSvg(SVG_PU_SHIELD_HEX, c.x, c.y - R * 0.18f, R, 0.0f,
             Fade(sheen, 0.7f));
     drawSvg(SVG_PU_SHIELD_CREST, c.x, c.y, R * 0.84f, t * 30.0f, GRAPE);
+    break;
+  }
+  case POWERUP_PELLET: {
+    // A power pellet is a fat dot — no glyph, and none wanted: the shape is
+    // the whole point of the reference, and it pulses to sell "grab me".
+    float r = R * (0.62f + 0.08f * sinf(t * 6.0f));
+    DrawCircle(c.x, c.y, r, COIN_HI);
+    DrawCircle(c.x - r * 0.3f, c.y - r * 0.3f, r * 0.34f, RAYWHITE);
     break;
   }
   case POWERUP_ANCHOR: {
@@ -1034,14 +1292,20 @@ void drawWorld(const World *world) {
 
   drawGround();
 
+  // Two era looks are read off world state rather than the entity: coins are a
+  // pellet lane on Neon Maze, and its monsters turn frightened while a pellet
+  // is lit. Everything else about an entity's look rides its own fields.
+  bool pelletLane = worldEra(world) == 2;
+  float fright = world->powerTimer[POWERUP_PELLET];
+
   FOREACH_ACTIVE(platforms, MAX_PLATFORMS, i)
-  drawCloudPad(world->platforms[i].position);
+  drawCloudPad(&world->platforms[i]);
   FOREACH_ACTIVE(coins, MAX_COINS, i)
-  drawCoin(world->coins[i].position, t);
+  drawCoin(world->coins[i].position, t, pelletLane);
   FOREACH_ACTIVE(powerups, MAX_POWERUPS, i)
   drawPowerUp(&world->powerups[i], t);
   FOREACH_ACTIVE(monsters, MAX_MONSTERS, i)
-  drawMonster(world->monsters[i].position, t);
+  drawMonster(world->monsters[i].position, t, fright, world->monsters[i].seed);
 
   drawParticles(world);
   drawFlash(world);
@@ -1068,17 +1332,153 @@ int getScore(const World *world) {
 //      build/lib/raylib/raylib/libraylib.a -lm -framework Cocoa \
 //      -framework IOKit -framework CoreVideo -framework OpenGL \
 //      -o /tmp/worldtest && /tmp/worldtest /tmp/worldstrip.png
-#include "background.h"
-
 #include <assert.h>
 #include <stdio.h>
 
 #define BAND 20000.0f // see BG_SELFTEST: only has to land inside a band
 #define CELL 400
 
+// A world with the spawners silenced (their cursors parked below every
+// reachable camera position), so a scene is exactly what the check places in
+// it.
+static World bareWorld(int level) {
+  World w = createWorld();
+  w.level = level;
+  w.spawnY = w.platformSpawnY = w.monsterSpawnY = w.powerupSpawnY = -1.0e6f;
+  return w;
+}
+
+// The per-era mechanics, driven through updateWorld. These are the failures the
+// contact strip below cannot see: an era gate that stops firing leaves the art
+// intact and the game silently back to one mechanic for the whole climb.
+static void checkEras(void) {
+  // The spawn gate: what stamps an era's rule onto an entity at birth.
+  for (int e = 0; e < THEME_COUNT; e++) {
+    World w = createWorld();
+    w.level = e;
+    Player p = createPlayer();
+    updateWorld(&w, &p); // one call generates a screen's worth of pads
+    int fragile = 0, falling = 0, total = 0;
+    for (int i = 0; i < MAX_PLATFORMS; i++) {
+      if (!w.platforms[i].active) {
+        continue;
+      }
+      total++;
+      fragile += w.platforms[i].fragile;
+      falling += w.platforms[i].vy > 0.0f;
+    }
+    assert(total > 0 && "no platforms spawned at all");
+    assert(fragile == (e == 1 ? total : 0) && "crumble gate is not era 1");
+    assert(falling == (e == 3 ? total : 0) && "falling gate is not era 3");
+    // The pellet is reachable only where there are ghosts to frighten.
+    assert((spawnWeightOf(POWERUP_PELLET, e) > 0) == (e == 2));
+    for (int k = 0; k < 50; k++) {
+      assert((pickPowerup(false, e) == POWERUP_PELLET) <= (e == 2));
+    }
+  }
+
+  // Every tetromino is a real spawnable pad: four distinct cells, inside its
+  // own reported width, and narrow enough to fit between the spawn margins. A
+  // zero-filled TETRO row (the failure a designated table hides) collapses all
+  // four cells onto one square and trips the distinctness check.
+  for (int s = 0; s < TETRO_COUNT; s++) {
+    Platform pl = {{0.0f, 0.0f}, true, false, 0.0f, BLOCK_FALL, s};
+    Rectangle b[PAD_BOXES];
+    assert(padBoxes(&pl, b) == PAD_BOXES);
+    assert(tetroWidth(s) <= SCREEN_WIDTH - 2.0f * SPAWN_MARGIN);
+    for (int k = 0; k < PAD_BOXES; k++) {
+      assert(b[k].x >= 0.0f && b[k].x + b[k].width <= tetroWidth(s));
+      for (int j = k + 1; j < PAD_BOXES; j++) {
+        assert((b[k].x != b[j].x || b[k].y != b[j].y) && "duplicate cell");
+      }
+    }
+  }
+
+  // Night Blocks: landing arms the fuse, and the fuse takes the pad with it.
+  {
+    World w = bareWorld(1);
+    Player p = createPlayer();
+    p.position = (Vector2){400.0f, -1000.0f};
+    p.velocity = (Vector2){0.0f, 10.0f};
+    w.platforms[0] = (Platform){{350.0f, -960.0f}, true, true, 0.0f, 0.0f, 0};
+    for (int i = 0; i < 20 && w.platforms[0].fuse <= 0.0f; i++) {
+      updatePlayer(&p);
+      updateWorld(&w, &p);
+    }
+    assert(w.platforms[0].fuse > 0.0f && "landing did not arm the crumble");
+    for (int i = 0; i < (int)CRUMBLE_FRAMES + 2; i++) {
+      updateWorld(&w, &p);
+    }
+    assert(!w.platforms[0].active && "the fuse ran out and the pad survived");
+  }
+
+  // Sunny Hills: the same landing on the same geometry changes nothing.
+  {
+    World w = bareWorld(0);
+    Player p = createPlayer();
+    p.position = (Vector2){400.0f, -1000.0f};
+    p.velocity = (Vector2){0.0f, 10.0f};
+    w.platforms[0] = (Platform){{350.0f, -960.0f}, true, false, 0.0f, 0.0f, 0};
+    for (int i = 0; i < 20; i++) {
+      updatePlayer(&p);
+      updateWorld(&w, &p);
+    }
+    assert(w.platforms[0].active && w.platforms[0].fuse <= 0.0f &&
+           "era 0 platform is not the baseline any more");
+  }
+
+  // Neon Maze: a ghost closes in, runs while a pellet is lit, and is worth a
+  // doubling bonus when eaten.
+  {
+    World w = bareWorld(2);
+    Player p = createPlayer();
+    p.position = (Vector2){700.0f, -1000.0f};
+    w.monsters[0] = (Monster){{100.0f, -1000.0f}, 0.0f, true, 0.0f, 1};
+    float gap0 = p.position.x - w.monsters[0].position.x;
+    for (int i = 0; i < 10; i++) {
+      updateWorld(&w, &p);
+    }
+    assert(p.position.x - w.monsters[0].position.x < gap0 &&
+           "ghost not hunting");
+
+    w.powerTimer[POWERUP_PELLET] = 300.0f;
+    float gap1 = p.position.x - w.monsters[0].position.x;
+    for (int i = 0; i < 30; i++) {
+      updateWorld(&w, &p);
+    }
+    assert(p.position.x - w.monsters[0].position.x > gap1 &&
+           "ghost not fleeing");
+
+    w.monsters[1] =
+        (Monster){{p.position.x, p.position.y}, 0.0f, true, 0.0f, 2};
+    updateWorld(&w, &p);
+    assert(!w.monsters[1].active && w.ghostChain == 1 &&
+           w.comboBonus == GHOST_EAT_BONUS && "ghost was not eaten");
+  }
+
+  // Falling Blocks: the pads descend, and one caught from below hurts.
+  {
+    World w = bareWorld(3);
+    Player p = createPlayer();
+    p.position = (Vector2){400.0f, -1000.0f};
+    w.coinsCollected = 5;
+    w.platforms[0] =
+        (Platform){{350.0f, -1010.0f}, true, false, 0.0f, BLOCK_FALL, 0};
+    w.platforms[1] =
+        (Platform){{50.0f, -2000.0f}, true, false, 0.0f, BLOCK_FALL, 0};
+    float y0 = w.platforms[1].position.y;
+    updateWorld(&w, &p);
+    assert(w.platforms[1].position.y > y0 && "the blocks are not falling");
+    assert(w.coinsCollected < 5 && !w.platforms[0].active &&
+           "a falling block did not crush");
+  }
+  printf("ok — era mechanics\n");
+}
+
 int main(int argc, char **argv) {
   SetTraceLogLevel(LOG_WARNING);
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "worldtest");
+  checkEras();
   while (!texPreloadStep()) {
   }
   while (!svgPreloadStep()) {
@@ -1095,10 +1495,8 @@ int main(int argc, char **argv) {
         (Vector2){110.0f + i * 80.0f, 210.0f + (i % 3) * 55.0f};
     w.coins[i].active = true;
   }
-  w.platforms[0] = (Platform){{80.0f, 470.0f}, true};
-  w.platforms[1] = (Platform){{440.0f, 355.0f}, true};
-  w.monsters[0] = (Monster){{240.0f, 120.0f}, 1.0f, true};
-  w.monsters[1] = (Monster){{640.0f, 560.0f}, -1.0f, true};
+  w.monsters[0] = (Monster){{240.0f, 120.0f}, 1.0f, true, 0.0f, 3};
+  w.monsters[1] = (Monster){{640.0f, 560.0f}, -1.0f, true, 0.0f, 7};
   for (int i = 0; i < MAX_POWERUPS; i++) {
     w.powerups[i].position = (Vector2){130.0f + i * 190.0f, 640.0f};
     w.powerups[i].type = (PowerUpType)i; // magnet / rocket / balloon / shield
@@ -1118,6 +1516,37 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < THEME_COUNT; i++) {
     float cameraY = -(i * BAND + BAND * 0.05f);
+    // Each cell shows its era's *mechanic*, not just its palette: a cracked pad
+    // mid-crumble on Night Blocks, frightened ghosts and a pellet on Neon Maze,
+    // and on Falling Blocks all seven pieces at once — a broken TETRO row shows
+    // up here as a missing or malformed shape.
+    w.level = i;
+    for (int k = 0; k < MAX_PLATFORMS; k++) {
+      w.platforms[k].active = false;
+    }
+    if (i == 3) {
+      for (int k = 0; k < TETRO_COUNT; k++) {
+        w.platforms[k] =
+            (Platform){{20.0f + k * 110.0f, 300.0f + (k % 3) * 90.0f},
+                       true,
+                       false,
+                       0.0f,
+                       BLOCK_FALL,
+                       k};
+      }
+    } else {
+      w.platforms[0] = (Platform){{80.0f, 470.0f},
+                                  true,
+                                  i == 1,
+                                  i == 1 ? CRUMBLE_FRAMES * 0.6f : 0.0f,
+                                  0.0f,
+                                  0};
+      w.platforms[1] =
+          (Platform){{440.0f, 355.0f}, true, i == 1, 0.0f, 0.0f, 0};
+    }
+    w.powerTimer[POWERUP_PELLET] = (i == 2) ? 300.0f : 0.0f;
+    w.powerups[MAX_POWERUPS - 1].type =
+        (i == 2) ? POWERUP_PELLET : (PowerUpType)(MAX_POWERUPS - 1);
     // Ahead of the draw, and not once at setup: gTheme is zero-initialized
     // until the first themeUpdate, so confetti picked before this point is
     // pure transparent black and the whole burst renders invisible.

@@ -78,18 +78,21 @@ static void drawBlockC(float x, float y, float s, Color c, float a) {
 
 // The seven tetromino footprints as (dx,dy) cells; drawTetromino stamps four
 // beveled cells so the L4 backdrop rains real shapes, not lone squares.
-#define TETRO_COUNT 7
-static const signed char TETRO[TETRO_COUNT][4][2] = {
-    {{-1, 0}, {0, 0}, {1, 0}, {2, 0}}, // I
-    {{0, 0}, {1, 0}, {0, 1}, {1, 1}},  // O
-    {{0, 0}, {1, 0}, {2, 0}, {1, 1}},  // T
-    {{1, 0}, {2, 0}, {0, 1}, {1, 1}},  // S
-    {{0, 0}, {1, 0}, {1, 1}, {2, 1}},  // Z
-    {{0, 0}, {1, 0}, {2, 0}, {2, 1}},  // L
-    {{0, 0}, {1, 0}, {2, 0}, {0, 1}},  // J
+// Kept non-negative so world.c can use the same offsets as collision boxes.
+const signed char TETRO[][4][2] = {
+    {{0, 0}, {1, 0}, {2, 0}, {3, 0}}, // I
+    {{0, 0}, {1, 0}, {0, 1}, {1, 1}}, // O
+    {{0, 0}, {1, 0}, {2, 0}, {1, 1}}, // T
+    {{1, 0}, {2, 0}, {0, 1}, {1, 1}}, // S
+    {{0, 0}, {1, 0}, {1, 1}, {2, 1}}, // Z
+    {{0, 0}, {1, 0}, {2, 0}, {2, 1}}, // L
+    {{0, 0}, {1, 0}, {2, 0}, {0, 1}}, // J
 };
-static void drawTetromino(float x, float y, float cell, int shape, Color c,
-                          float a) {
+// A missing shape would be a zero-filled row: four cells stacked on one square,
+// which is a legal-looking platform you cannot land on the visible half of.
+STATIC_ASSERT(sizeof(TETRO) / sizeof(TETRO[0]) == TETRO_COUNT, tetro_full);
+
+void drawTetromino(float x, float y, float cell, int shape, Color c, float a) {
   for (int k = 0; k < 4; k++) {
     drawBlockC(x + TETRO[shape][k][0] * cell, y + TETRO[shape][k][1] * cell,
                cell, c, a);
