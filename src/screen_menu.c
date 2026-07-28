@@ -32,10 +32,11 @@ static Rectangle rOverlayClose(void) {
 static const char *HELP_LINES[] = {
     "Move:  arrow keys or mouse",
     "Grab coins to launch higher",
-    "Bounce off the cloud platforms",
+    "Bounce off the platforms",
     "Dodge the grape monsters",
-    "Magnet, Rocket, Balloon, Shield help",
+    "Magnet, Rocket, Balloon, Shield, Pellet help",
     "Anchor, Dizzy, Fog, Butterfingers hurt",
+    "Each era changes the rules",
     "Never fall below the screen",
 };
 #define HELP_LINE_COUNT ((int)(sizeof(HELP_LINES) / sizeof(HELP_LINES[0])))
@@ -53,11 +54,14 @@ static Rectangle overlayPanel(const char *title) {
 
 // Line spacing is tight because the list has to clear rOverlayClose at y=568:
 // the last line starts at HELP_TOP + (n-1)*HELP_STEP and is HELP_FS tall, which
-// at seven lines lands at 542. Adding an eighth means shrinking the step again
-// (or the panel grows) — the old 44px step silently ran the text under the
-// button the moment a line was added.
+// at eight lines lands at 552. Adding a ninth means shrinking the step again
+// (or the panel grows) — the 44px step this started with silently ran the text
+// under the button the moment a line was added, and 38 did the same at eight.
+// Width is the other bound: the panel is 600 wide and drawCenteredText does not
+// shrink to fit, so a line must measure under that at HELP_FS (the longest here
+// is the good-power-up list at 551).
 #define HELP_TOP 288
-#define HELP_STEP 38
+#define HELP_STEP 34
 #define HELP_FS 26
 static void drawHelpOverlay(void) {
   overlayPanel("HOW TO PLAY");

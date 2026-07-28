@@ -25,6 +25,10 @@ const SkinDef SKINS[] = {
      "TANGERINE"},
 };
 const int SKIN_COUNT = (int)(sizeof(SKINS) / sizeof(SKINS[0]));
+// skinMask is an int bitmask indexed `1 << i`, so row 31 shifts into the sign
+// bit — undefined behaviour, and the skin could never be marked owned. 31 rows
+// is the real capacity of the save format, not just of the loop below.
+STATIC_ASSERT(sizeof(SKINS) / sizeof(SKINS[0]) <= 31, skins_fit_mask);
 
 // Unsized on purpose, here and in the progress.h declaration — see POWERUP_DEFS
 // in world.c for why both matter and for the designated-initializer limit.
@@ -65,6 +69,9 @@ const MissionDef MISSIONS[] = {
     {"Reach the Falling Blocks", MSTAT_LEVEL, 3, 200},
 };
 const int MISSION_COUNT = (int)(sizeof(MISSIONS) / sizeof(MISSIONS[0]));
+// Same bitmask ceiling as SKINS above: missionMask pays each reward once via
+// `1 << i`, so the 32nd mission would shift into the sign bit and never latch.
+STATIC_ASSERT(sizeof(MISSIONS) / sizeof(MISSIONS[0]) <= 31, missions_fit_mask);
 
 bool skinOwned(const Progress *p, int i) {
   return (p->skinMask & (1 << i)) != 0;

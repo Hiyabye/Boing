@@ -248,6 +248,10 @@ int main(int argc, char **argv) {
   Image sheet = GenImageColor(CELL * TEX_COUNT, CELL, (Color){24, 24, 32, 255});
 
   for (int i = 0; i < TEX_COUNT; i++) {
+    // The middle-hole case the designated table's count assert cannot see (see
+    // TEX_DEFS above). bake() degrades quietly on it; here it must be loud, and
+    // asserting beats dereferencing a NULL gen pointer.
+    assert(TEX_DEFS[i].gen != NULL && "TEX_DEFS row missing a generator");
     Image im = TEX_DEFS[i].gen(TEX_DEFS[i].px);
     assert(im.data != NULL && "generator returned no pixels");
     assert(im.format == PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 &&
