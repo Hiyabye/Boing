@@ -1,6 +1,7 @@
 #include "ui.h"
 
 #include "core.h"
+#include "font.h"
 #include "svg.h"
 #include "theme.h"
 
@@ -155,13 +156,27 @@ void drawCursor(void) {
   drawSvg(SVG_CURSOR, m.x + s * 0.5f, m.y + s * 0.5f, s, 0.0f, WHITE);
 }
 
+// Letterspacing lives in each glyph's own advance, so raylib's spacing term
+// ((n-1)*spacing, added by both DrawTextEx and MeasureTextEx) stays zero and
+// measuring matches drawing exactly.
+#define TEXT_SPACING 0.0f
+
+void uiText(const char *text, float x, float y, int size, Color color) {
+  DrawTextEx(gameFont(), text, (Vector2){x, y}, (float)size, TEXT_SPACING,
+             color);
+}
+
+int uiTextWidth(const char *text, int size) {
+  return (int)MeasureTextEx(gameFont(), text, (float)size, TEXT_SPACING).x;
+}
+
 void drawTextShadow(const char *text, int x, int y, int size, Color color) {
-  DrawText(text, x + 2, y + 2, size, Fade(BLACK, 0.35f));
-  DrawText(text, x, y, size, color);
+  uiText(text, x + 2.0f, y + 2.0f, size, Fade(BLACK, 0.35f));
+  uiText(text, (float)x, (float)y, size, color);
 }
 
 void drawCenteredText(const char *text, int y, int fontSize, Color color) {
-  int x = (SCREEN_WIDTH - MeasureText(text, fontSize)) / 2;
+  int x = (SCREEN_WIDTH - uiTextWidth(text, fontSize)) / 2;
   drawTextShadow(text, x, y, fontSize, color);
 }
 
@@ -205,16 +220,16 @@ void uiButton(Rectangle r, const char *label, IconKind icon) {
     float iconCol = (icon != ICON_NONE) ? r.height * 0.72f : 0.0f;
     float avail = r.width - iconCol - LABEL_PAD;
     int fs = (int)(r.height * 0.42f);
-    while (fs > 8 && label && MeasureText(label, fs) > avail) {
+    while (fs > 8 && label && uiTextWidth(label, fs) > avail) {
       fs--;
     }
     if (icon != ICON_NONE) {
       drawIcon(icon, r.x + iconCol * 0.5f + 4, cy, r.height * 0.4f, RAYWHITE);
     }
-    int tw = label ? MeasureText(label, fs) : 0;
+    int tw = label ? uiTextWidth(label, fs) : 0;
     float ix = r.x + iconCol + (r.width - iconCol - tw) / 2.0f;
     if (label) {
-      DrawText(label, (int)ix, (int)(cy - fs / 2.0f), fs, RAYWHITE);
+      uiText(label, ix, cy - fs / 2.0f, fs, RAYWHITE);
     }
   }
 }

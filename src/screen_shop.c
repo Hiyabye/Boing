@@ -152,7 +152,7 @@ void drawShop(Game *g) {
 
   // Coin bank: a coin glyph + total, centered under the title.
   const char *bankStr = TextFormat("%d", p->coinBank);
-  float bx = SCREEN_WIDTH / 2.0f - (MeasureText(bankStr, 30) + 30) / 2.0f;
+  float bx = SCREEN_WIDTH / 2.0f - (uiTextWidth(bankStr, 30) + 30) / 2.0f;
   drawCoinGlyph(bx, 118);
   drawTextShadow(bankStr, (int)bx + 16, 103, 30, GOLD);
 
@@ -173,7 +173,7 @@ void drawShop(Game *g) {
     drawAccessories(cx, cy, SWATCH_RX, SWATCH_RY, SKINS[i].character);
     const char *tag =
         owned ? (sel ? "EQUIPPED" : "OWNED") : TextFormat("%d", SKINS[i].cost);
-    drawTextShadow(tag, (int)(cx - MeasureText(tag, 16) / 2),
+    drawTextShadow(tag, (int)(cx - uiTextWidth(tag, 16) / 2),
                    (int)(r.y + r.height - 22), 16, owned ? RAYWHITE : GOLD);
   }
 
@@ -186,7 +186,7 @@ void drawShop(Game *g) {
     DrawRectangleRounded(card, 0.12f, 8, Fade(BLACK, 0.35f));
     drawTextShadow(
         SHOP_PU[pu].name,
-        (int)(card.x + card.width / 2 - MeasureText(SHOP_PU[pu].name, 18) / 2),
+        (int)(card.x + card.width / 2 - uiTextWidth(SHOP_PU[pu].name, 18) / 2),
         (int)card.y + 12, 18, CANDY_PINK);
     // Power-up icon between the title and its upgrades.
     drawPowerupGlyph(SHOP_PU[pu].icon,
@@ -207,7 +207,7 @@ void drawShop(Game *g) {
       drawTextShadow(PU_UPGRADES[track].label, (int)ax.x + 4, (int)ax.y, 16,
                      max ? GOLD : RAYWHITE);
       const char *tag = max ? "MAX" : TextFormat("%d", upgCost(track, lvl));
-      drawTextShadow(tag, (int)(ax.x + ax.width - 4 - MeasureText(tag, 16)),
+      drawTextShadow(tag, (int)(ax.x + ax.width - 4 - uiTextWidth(tag, 16)),
                      (int)ax.y, 16, max ? Fade(GOLD, 0.7f) : GOLD);
       drawLevelBar(ax.x + 2, ax.y + 28, ax.width - 4, 16, lvl);
     }

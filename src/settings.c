@@ -218,10 +218,9 @@ static void drawRow(const Settings *s, int row, const char *label,
   if (sel) {
     DrawRectangleRounded(rowRect(row), 0.4f, 8, Fade(BLACK, 0.25f));
   }
-  DrawText(label, 180, y, fs, col);
-  int vw = MeasureText(value, fs);
-  DrawText(value, TRACK_X1 - vw, y, fs,
-           col); // right-aligned over the track end
+  uiText(label, 180, y, fs, col);
+  int vw = uiTextWidth(value, fs);
+  uiText(value, TRACK_X1 - vw, y, fs, col); // right-aligned over the track end
 
   // Slider: dim full track, bright fill up to the knob, round knob on top.
   float ty = trackY(row);

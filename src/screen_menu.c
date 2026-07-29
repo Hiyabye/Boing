@@ -59,10 +59,12 @@ static Rectangle overlayPanel(const char *title) {
 // under the button the moment a line was added, and 38 did the same at eight.
 // Width is the other bound: the panel is 600 wide and drawCenteredText does not
 // shrink to fit, so a line must measure under that at HELP_FS (the longest here
-// is the good-power-up list at 551).
+// is the good-power-up list, 562 at HELP_FS 24). That line is what sets the
+// size — it measured 609 at the 26 this used to be, which the vector font's
+// wider advances pushed out past the panel edge on both sides.
 #define HELP_TOP 288
 #define HELP_STEP 34
-#define HELP_FS 26
+#define HELP_FS 24
 static void drawHelpOverlay(void) {
   overlayPanel("HOW TO PLAY");
   for (int i = 0; i < HELP_LINE_COUNT; i++) {
@@ -82,7 +84,7 @@ static void drawMissionsOverlay(const Game *g) {
     drawTextShadow(TextFormat("%s %s", done ? "[x]" : "[ ]", MISSIONS[i].desc),
                    (int)panel.x + 40, y, 22, done ? GOLD : RAYWHITE);
     const char *rw = TextFormat("+%d", MISSIONS[i].reward);
-    drawTextShadow(rw, (int)(panel.x + panel.width - 40 - MeasureText(rw, 22)),
+    drawTextShadow(rw, (int)(panel.x + panel.width - 40 - uiTextWidth(rw, 22)),
                    y, 22, done ? Fade(GOLD, 0.6f) : COIN_LO);
     y += 46;
   }

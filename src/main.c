@@ -5,6 +5,7 @@
 #include "rlgl.h"
 
 #include "core.h"
+#include "font.h"
 #include "game.h"
 #include "persist.h"
 #include "player.h"
@@ -160,6 +161,7 @@ int main(void) {
   unloadPost();
   unloadSvgCache();
   unloadTexCache();
+  unloadGameFont();
   deinitAudio(&stream);
   CloseWindow();
   return 0;

@@ -144,7 +144,7 @@ STATIC_ASSERT(sizeof(ERA_NAMES) / sizeof(ERA_NAMES[0]) == THEME_COUNT,
 // (drawn after the world's rlPopMatrix, in the frame's scaled 800x800 space).
 static void drawHud(const World *world) {
   const char *scoreStr = TextFormat("SCORE %d", getScore(world));
-  DrawRectangleRounded((Rectangle){8, 8, MeasureText(scoreStr, 30) + 24, 40},
+  DrawRectangleRounded((Rectangle){8, 8, uiTextWidth(scoreStr, 30) + 24, 40},
                        0.4f, 8, Fade(BLACK, 0.28f));
   drawTextShadow(scoreStr, 20, 13, 30, RAYWHITE);
 
@@ -152,7 +152,7 @@ static void drawHud(const World *world) {
   // left so the top-right pause button doesn't hide it.
   const char *coinStr = TextFormat("%d", world->coinsCollected);
   float cbx = 8, cby = 52;
-  float cbw = 24 + 8 + MeasureText(coinStr, 30) + 20;
+  float cbw = 24 + 8 + uiTextWidth(coinStr, 30) + 20;
   DrawRectangleRounded((Rectangle){cbx, cby, cbw, 40}, 0.4f, 8,
                        Fade(BLACK, 0.28f));
   float gcx = cbx + 20, gcy = cby + 20;
@@ -166,7 +166,7 @@ static void drawHud(const World *world) {
   themeBlend(&lo, &hi, &f);
   float pw = 360, ph = 12, px = (SCREEN_WIDTH - pw) / 2.0f, py = 30;
   const char *lvlStr = TextFormat("LEVEL %d", worldLevel(world) + 1);
-  drawTextShadow(lvlStr, (int)(SCREEN_WIDTH - MeasureText(lvlStr, 18)) / 2, 8,
+  drawTextShadow(lvlStr, (int)(SCREEN_WIDTH - uiTextWidth(lvlStr, 18)) / 2, 8,
                  18, RAYWHITE);
   DrawRectangleRounded((Rectangle){px, py, pw, ph}, 0.9f, 8, Fade(BLACK, 0.3f));
   DrawRectangleRounded((Rectangle){px, py, pw * f, ph}, 0.9f, 8,
@@ -233,7 +233,7 @@ static void drawSummaryCard(Game *g) {
   int ry = 268;
   for (int i = 0; i < (int)(sizeof(rows) / sizeof(rows[0])); i++) {
     drawTextShadow(rows[i].label, (int)panel.x + 30, ry, 24, RAYWHITE);
-    int vw = MeasureText(rows[i].value, 24);
+    int vw = uiTextWidth(rows[i].value, 24);
     drawTextShadow(rows[i].value, (int)(panel.x + panel.width - 30 - vw), ry,
                    24, COIN_LO);
     ry += 40;

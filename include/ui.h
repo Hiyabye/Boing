@@ -53,6 +53,14 @@ void uiFocusReset(void);
 // so no post effect can warp it away from the real cursor position.
 void drawCursor(void);
 
+// Text in the game's own vector font (the `font` subsystem) — these four are
+// the only text surface, nothing else calls raylib's DrawText/MeasureText.
+// uiText is the bare draw; uiTextWidth is the drop-in for MeasureText and
+// returns int for exactly that reason, since every call site does integer
+// arithmetic on the result.
+void uiText(const char *text, float x, float y, int size, Color color);
+int uiTextWidth(const char *text, int size);
+
 // Text with a soft drop shadow; drawCenteredText horizontally centers it.
 void drawTextShadow(const char *text, int x, int y, int size, Color color);
 void drawCenteredText(const char *text, int y, int fontSize, Color color);
