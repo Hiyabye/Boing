@@ -51,15 +51,22 @@ typedef struct {
 // that they must stay in exact SvgId order — the comment on each row is the
 // only thing naming which glyph it is.
 static const SvgDef SVG_DEFS[] = {
-    // SVG_CURSOR — mouse arrow. The tip sits at the viewBox origin (the 0.8
-    // inset is exactly half the stroke width, so the *outer* tip lands on 0,0),
-    // which is what lets ui.c place the hotspot by offsetting half a box.
-    // Baked colors, not white: the splash is white, and a white arrow on it
-    // would be invisible.
-    {SVG_HEAD "<path fill=\"#fff\" stroke=\"#2a2233\" stroke-width=\"1.6\""
-              " stroke-linejoin=\"round\" d=\""
-              "M0.8 0.8L0.8 17.8L5.0 14.0L7.8 21.2L11.0 19.8L8.2 12.6"
-              "L14.4 12.6Z\"/></svg>",
+    // SVG_CURSOR: candy-comet mouse arrow. The 0.8 inset is half the outline,
+    // so the outer tip lands exactly on the viewBox origin and remains the
+    // true hotspot. Fixed pink-gold color keeps it readable on every theme.
+    {SVG_HEAD
+     "<defs><linearGradient id=\"c\" x1=\"1\" y1=\"1\" x2=\"11\" y2=\"20\""
+     " gradientUnits=\"userSpaceOnUse\">"
+     "<stop offset=\"0\" stop-color=\"#ffdf72\"/>"
+     "<stop offset=\"0.34\" stop-color=\"#ff70b5\"/>"
+     "<stop offset=\"1\" stop-color=\"#e52f88\"/></linearGradient></defs>"
+     "<path fill=\"url(#c)\" stroke=\"#291d38\" stroke-width=\"1.6\""
+     " stroke-linejoin=\"round\" d=\""
+     "M0.8 0.8L0.8 17.8L5.0 14.0L7.8 21.2L11.0 19.8L8.2 12.6"
+     "L14.4 12.6Z\"/>"
+     "<path fill=\"#fff4bd\" opacity=\"0.9\" d=\"M2.2 2.4L2.2 11.7"
+     "L4.2 9.9Z\"/><circle cx=\"3.2\" cy=\"3.1\" r=\"0.9\""
+     " fill=\"#fff\"/></svg>",
      SVG_ICON_PX},
 
     // SVG_PLAY — rounded right-pointing triangle.

@@ -94,6 +94,11 @@ int main(void) {
       .highScore = loadHighScore(),
   };
   applySettings(&game.settings); // target FPS, window size, audio levels
+  // raylib does not seed its mouse position or on-screen flag until the first
+  // cursor event. Put the hidden OS pointer at a valid initial hotspot so the
+  // custom cursor is visible immediately, after settings has resized the
+  // window.
+  SetMousePosition(GetScreenWidth() / 2, GetScreenHeight() / 2);
 
   // Draw runs in fixed 800x800 logical coords; a GPU scale matrix maps them to
   // post's offscreen target each frame, so the resolution setting resizes the

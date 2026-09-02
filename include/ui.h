@@ -49,8 +49,8 @@ void uiFocusDraw(void);
 // Focus back to the first item — game.c calls this on every state change.
 void uiFocusReset(void);
 
-// The custom mouse pointer, in window points. Drawn by main.c *after* postEnd
-// so no post effect can warp it away from the real cursor position.
+// The candy-comet pointer and its trail/click burst, in window points. Drawn by
+// main.c after postEnd so no post effect can warp it away from the real cursor.
 void drawCursor(void);
 
 // Text in the game's own vector font (the `font` subsystem) — these four are
