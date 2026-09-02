@@ -6,8 +6,8 @@
 // The palette is runtime state now: a game can hold several themes and morph
 // between them as the player climbs (see theme.c / THEMES[]). `gTheme` is the
 // blended palette for the *current frame*; themeUpdate() recomputes it from the
-// ascent. The color macros below just read `gTheme`, so every existing inline
-// draw site (world.c / player.c / background.c) keeps working unchanged.
+// ascent. The color macros below just read `gTheme`, shared by world,
+// background, and UI draw sites.
 
 typedef enum {
   BACKDROP_HILLS, // L1: day sky, clouds + rolling green hills/bushes
@@ -34,7 +34,8 @@ typedef struct {
   Color sun, sunCore;
   // Backdrop decor body + shade (clouds for nature, blocks for arcade).
   Color cloud, cloudShade;
-  // Player (copied into Character at spawn, so the protagonist stays constant).
+  // Candy UI accents and the shared procedural face-line color. Outfit body
+  // colors live in progress.c and are copied into Character independently.
   Color candyPink, candyPinkDk, mouth;
   // Coins, ground, monsters, power-ups.
   Color coinHi, coinLo, grass, grassDk, grape, grapeDk;

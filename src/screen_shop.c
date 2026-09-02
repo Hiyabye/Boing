@@ -1,6 +1,6 @@
-// SHOP — the coin-economy screen: buy/equip blob skins and buy per-power-up
-// upgrade levels out of the banked coins. Tables live in the progress module;
-// this file is only the layout and the click routing.
+// SHOP: compose and buy outfit pieces, then buy per-power-up upgrade levels.
+// Catalog data lives in progress.c; this file owns only layout and click
+// routing.
 #include "game.h"
 
 #include "background.h"
@@ -13,21 +13,15 @@
 #include "ui.h"
 #include "world.h"
 
-// Half-extents of the swatch's mini blob. Kept a touch wide, like the live
-// blob's resting shape, so drawAccessories anchors the same way it does in
-// gameplay.
-#define SWATCH_RX 30.0f
-#define SWATCH_RY 28.0f
+#define PREVIEW_RX 27.0f
+#define PREVIEW_RY 24.0f
 
-// Skin swatches across one row, then one card per power-up laid out the same
-// way, each card stacking its upgrade axes vertically, then Back.
-static Rectangle rShopSkin(int i) {
-  return centeredRow(175, 120, 110, i, SKIN_COUNT);
+// Four outfit categories replace the old four bundled-skin swatches.
+static Rectangle rShopCategory(int i) {
+  return centeredRow(175, 120, 110, i, COSMETIC_CATEGORY_COUNT);
 }
 
-// Power-up columns for the upgrade grid: header name, an icon (PowerUpType for
-// drawPowerupGlyph — the Debuffs card borrows the Anchor glyph), and its
-// PuTrack axes (-1 pads the ragged cards — Shield has 2 axes, Debuffs 1).
+// Power-up columns: title, icon, and up to three upgrade axes.
 static const struct {
   const char *name;
   int icon; // PowerUpType
@@ -47,7 +41,7 @@ static const struct {
 };
 #define SHOP_PU_N (int)(sizeof(SHOP_PU) / sizeof(SHOP_PU[0]))
 
-static int shopPuAxes(int p) { // count of real axes on card p (1..3)
+static int shopPuAxes(int p) {
   int n = 0;
   while (n < 3 && SHOP_PU[p].track[n] >= 0) {
     n++;
@@ -55,8 +49,6 @@ static int shopPuAxes(int p) { // count of real axes on card p (1..3)
   return n;
 }
 
-// Card holds: title, power-up icon below it, then the axis rows — with generous
-// vertical spacing so the section doesn't crowd.
 static Rectangle rShopUpgCard(int p) {
   return (Rectangle){22 + p * 154.0f, 336, 138, 312};
 }
@@ -66,8 +58,13 @@ static Rectangle rShopUpgAxis(int p, int a) {
 }
 static Rectangle rShopBack(void) { return centeredBtn(712, 200, 48); }
 
-// Level indicator: a rounded bar split into MAX_UPG_LEVEL segments; the first
-// `level` are filled gold (with a top gloss), the rest dark. Purely visual.
+static Rectangle rPickerPanel(void) { return (Rectangle){60, 138, 680, 430}; }
+static Rectangle rPickerItem(int i) {
+  return centeredRow(214 + (i / 4) * 136.0f, 145, 120, i % 4, 4);
+}
+static Rectangle rPickerClose(void) { return centeredBtn(508, 170, 44); }
+
+// Level indicator: five gold segments, one per purchased level.
 static void drawLevelBar(float x, float y, float w, float h, int level) {
   const float gap = 3.0f;
   float segW = (w - (MAX_UPG_LEVEL - 1) * gap) / MAX_UPG_LEVEL;
@@ -82,54 +79,90 @@ static void drawLevelBar(float x, float y, float w, float h, int level) {
   }
 }
 
-// Equip skin i: record the selection, set the global for future createPlayer
-// calls (retry/return-to-menu), and recolor the live blob so it changes right
-// away — startGame(fromMenu) carries this same player into play without a
-// respawn, so the live update is what makes the very next run wear it too.
-static void equipSkin(Game *g, int i) {
-  g->progress.selectedSkin = i;
-  setPlayerSkin(SKINS[i].character);
-  g->player.character = SKINS[i].character;
+// Show only the category being browsed, over the currently selected body color.
+static Character previewCharacter(const Progress *p, int category, int item) {
+  Character c = progressCharacter(p);
+  c.hat = HAT_NONE;
+  c.glasses = GLS_NONE;
+  c.mouthwear = MOUTHWEAR_NONE;
+  switch (category) {
+  case COSMETIC_COLOR:
+    c.body = COSMETICS[category].items[item].body;
+    c.bodyDark = COSMETICS[category].items[item].bodyDark;
+    break;
+  case COSMETIC_HEAD:
+    c.hat = (unsigned char)item;
+    break;
+  case COSMETIC_EYES:
+    c.glasses = (unsigned char)item;
+    break;
+  case COSMETIC_MOUTH:
+    c.mouthwear = (unsigned char)item;
+    break;
+  }
+  return c;
 }
 
-// Buy, then click again to equip. Opened only from the menu, so BACK returns
-// straight there.
+static void applyOutfit(Game *g) {
+  Character c = progressCharacter(&g->progress);
+  setPlayerCharacter(c);
+  g->player.character = c;
+}
+
+static void selectCosmetic(Game *g, int category, int item) {
+  Progress *p = &g->progress;
+  const CosmeticDef *def = &COSMETICS[category].items[item];
+  if (cosmeticOwned(p, category, item)) {
+    p->selectedCosmetic[category] = (unsigned char)item;
+    applyOutfit(g);
+    saveProgress(p);
+    sfx(SFX_SELECT);
+  } else if (tryBuy(p, def->cost)) {
+    p->cosmeticMask[category] |= 1 << item;
+    p->selectedCosmetic[category] = (unsigned char)item;
+    applyOutfit(g);
+    saveProgress(p);
+    sfx(SFX_POWERUP);
+  } else {
+    sfx(SFX_HIT);
+  }
+}
+
 void updateShop(Game *g) {
   Progress *p = &g->progress;
-  // The loops below visit every cell every frame, so uiItem sees the whole grid
-  // in a stable order: skins, then the upgrade axes card by card, then BACK
-  // last (BACK moved to the bottom of the function for exactly that reason —
-  // its old early-return skipped the rest of the registrations).
-  for (int i = 0; i < SKIN_COUNT; i++) {
-    if (!uiItem(rShopSkin(i))) {
-      continue;
+
+  // Modal picker: only its choices and close button are live.
+  if (g->shopCategory > 0) {
+    int category = g->shopCategory - 1;
+    int count = COSMETICS[category].count;
+    for (int i = 0; i < count; i++) {
+      if (uiItem(rPickerItem(i))) {
+        selectCosmetic(g, category, i);
+      }
     }
-    if (skinOwned(p, i)) { // equip an owned skin
-      equipSkin(g, i);
-      saveProgress(p);
+    bool close = uiItem(rPickerClose());
+    if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) || close) {
+      g->shopCategory = 0;
+      uiFocusReset();
       sfx(SFX_SELECT);
-    } else if (tryBuy(p, SKINS[i].cost)) { // buy + auto-equip
-      p->skinMask |= (1 << i);
-      equipSkin(g, i);
-      saveProgress(p);
-      sfx(SFX_POWERUP);
-    } else {
-      sfx(SFX_HIT); // can't afford
     }
+    return;
   }
+
+  bool categoryPressed[COSMETIC_CATEGORY_COUNT];
+  for (int i = 0; i < COSMETIC_CATEGORY_COUNT; i++) {
+    categoryPressed[i] = uiItem(rShopCategory(i));
+  }
+
   for (int pu = 0; pu < SHOP_PU_N; pu++) {
     for (int a = 0; a < shopPuAxes(pu); a++) {
       if (!uiItem(rShopUpgAxis(pu, a))) {
         continue;
       }
       int track = SHOP_PU[pu].track[a];
-      if (track < 0) {
-        continue; // padded slot (unreachable via shopPuAxes; keeps analyzer
-                  // happy)
-      }
       int lvl = upgLevel(p, track);
       if (lvl >= MAX_UPG_LEVEL) {
-        sfx(SFX_SELECT); // maxed: no-op
+        sfx(SFX_SELECT);
       } else if (tryBuy(p, upgCost(track, lvl))) {
         p->puLevel[track]++;
         saveProgress(p);
@@ -139,11 +172,64 @@ void updateShop(Game *g) {
       }
     }
   }
-  if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
-      uiItem(rShopBack())) {
+
+  bool back = uiItem(rShopBack());
+  for (int i = 0; i < COSMETIC_CATEGORY_COUNT; i++) {
+    if (categoryPressed[i]) {
+      g->shopCategory = i + 1;
+      uiFocusReset();
+      sfx(SFX_SELECT);
+      return;
+    }
+  }
+  if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) || back) {
     gotoState(g, GAMESTATE_MENU);
     sfx(SFX_SELECT);
   }
+}
+
+static void drawCosmeticCard(const Progress *p, int category, int item,
+                             Rectangle r, bool categoryCard) {
+  bool owned = cosmeticOwned(p, category, item);
+  bool selected = p->selectedCosmetic[category] == item;
+  DrawRectangleRounded(r, 0.2f, 8, Fade(BLACK, 0.52f));
+  if (!categoryCard && selected) {
+    DrawRectangleRoundedLines(r, 0.2f, 8, GOLD);
+  } else if (mouseInRect(r)) {
+    DrawRectangleRoundedLines(r, 0.2f, 8, RAYWHITE);
+  }
+
+  Character c = previewCharacter(p, category, item);
+  float cx = r.x + r.width / 2.0f;
+  float cy = r.y + (categoryCard ? 62.0f : 55.0f);
+  drawBlobBody(cx, cy, PREVIEW_RX, PREVIEW_RY, c);
+  drawAccessories(cx, cy, PREVIEW_RX, PREVIEW_RY, c);
+
+  const CosmeticDef *def = &COSMETICS[category].items[item];
+  int nameY = (int)(r.y + (categoryCard ? 86 : 82));
+  drawTextShadow(def->name, (int)(cx - uiTextWidth(def->name, 14) / 2), nameY,
+                 14, RAYWHITE);
+  if (!categoryCard) {
+    const char *tag = selected ? "EQUIPPED"
+                      : owned  ? "OWNED"
+                               : TextFormat("%d", def->cost);
+    drawTextShadow(tag, (int)(cx - uiTextWidth(tag, 14) / 2), (int)r.y + 101,
+                   14, owned ? (selected ? GOLD : RAYWHITE) : GOLD);
+  }
+}
+
+static void drawPicker(const Progress *p, int category) {
+  DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.38f));
+  Rectangle panel = rPickerPanel();
+  DrawRectangleRounded(panel, 0.07f, 12, Fade(BLACK, 0.92f));
+  DrawRectangleRoundedLines(panel, 0.07f, 12, CANDY_PINK);
+
+  const CosmeticCatalog *catalog = &COSMETICS[category];
+  drawCenteredText(TextFormat("CHOOSE %s", catalog->name), 158, 30, CANDY_PINK);
+  for (int i = 0; i < catalog->count; i++) {
+    drawCosmeticCard(p, category, i, rPickerItem(i), false);
+  }
+  uiButton(rPickerClose(), "DONE", ICON_BACK);
 }
 
 void drawShop(Game *g) {
@@ -152,36 +238,20 @@ void drawShop(Game *g) {
   DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.55f));
   drawCenteredText("SHOP", 40, 60, CANDY_PINK);
 
-  // Coin bank: a coin glyph + total, centered under the title.
   const char *bankStr = TextFormat("%d", p->coinBank);
   float bx = SCREEN_WIDTH / 2.0f - (uiTextWidth(bankStr, 30) + 30) / 2.0f;
   drawCoinGlyph(bx, 118);
   drawTextShadow(bankStr, (int)bx + 16, 103, 30, GOLD);
 
-  // Skins — swatch per palette with a mini blob preview + owned/selected/cost.
-  drawCenteredText("SKINS", 150, 24, RAYWHITE);
-  for (int i = 0; i < SKIN_COUNT; i++) {
-    Rectangle r = rShopSkin(i);
-    bool owned = skinOwned(p, i), sel = (p->selectedSkin == i);
-    DrawRectangleRounded(r, 0.2f, 8, Fade(BLACK, 0.4f));
-    if (sel) {
-      DrawRectangleRoundedLines(r, 0.2f, 8, GOLD);
-    } else if (mouseInRect(r)) {
-      DrawRectangleRoundedLines(r, 0.2f, 8, RAYWHITE);
-    }
-    // Same draw the live blob uses, so a skin's accessories show up here too.
-    float cx = r.x + r.width / 2, cy = r.y + r.height / 2 - 6;
-    drawBlobBody(cx, cy, SWATCH_RX, SWATCH_RY, SKINS[i].character);
-    drawAccessories(cx, cy, SWATCH_RX, SWATCH_RY, SKINS[i].character);
-    const char *tag =
-        owned ? (sel ? "EQUIPPED" : "OWNED") : TextFormat("%d", SKINS[i].cost);
-    drawTextShadow(tag, (int)(cx - uiTextWidth(tag, 16) / 2),
-                   (int)(r.y + r.height - 22), 16, owned ? RAYWHITE : GOLD);
+  drawCenteredText("OUTFIT", 150, 24, RAYWHITE);
+  for (int i = 0; i < COSMETIC_CATEGORY_COUNT; i++) {
+    Rectangle r = rShopCategory(i);
+    drawCosmeticCard(p, i, p->selectedCosmetic[i], r, true);
+    const char *name = COSMETICS[i].name;
+    drawTextShadow(name, (int)(r.x + r.width / 2 - uiTextWidth(name, 15) / 2),
+                   (int)r.y + 7, 15, CANDY_PINK);
   }
 
-  // Upgrades — one card per power-up laid out horizontally (like the skins):
-  // title, the power-up icon below it, then the axis rows stacked. Per axis:
-  // short label + next cost, and a 5-segment level bar. Click an axis to buy.
   drawCenteredText("UPGRADES", 306, 20, RAYWHITE);
   for (int pu = 0; pu < SHOP_PU_N; pu++) {
     Rectangle card = rShopUpgCard(pu);
@@ -190,16 +260,11 @@ void drawShop(Game *g) {
         SHOP_PU[pu].name,
         (int)(card.x + card.width / 2 - uiTextWidth(SHOP_PU[pu].name, 18) / 2),
         (int)card.y + 12, 18, CANDY_PINK);
-    // Power-up icon between the title and its upgrades.
     drawPowerupGlyph(SHOP_PU[pu].icon,
                      (Vector2){card.x + card.width / 2, card.y + 54}, 18.0f,
                      (float)GetTime());
     for (int a = 0; a < shopPuAxes(pu); a++) {
       int track = SHOP_PU[pu].track[a];
-      if (track < 0) {
-        continue; // padded slot (unreachable via shopPuAxes; keeps analyzer
-                  // happy)
-      }
       Rectangle ax = rShopUpgAxis(pu, a);
       int lvl = upgLevel(p, track);
       bool max = lvl >= MAX_UPG_LEVEL;
@@ -216,4 +281,7 @@ void drawShop(Game *g) {
   }
 
   uiButton(rShopBack(), "BACK", ICON_BACK);
+  if (g->shopCategory > 0) {
+    drawPicker(p, g->shopCategory - 1);
+  }
 }

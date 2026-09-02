@@ -14,7 +14,7 @@ typedef enum {
   GAMESTATE_GAMEOVER,
   GAMESTATE_CREDITS,
   GAMESTATE_SHOP,
-  GAMESTATE_COUNT // sentinel: sizes the STATES[] dispatch table in main.c
+  GAMESTATE_COUNT // sentinel: checked against STATES[] in main.c
 } GameState;
 
 // Compile-time assertion for C99 (no _Static_assert until C11): a false

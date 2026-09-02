@@ -368,9 +368,9 @@ static const SvgDef SVG_DEFS[] = {
      "</svg>",
      SVG_ICON_PX},
 
-    // Skin accessories. Unlike the power-up layers these bake their own colors
-    // and draw tinted WHITE — a crown that recolored with the skin would stop
-    // being a gold crown. Each is authored where it wants to sit *inside* the
+    // Outfit accessories. Unlike power-up layers these bake their own colors
+    // and draw tinted WHITE, so a gold crown stays gold on every body color.
+    // Each is authored where it wants to sit *inside* the
     // viewBox (rasterize() preserves that placement), and player.c picks the
     // box aspect, so the art squashes with the blob instead of scaling square.
 
@@ -396,39 +396,197 @@ static const SvgDef SVG_DEFS[] = {
      "</svg>",
      SVG_ICON_PX},
 
-    // SVG_ACC_BOW — two loops and a knot. Disjoint pieces, separate paths.
+    // SVG_ACC_BOW: two loops and a knot.
     {SVG_HEAD "<path fill=\"#ff6fa5\" stroke=\"#d94a83\" stroke-width=\"1.3\""
-              " stroke-linejoin=\"round\" d=\"M11.0 12L2.6 7.2L2.6 16.8Z\"/>"
+              " stroke-linejoin=\"round\" d=\"M11 12L2.6 7.2L2.6 16.8Z\"/>"
               "<path fill=\"#ff6fa5\" stroke=\"#d94a83\" stroke-width=\"1.3\""
-              " stroke-linejoin=\"round\" d=\"M13.0 12L21.4 7.2L21.4 16.8Z\"/>"
+              " stroke-linejoin=\"round\" d=\"M13 12L21.4 7.2L21.4 16.8Z\"/>"
               "<circle cx=\"12\" cy=\"12\" r=\"2.6\" fill=\"#e85a95\" "
               "stroke=\"#d94a83\" stroke-width=\"1.1\"/></svg>",
      SVG_ICON_PX},
 
-    // SVG_ACC_GLASSES — round wire frames. Lens centers sit at x = 12 +/- 5.8,
-    // which is what pins them over the eyes once player.c picks the box width.
+    // SVG_ACC_PARTY: striped cone, pom-pom, and soft headband.
     {SVG_HEAD
-     "<circle cx=\"6.2\" cy=\"12\" r=\"4.3\" fill=\"none\" "
-     "stroke=\"#332d3f\" stroke-width=\"1.5\"/>"
-     "<circle cx=\"17.8\" cy=\"12\" r=\"4.3\" fill=\"none\" "
-     "stroke=\"#332d3f\" stroke-width=\"1.5\"/>"
-     "<path d=\"M10.5 11.4Q12 10.4 13.5 11.4\" fill=\"none\" "
-     "stroke=\"#332d3f\" stroke-width=\"1.5\"/>"
-     "<path d=\"M1.9 11.0L0.6 9.8\" stroke=\"#332d3f\" stroke-width=\"1.5\"/>"
-     "<path d=\"M22.1 11.0L23.4 9.8\" stroke=\"#332d3f\" "
-     "stroke-width=\"1.5\"/></svg>",
+     "<path fill=\"#6f68df\" stroke=\"#433b9e\" stroke-width=\"1.2\" "
+     "stroke-linejoin=\"round\" d=\"M4 18.5L12 3L20 18.5Z\"/>"
+     "<path fill=\"#ff73ab\" d=\"M7 12.7L17.5 13.7L19.2 17L5.3 15.9Z\"/>"
+     "<path fill=\"#ffd85e\" d=\"M9.2 8.4L14.8 8.9L16.2 11.5L7.8 10.8Z\"/>"
+     "<ellipse cx=\"12\" cy=\"19\" rx=\"9.5\" ry=\"1.8\" fill=\"#433b9e\"/>"
+     "<circle cx=\"12\" cy=\"3\" r=\"2.2\" fill=\"#ffd85e\"/></svg>",
      SVG_ICON_PX},
 
-    // SVG_ACC_SHADES — dark lenses, same eye spacing as SVG_ACC_GLASSES.
+    // SVG_ACC_WIZARD: floppy midnight cone with original candy-star details.
+    {SVG_HEAD
+     "<path fill=\"#40377f\" stroke=\"#26204f\" stroke-width=\"1.2\" "
+     "stroke-linejoin=\"round\" d=\"M3 18.5L9.5 5L15 2.5L14.2 8L21 18.5Z\"/>"
+     "<ellipse cx=\"12\" cy=\"18.5\" rx=\"10\" ry=\"2.4\" fill=\"#292253\"/>"
+     "<path fill=\"#ffd85e\" d=\"M10.7 9L11.5 10.7L13.4 10.9L12 12.2L12.4 "
+     "14L10.7 13.1L9 14L9.4 12.2L8 10.9L9.9 10.7Z\"/>"
+     "<circle cx=\"15.8\" cy=\"14.2\" r=\"1\" fill=\"#ff75ae\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_FLOWER: six candy petals on a small green comb.
+    {SVG_HEAD "<path d=\"M8 19Q12 15 16 19\" fill=\"none\" stroke=\"#4c9b68\" "
+              "stroke-width=\"2.2\" stroke-linecap=\"round\"/>"
+              "<g fill=\"#ff77ad\" stroke=\"#d94a83\" stroke-width=\"0.8\">"
+              "<circle cx=\"12\" cy=\"6.4\" r=\"3.2\"/><circle cx=\"12\" "
+              "cy=\"17.6\" r=\"3.2\"/>"
+              "<circle cx=\"7.2\" cy=\"9.2\" r=\"3.2\"/><circle cx=\"16.8\" "
+              "cy=\"9.2\" r=\"3.2\"/>"
+              "<circle cx=\"7.2\" cy=\"14.8\" r=\"3.2\"/><circle cx=\"16.8\" "
+              "cy=\"14.8\" r=\"3.2\"/></g>"
+              "<circle cx=\"12\" cy=\"12\" r=\"3.4\" fill=\"#ffd85e\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_HALO: floating gold ring with two tiny candy stars.
+    {SVG_HEAD "<ellipse cx=\"12\" cy=\"12\" rx=\"9.5\" ry=\"3.6\" "
+              "fill=\"none\" stroke=\"#f4c64e\" stroke-width=\"2.3\"/>"
+              "<path fill=\"#fff4a8\" d=\"M5 5L5.8 6.6L7.6 6.8L6.3 8L6.6 9.8L5 "
+              "9L3.4 9.8L3.7 8L2.4 6.8L4.2 6.6ZM19 4L19.6 5.2L21 5.4L20 "
+              "6.3L20.2 7.7L19 7.1L17.8 7.7L18 6.3L17 5.4L18.4 5.2Z\"/>"
+              "<path d=\"M5 11.5Q12 15 19 11.5\" fill=\"none\" "
+              "stroke=\"#c78e25\" stroke-width=\".8\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_GLASSES: round wire frames.
+    {SVG_HEAD "<circle cx=\"6.2\" cy=\"12\" r=\"4.3\" fill=\"none\" "
+              "stroke=\"#332d3f\" stroke-width=\"1.5\"/>"
+              "<circle cx=\"17.8\" cy=\"12\" r=\"4.3\" fill=\"none\" "
+              "stroke=\"#332d3f\" stroke-width=\"1.5\"/>"
+              "<path d=\"M10.5 11.4Q12 10.4 13.5 11.4\" fill=\"none\" "
+              "stroke=\"#332d3f\" stroke-width=\"1.5\"/>"
+              "<path d=\"M1.9 11L.6 9.8M22.1 11L23.4 9.8\" stroke=\"#332d3f\" "
+              "stroke-width=\"1.5\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_SHADES: dark lenses, same eye spacing as the round frames.
     {SVG_HEAD
      "<rect x=\"1.7\" y=\"8.5\" width=\"8.5\" height=\"6.6\" rx=\"2.4\" "
      "fill=\"#23252e\"/>"
      "<rect x=\"13.8\" y=\"8.5\" width=\"8.5\" height=\"6.6\" rx=\"2.4\" "
      "fill=\"#23252e\"/>"
-     "<rect x=\"10.2\" y=\"9.7\" width=\"3.6\" height=\"1.7\" rx=\"0.8\" "
+     "<rect x=\"10.2\" y=\"9.7\" width=\"3.6\" height=\"1.7\" rx=\".8\" "
      "fill=\"#4b4f5e\"/>"
-     "<path fill=\"#5a6070\" d=\"M3.4 13.6L6.4 9.9L8.0 9.9L5.0 13.6Z\"/>"
-     "</svg>",
+     "<path fill=\"#5a6070\" d=\"M3.4 13.6L6.4 9.9H8L5 13.6Z\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_HEARTS: rose heart lenses with a gold bridge.
+    {SVG_HEAD "<path fill=\"#ee4f8b\" stroke=\"#8d2e61\" stroke-width=\"1\" "
+              "d=\"M6.2 17C2 13.8 1.2 10.6 2.8 8.8C4 7.4 5.5 7.8 6.2 9C7 7.8 "
+              "8.5 7.4 9.7 8.8C11.3 10.6 10.4 13.8 6.2 17Z\"/>"
+              "<path fill=\"#ee4f8b\" stroke=\"#8d2e61\" stroke-width=\"1\" "
+              "d=\"M17.8 17C13.6 13.8 12.7 10.6 14.3 8.8C15.5 7.4 17 7.8 17.8 "
+              "9C18.5 7.8 20 7.4 21.2 8.8C22.8 10.6 22 13.8 17.8 17Z\"/>"
+              "<path d=\"M10.1 10.5Q12 9.5 13.9 10.5\" fill=\"none\" "
+              "stroke=\"#d6a438\" stroke-width=\"1.4\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_STARS: five-point gold lenses on plum arms.
+    {SVG_HEAD "<path fill=\"#ffd85e\" stroke=\"#8c6621\" stroke-width=\"1\" "
+              "d=\"M6.2 6.3L7.8 9.5L11.3 10L8.7 12.5L9.3 16L6.2 14.4L3.1 "
+              "16L3.7 12.5L1.1 10L4.6 9.5Z\"/>"
+              "<path fill=\"#ffd85e\" stroke=\"#8c6621\" stroke-width=\"1\" "
+              "d=\"M17.8 6.3L19.4 9.5L22.9 10L20.3 12.5L20.9 16L17.8 14.4L14.7 "
+              "16L15.3 12.5L12.7 10L16.2 9.5Z\"/>"
+              "<path d=\"M10 10.4Q12 9.5 14 10.4\" fill=\"none\" "
+              "stroke=\"#4c315e\" stroke-width=\"1.5\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_MONOCLE: one sapphire lens with a dangling bead chain.
+    {SVG_HEAD
+     "<circle cx=\"17.4\" cy=\"11.4\" r=\"5\" fill=\"#87d6e8\" "
+     "fill-opacity=\".35\" stroke=\"#d8b34c\" stroke-width=\"1.8\"/>"
+     "<path d=\"M21 15Q22.5 18 19.5 22\" fill=\"none\" stroke=\"#d8b34c\" "
+     "stroke-width=\"1.2\" stroke-dasharray=\"1.2 1\"/>"
+     "<circle cx=\"19.3\" cy=\"22\" r=\"1.1\" fill=\"#ee5c99\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_GOGGLES: chunky mint rims and translucent blue lenses.
+    {SVG_HEAD "<path d=\"M1 10L4 8M23 10L20 8M10.5 11Q12 10 13.5 11\" "
+              "fill=\"none\" stroke=\"#315b61\" stroke-width=\"2\"/>"
+              "<circle cx=\"6.4\" cy=\"12\" r=\"4.7\" fill=\"#77d8db\" "
+              "stroke=\"#315b61\" stroke-width=\"1.8\"/>"
+              "<circle cx=\"17.6\" cy=\"12\" r=\"4.7\" fill=\"#77d8db\" "
+              "stroke=\"#315b61\" stroke-width=\"1.8\"/>"
+              "<path d=\"M4.3 10L6.8 8.7M15.5 10L18 8.7\" stroke=\"#dfffff\" "
+              "stroke-width=\"1.2\" stroke-linecap=\"round\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_VISOR: one wide neon lens with a bright diagonal glint.
+    {SVG_HEAD
+     "<path fill=\"#43d7df\" fill-opacity=\".8\" stroke=\"#263f69\" "
+     "stroke-width=\"1.5\" stroke-linejoin=\"round\" d=\"M1.5 8.5Q12 6 22.5 "
+     "8.5L20.5 15.5Q12 18 3.5 15.5Z\"/>"
+     "<path fill=\"#ec5fa5\" d=\"M12.5 7.4L16 7.5L11.5 16.8L8 16.5Z\"/>"
+     "<path d=\"M3 10Q12 8 21 10\" fill=\"none\" stroke=\"#d9ffff\" "
+     "stroke-width=\"1\" stroke-linecap=\"round\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_MUSTACHE: two curled cocoa wings.
+    {SVG_HEAD
+     "<path fill=\"#4a2b27\" d=\"M12 10.8C9.2 7.8 6.8 9 6.2 11.2C4.4 10.5 2.5 "
+     "11.5 1.5 14.3C5.2 16 9.2 15.2 12 12.5C14.8 15.2 18.8 16 22.5 14.3C21.5 "
+     "11.5 19.6 10.5 17.8 11.2C17.2 9 14.8 7.8 12 10.8Z\"/>"
+     "<path d=\"M3.2 13.6Q6 15 9.2 12.8M20.8 13.6Q18 15 14.8 12.8\" "
+     "fill=\"none\" stroke=\"#7a4b3d\" stroke-width=\".8\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_PACIFIER: candy shield, ring, and white center button.
+    {SVG_HEAD "<path fill=\"#63c7d8\" stroke=\"#317889\" stroke-width=\"1.2\" "
+              "d=\"M5 9Q12 5 19 9V14Q12 19 5 14Z\"/>"
+              "<circle cx=\"12\" cy=\"11.5\" r=\"3.2\" fill=\"#fff4d0\" "
+              "stroke=\"#d9aa49\" stroke-width=\"1\"/>"
+              "<path fill=\"none\" stroke=\"#ee5c99\" stroke-width=\"2\" "
+              "d=\"M9 15A4.5 4.5 0 1 0 15 15\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_MASK: pleated lavender cloth with visible ear loops.
+    {SVG_HEAD
+     "<path d=\"M4 10C1 8 1 16 4 15M20 10C23 8 23 16 20 15\" fill=\"none\" "
+     "stroke=\"#ede7ff\" stroke-width=\"1.4\"/>"
+     "<path fill=\"#8f87d9\" stroke=\"#514a91\" stroke-width=\"1.2\" "
+     "stroke-linejoin=\"round\" d=\"M4 8.5Q12 6.5 20 8.5L19 16Q12 20 5 16Z\"/>"
+     "<path d=\"M7 11H17M7.5 13.5H16.5\" stroke=\"#c9c4f4\" stroke-width=\"1\" "
+     "stroke-linecap=\"round\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_LOLLIPOP: spiral candy on a diagonal white stick.
+    {SVG_HEAD
+     "<path d=\"M8 20L16 10\" stroke=\"#fff4d0\" stroke-width=\"2\" "
+     "stroke-linecap=\"round\"/>"
+     "<circle cx=\"17\" cy=\"8.5\" r=\"5.2\" fill=\"#ff6ba8\" "
+     "stroke=\"#b93673\" stroke-width=\"1.2\"/>"
+     "<path d=\"M17 5.2C20 5.2 20.8 9.2 18 10.5C15.5 11.7 13.8 8.6 15.5 "
+     "7.2C16.7 6.2 18.2 7.4 17.5 8.4\" fill=\"none\" stroke=\"#fff3ae\" "
+     "stroke-width=\"1.1\" stroke-linecap=\"round\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_PARTY_HORN: striped paper horn with a round mouthpiece.
+    {SVG_HEAD "<ellipse cx=\"5\" cy=\"12\" rx=\"3\" ry=\"2.4\" "
+              "fill=\"#ffd85e\" stroke=\"#a87822\" stroke-width=\"1\"/>"
+              "<path fill=\"#ff6fa5\" stroke=\"#9f3769\" stroke-width=\"1.1\" "
+              "stroke-linejoin=\"round\" d=\"M7 9.5L22 5L22 19L7 14.5Z\"/>"
+              "<path fill=\"#70d3d0\" d=\"M11 8.3L14.5 7.3L14.5 16.7L11 "
+              "15.7ZM18 6.2L20.5 5.5V18.5L18 17.8Z\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_FANGS: a velvet grin with two bright candy fangs.
+    {SVG_HEAD
+     "<path fill=\"#3c233c\" stroke=\"#251529\" stroke-width=\"1\" d=\"M4 9Q12 "
+     "16 20 9Q19 18 12 19Q5 18 4 9Z\"/>"
+     "<path fill=\"#fff8e7\" d=\"M6.5 10.5L10 12L8 16.5ZM17.5 10.5L14 12L16 "
+     "16.5Z\"/>"
+     "<path d=\"M9.5 17Q12 18 14.5 17\" fill=\"none\" stroke=\"#df4f78\" "
+     "stroke-width=\"1.2\" stroke-linecap=\"round\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_ACC_BUBBLE: translucent gum bubble with a white curved shine.
+    {SVG_HEAD "<circle cx=\"12\" cy=\"12\" r=\"8.5\" fill=\"#f06fac\" "
+              "fill-opacity=\".78\" stroke=\"#a93673\" stroke-width=\"1.3\"/>"
+              "<path d=\"M7 9Q9 5.5 13 5\" fill=\"none\" stroke=\"#ffd5ea\" "
+              "stroke-width=\"1.8\" stroke-linecap=\"round\"/>"
+              "<circle cx=\"6.3\" cy=\"11.5\" r=\"1\" fill=\"#fff0f7\" "
+              "fill-opacity=\".8\"/></svg>",
      SVG_ICON_PX},
 };
 STATIC_ASSERT(sizeof(SVG_DEFS) / sizeof(SVG_DEFS[0]) == SVG_COUNT,

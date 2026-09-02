@@ -8,11 +8,11 @@
 #include <string.h>
 
 // ponytail: fixed CONFIG_MAX_KEYS map (persist.h), grow the constant if more
-// save fields appear. Currently 21 of 24 used: highScore(1) + settings(4:
-// fpsIndex, resIndex, musicPct, sfxPct) + progress scalars(4: coinBank,
-// skinMask, selectedSkin, missionMask) + one pu%d per upgrade track(12).
-// Overflow is silent — configSetInt drops the key — so progress.c carries a
-// STATIC_ASSERT tying the per-track keys to this capacity.
+// save fields appear. New saves use 21 of 24: highScore(1) + settings(4) +
+// progress scalars(4: coinBank, cosOwned, cosEquip, missionMask) + one pu%d per
+// upgrade track(12). A legacy save can retain skinMask/selectedSkin too,
+// peaking at 23. Overflow is silent, so progress.c checks that peak against
+// capacity.
 typedef struct {
   char key[24];
   int val;

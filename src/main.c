@@ -79,11 +79,9 @@ int main(void) {
   AudioStream stream;
   initAudio(&stream);
 
-  themeUpdate(0.0f); // seed gTheme so createPlayer reads the nature palette
-
   configLoad("save.json"); // populate the shared map before any loader reads it
   Progress progress = loadProgress();
-  setPlayerSkin(SKINS[progress.selectedSkin].character); // equip saved skin
+  setPlayerCharacter(progressCharacter(&progress)); // equip saved outfit
   Game game = {
       .state = GAMESTATE_SPLASH,
       .prevState = GAMESTATE_MENU,
@@ -105,7 +103,12 @@ int main(void) {
   // window and everything rasterizes natively (no upscaled-image blur).
   gMenuSnap =
       LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT); // CRT freeze-frame
-  SetTextureFilter(gMenuSnap.texture, TEXTURE_FILTER_BILINEAR);
+  if (IsRenderTextureValid(gMenuSnap)) {
+    SetTextureFilter(gMenuSnap.texture, TEXTURE_FILTER_BILINEAR);
+  } else {
+    UnloadRenderTexture(gMenuSnap); // also releases a partially-created target
+    gMenuSnap = (RenderTexture2D){0};
+  }
 
   while (!WindowShouldClose() && !game.quit) {
     // Menu music goes first, then one remaining track per frame. Keeping this
@@ -165,7 +168,9 @@ int main(void) {
     EndDrawing();
   }
 
-  UnloadRenderTexture(gMenuSnap);
+  if (IsRenderTextureValid(gMenuSnap)) {
+    UnloadRenderTexture(gMenuSnap);
+  }
   unloadPost();
   unloadSvgCache();
   unloadTexCache();

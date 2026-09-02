@@ -94,9 +94,8 @@ typedef struct World {
   Monster monsters[MAX_MONSTERS];
   PowerUp powerups[MAX_POWERUPS];
   Particle particles[MAX_PARTICLES];
-  // Top of view in world coords. Rises with the climb and never gives that
-  // height back — but it is not monotonic: it chases a fall back down, up to
-  // DEATH_DROP past the peak, which is the band the run ends in.
+  // Top of view in world coords. Tracks the climb upward, but can chase a fall
+  // back down as far as DEATH_DROP past the peak, where the run ends.
   float cameraY;
   float spawnY;         // next height at which to place a coin
   float platformSpawnY; // next height at which to place a platform

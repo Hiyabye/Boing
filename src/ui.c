@@ -45,7 +45,7 @@ bool clicked(Rectangle r) {
 // Keyboard focus
 // ---------------------------------------------------------------------------
 // The current screen's focusable rects, rebuilt every frame by its update().
-// 32 covers the busiest screen (the shop: 4 skins + 12 upgrade axes + back).
+// 32 covers the busiest screen (shop: 4 outfit categories + 12 axes + back).
 #define UI_MAX_ITEMS 32
 static Rectangle gItems[UI_MAX_ITEMS];
 static int gCount;
@@ -370,8 +370,8 @@ int main(void) {
   assert(moveFrom(4, 0, 1) == 4);  // no wrap past the bottom
   assert(moveFrom(2, 1, 0) == 2);  // nothing sideways in a column
 
-  // The shop: 4 skin swatches over the ragged 3/3/3/2/1 upgrade axes, then
-  // BACK. These counts mirror SHOP_PU in screen_shop.c.
+  // The shop: 4 outfit categories over the ragged 3/3/3/2/1 upgrade axes,
+  // then BACK. These counts mirror SHOP_PU in screen_shop.c.
   gCount = 0;
   for (int i = 0; i < 4; i++) {
     gItems[gCount++] = (Rectangle){124 + i * 144, 175, 120, 110};
@@ -397,6 +397,23 @@ int main(void) {
   assert(moveFrom(card[4], 1, 0) == card[4]);     // nothing right of the last
   assert(moveFrom(card[2] + 2, 0, 1) == back);    // bottom axis reaches BACK
   assert(moveFrom(back, 0, -1) == card[2] + 2);   // and BACK returns to it
+
+  // A cosmetic picker: eight choices in a 4x2 grid, then DONE below.
+  gCount = 0;
+  for (int i = 0; i < 8; i++) {
+    gItems[gCount++] =
+        (Rectangle){74 + (i % 4) * 169, 214 + (i / 4) * 136, 145, 120};
+  }
+  int done = gCount;
+  gItems[gCount++] = (Rectangle){315, 508, 170, 44};
+  assert(moveFrom(0, 1, 0) == 1);
+  assert(moveFrom(3, 1, 0) == 3); // no wrap past the top row
+  assert(moveFrom(0, 0, 1) == 4);
+  assert(moveFrom(4, 0, -1) == 0);
+  assert(moveFrom(6, 1, 0) == 7);
+  assert(moveFrom(7, 1, 0) == 7); // no wrap past the bottom row
+  assert(moveFrom(5, 0, 1) == done);
+  assert(moveFrom(done, 0, -1) == 5);
 
   printf("ok - cursor trail and focus over %d items\n", gCount);
   return 0;

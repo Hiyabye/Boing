@@ -17,7 +17,8 @@
 // capacity is public, and any module contributing a variable number of keys is
 // expected to STATIC_ASSERT its share against it — progress.c does, because its
 // one-key-per-upgrade-track scheme is the only thing here that grows when an
-// enum grows. Raise this when the budget gets tight; it costs 28 bytes a slot.
+// enum grows. Raise this when key capacity gets tight; it costs 28 bytes a
+// slot.
 #define CONFIG_MAX_KEYS 24
 
 void configLoad(const char *path);

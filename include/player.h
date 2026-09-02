@@ -5,15 +5,18 @@
 
 #define TRAIL_LEN 8
 
-// Wearable accessory slots. The art is fixed-color SVG (see the SVG_ACC_* block
-// in svg.h) and player.c maps these onto it, so adding one is a new enum value,
-// a new glyph, and one table row. HAT_NONE / GLS_NONE are first in each enum
-// and have no row — the tables are indexed by `id - 1`, same as ICON_SVG.
+// Wearable slots. The art is fixed-color SVG (see the SVG_ACC_* block in
+// svg.h) and player.c maps these onto it, so adding one is a new enum value, a
+// new glyph, and one table row. Each NONE value is first and has no glyph row.
 typedef enum {
   HAT_NONE,
   HAT_CAP,
   HAT_CROWN,
   HAT_BOW,
+  HAT_PARTY,
+  HAT_WIZARD,
+  HAT_FLOWER,
+  HAT_HALO,
   HAT_COUNT,
 } HatId;
 
@@ -21,16 +24,34 @@ typedef enum {
   GLS_NONE,
   GLS_ROUND,
   GLS_SHADES,
+  GLS_HEARTS,
+  GLS_STARS,
+  GLS_MONOCLE,
+  GLS_GOGGLES,
+  GLS_VISOR,
   GLS_COUNT,
 } GlassesId;
 
-// Blob appearance. Kept separate from physics so multiple characters are just
-// different palettes (plus accessories) over the same body-drawing code.
+typedef enum {
+  MOUTHWEAR_NONE,
+  MOUTHWEAR_MUSTACHE,
+  MOUTHWEAR_PACIFIER,
+  MOUTHWEAR_MASK,
+  MOUTHWEAR_LOLLIPOP,
+  MOUTHWEAR_PARTY_HORN,
+  MOUTHWEAR_FANGS,
+  MOUTHWEAR_BUBBLE,
+  MOUTHWEAR_COUNT,
+} MouthwearId;
+
+// Blob appearance. Kept separate from physics so the shop can compose colors
+// and three wearable slots independently over the same body-drawing code.
 typedef struct Character {
-  Color body;            // main fill
-  Color bodyDark;        // outline / gradient base
-  unsigned char hat;     // HatId
-  unsigned char glasses; // GlassesId
+  Color body;              // main fill
+  Color bodyDark;          // outline / gradient base
+  unsigned char hat;       // HatId
+  unsigned char glasses;   // GlassesId
+  unsigned char mouthwear; // MouthwearId
 } Character;
 
 // Face mouth shape. Drives drawPlayer's mouth so future code can react to game
@@ -58,8 +79,8 @@ typedef struct Player {
 } Player;
 
 Player createPlayer(void);
-// Set the palette createPlayer stamps onto new blobs (the selected shop skin).
-void setPlayerSkin(Character c);
+// Set the composed outfit createPlayer stamps onto new blobs.
+void setPlayerCharacter(Character c);
 // Keyboard arrows steer directly; with no arrow held the blob follows targetX
 // (the mouse column, in world x). Pass a sentinel outside the screen to ignore.
 // dir scales the steering direction: +1 normal, -1 to reverse it (Dizzy
@@ -76,8 +97,8 @@ void updateCrouch(Player *player);
 void drawPlayer(const Player *player);
 
 // The blob's two-tone body and its worn accessories, split out so the shop's
-// skin swatch shows the same thing the live blob does instead of re-deriving
-// it. Both take the deformed half-extents (rx, ry) rather than a radius: the
+// previews show the same pieces the live blob does instead of re-deriving
+// them. Both take the deformed half-extents (rx, ry) rather than a radius: the
 // body squashes non-uniformly and the accessories have to ride that, or a hat
 // detaches from the head mid-crouch.
 void drawBlobBody(float cx, float cy, float rx, float ry, Character c);

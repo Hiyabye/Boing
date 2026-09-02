@@ -19,14 +19,16 @@
 #define POP_STRETCH 0.5f   // stretch on the release frame
 #define SQUASH_DECAY 0.86f // per-step decay of squash back to a round blob
 
-// ponytail: the selected shop skin lives in a module global (mirrors how this
-// file already reads the gTheme global), so createPlayer stays arg-free and its
-// 3 call sites don't change. Defaults to the Bubblegum pink until main() sets
-// it from saved progress. Literal Color (the CANDY_PINK macro is a runtime
-// lvalue).
-static Character gSkin = {
-    {255, 127, 176, 255}, {228, 70, 139, 255}, HAT_BOW, GLS_NONE};
-void setPlayerSkin(Character c) { gSkin = c; }
+// ponytail: the selected shop outfit lives in a module global (mirrors how this
+// file already reads gTheme), so createPlayer stays arg-free and its call sites
+// do not grow cosmetic parameters. Defaults to the free Bubblegum outfit until
+// main() applies saved progress. Literal colors because CANDY_PINK is runtime.
+static Character gCharacter = {{255, 127, 176, 255},
+                               {228, 70, 139, 255},
+                               HAT_NONE,
+                               GLS_NONE,
+                               MOUTHWEAR_NONE};
+void setPlayerCharacter(Character c) { gCharacter = c; }
 
 Player createPlayer(void) {
   Player p = {
@@ -35,7 +37,7 @@ Player createPlayer(void) {
       .acceleration = {0.0f, GRAVITY},
       .radius = PLAYER_RADIUS,
       .trailHead = 0,
-      .character = gSkin,
+      .character = gCharacter,
       .expression = EXPR_HAPPY,
       .attractTimer = 0.0f,
       .attractTarget = SCREEN_WIDTH / 2.0f,
@@ -140,15 +142,26 @@ void updateAttract(Player *player) {
   pushTrail(player);
 }
 
-// Accessory slot -> glyph. HAT_NONE/GLS_NONE are the enums' first values and
-// have no row, so both tables are indexed by `id - 1` (the ICON_SVG idiom).
-static const SvgId HAT_SVG[] = {SVG_ACC_CAP, SVG_ACC_CROWN, SVG_ACC_BOW};
-static const SvgId GLS_SVG[] = {SVG_ACC_GLASSES, SVG_ACC_SHADES};
-// Positional rows make a missing accessory shorten its table and fail below.
+// Accessory slot -> glyph. The NONE values have no row, so each positional
+// table is indexed by `id - 1` and compile-checked against its enum.
+static const SvgId HAT_SVG[] = {
+    SVG_ACC_CAP,    SVG_ACC_CROWN,  SVG_ACC_BOW,  SVG_ACC_PARTY,
+    SVG_ACC_WIZARD, SVG_ACC_FLOWER, SVG_ACC_HALO,
+};
+static const SvgId GLS_SVG[] = {
+    SVG_ACC_GLASSES, SVG_ACC_SHADES,  SVG_ACC_HEARTS, SVG_ACC_STARS,
+    SVG_ACC_MONOCLE, SVG_ACC_GOGGLES, SVG_ACC_VISOR,
+};
+static const SvgId MOUTH_SVG[] = {
+    SVG_ACC_MUSTACHE,   SVG_ACC_PACIFIER, SVG_ACC_MASK,   SVG_ACC_LOLLIPOP,
+    SVG_ACC_PARTY_HORN, SVG_ACC_FANGS,    SVG_ACC_BUBBLE,
+};
 STATIC_ASSERT(sizeof(HAT_SVG) / sizeof(HAT_SVG[0]) == HAT_COUNT - 1,
               hat_svg_table_complete);
 STATIC_ASSERT(sizeof(GLS_SVG) / sizeof(GLS_SVG[0]) == GLS_COUNT - 1,
               gls_svg_table_complete);
+STATIC_ASSERT(sizeof(MOUTH_SVG) / sizeof(MOUTH_SVG[0]) == MOUTHWEAR_COUNT - 1,
+              mouth_svg_table_complete);
 
 // Accessory box geometry, in multiples of the *deformed* half-extents so the
 // art squashes and stretches with the body. The glyphs are authored where they
@@ -165,6 +178,9 @@ STATIC_ASSERT(sizeof(GLS_SVG) / sizeof(GLS_SVG[0]) == GLS_COUNT - 1,
 #define GLS_W 1.6f
 #define GLS_H 1.15f
 #define GLS_Y 0.18f // matches drawPlayer's eye line, `ey`
+#define MOUTH_W 1.55f
+#define MOUTH_H 1.0f
+#define MOUTH_Y 0.35f // below center, over drawPlayer's procedural mouth
 
 void drawBlobBody(float cx, float cy, float rx, float ry, Character c) {
   // Solid two-tone candy fill (dark base + lighter inner). No glow/rim/sheen —
@@ -174,8 +190,12 @@ void drawBlobBody(float cx, float cy, float rx, float ry, Character c) {
 }
 
 void drawAccessories(float cx, float cy, float rx, float ry, Character c) {
-  // Fixed-color art, so it draws tinted WHITE: a gold crown stays gold on every
-  // skin. An out-of-range slot draws nothing rather than reading past a table.
+  // Fixed-color art draws tinted WHITE. Out-of-range slots draw nothing rather
+  // than reading past their lookup table.
+  if (c.mouthwear > MOUTHWEAR_NONE && c.mouthwear < MOUTHWEAR_COUNT) {
+    drawSvgEx(MOUTH_SVG[c.mouthwear - 1], cx, cy + ry * MOUTH_Y, rx * MOUTH_W,
+              ry * MOUTH_H, 0.0f, WHITE);
+  }
   if (c.glasses > GLS_NONE && c.glasses < GLS_COUNT) {
     drawSvgEx(GLS_SVG[c.glasses - 1], cx, cy - ry * GLS_Y, rx * GLS_W,
               ry * GLS_H, 0.0f, WHITE);
@@ -253,8 +273,6 @@ void drawPlayer(const Player *player) {
                r * 0.035f, RAYWHITE);
   }
 
-  drawAccessories(px, py, rx, ry, c); // glasses over the eyes, hat on the crown
-
   // Eyebrows above the eyes; inner ends tilt with the expression (HAPPY raised,
   // SAD angled down) to amplify the mouth's emotion.
   float browY = py + ey - r * 0.32f, bw = r * 0.16f, bth = r * 0.055f;
@@ -269,22 +287,29 @@ void drawPlayer(const Player *player) {
   // Mouth, below the eyes. DrawRing angle 0 is at 3 o'clock, +angle sweeps
   // clockwise (down); a smile is the bottom arc below its center, a frown the
   // top arc above its center.
-  float mw = r * 0.34f, th = r * 0.09f; // half-width & line thickness
-  switch (player->expression) {
-  case EXPR_HAPPY:
-    DrawRing((Vector2){px, py + ry * 0.16f}, mw - th, mw, 25, 155, 24, MOUTH);
-    break;
-  case EXPR_SAD:
-    DrawRing((Vector2){px, py + ry * 0.52f}, mw - th, mw, 205, 335, 24, MOUTH);
-    break;
-  case EXPR_NEUTRAL:
-    DrawLineEx((Vector2){px - mw * 0.7f, py + ry * 0.34f},
-               (Vector2){px + mw * 0.7f, py + ry * 0.34f}, th, MOUTH);
-    break;
-  case EXPR_DIZZY:
-    // Dazed little open "o" mouth.
-    DrawRing((Vector2){px, py + ry * 0.34f}, mw * 0.32f - th, mw * 0.32f, 0,
-             360, 24, MOUTH);
-    break;
+  if (c.mouthwear <= MOUTHWEAR_NONE || c.mouthwear >= MOUTHWEAR_COUNT) {
+    float mw = r * 0.34f, th = r * 0.09f; // half-width & line thickness
+    switch (player->expression) {
+    case EXPR_HAPPY:
+      DrawRing((Vector2){px, py + ry * 0.16f}, mw - th, mw, 25, 155, 24, MOUTH);
+      break;
+    case EXPR_SAD:
+      DrawRing((Vector2){px, py + ry * 0.52f}, mw - th, mw, 205, 335, 24,
+               MOUTH);
+      break;
+    case EXPR_NEUTRAL:
+      DrawLineEx((Vector2){px - mw * 0.7f, py + ry * 0.34f},
+                 (Vector2){px + mw * 0.7f, py + ry * 0.34f}, th, MOUTH);
+      break;
+    case EXPR_DIZZY:
+      // Dazed little open "o" mouth.
+      DrawRing((Vector2){px, py + ry * 0.34f}, mw * 0.32f - th, mw * 0.32f, 0,
+               360, 24, MOUTH);
+      break;
+    }
   }
+
+  // Wearables sit over the completed face: glasses cover the eyes, mouth-wear
+  // replaces the procedural mouth, and headwear stays on the crown.
+  drawAccessories(px, py, rx, ry, c);
 }

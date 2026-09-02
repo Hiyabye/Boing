@@ -1,7 +1,7 @@
 #ifndef PROGRESS_H
 #define PROGRESS_H
 
-#include "player.h" // Character (skin palette)
+#include "player.h" // Character (composed cosmetic outfit)
 #include "world.h"  // World (bankRun reads run stats)
 
 #include <stdbool.h>
@@ -38,28 +38,56 @@ extern const PuUpgradeDef PU_UPGRADES[];
 // Cost to buy the next level from `level` (level is the count already owned).
 int upgCost(int track, int level);
 
-// Persistent meta-progression: a coin bank that survives death, plus the unlock
-// state for skins, per-powerup upgrade levels, and completed missions. Saved as
-// individual int keys in the shared "save.json" beside the exe (via persist) —
-// the four scalars plus one "pu<i>" key per upgrade track; runtime-generated,
-// off the 1.44MB budget.
+// The outfit shop has four independent eight-item catalogs. Their ownership
+// masks and selections pack into two positive 32-bit save values. Wearable
+// item indices intentionally match the HatId/GlassesId/MouthwearId enums.
+#define COSMETIC_MAX_ITEMS 8
+typedef enum {
+  COLOR_BUBBLEGUM,
+  COLOR_MINT,
+  COLOR_BLUEBERRY,
+  COLOR_TANGERINE,
+  COLOR_LEMON,
+  COLOR_GRAPE,
+  COLOR_SNOW,
+  COLOR_MIDNIGHT,
+  COLOR_COUNT,
+} ColorId;
+
+typedef enum {
+  COSMETIC_COLOR,
+  COSMETIC_HEAD,
+  COSMETIC_EYES,
+  COSMETIC_MOUTH,
+  COSMETIC_CATEGORY_COUNT,
+} CosmeticCategory;
+
 typedef struct {
-  int coinBank;     // spendable currency (run coins banked at death + rewards)
-  int skinMask;     // bit i set = skin i owned (bit 0 always the free default)
-  int selectedSkin; // index into SKINS, must be owned
-  int missionMask;  // bit i set = mission i completed (reward already paid)
+  const char *name;
+  int cost;
+  Color body;     // used by COSMETIC_COLOR only
+  Color bodyDark; // used by COSMETIC_COLOR only
+} CosmeticDef;
+
+typedef struct {
+  const char *name;
+  const CosmeticDef *items;
+  int count;
+} CosmeticCatalog;
+
+extern const CosmeticCatalog COSMETICS[];
+
+// Persistent meta-progression: banked coins, independent cosmetic ownership
+// and selections, per-powerup upgrade levels, and completed missions. Cosmetic
+// masks and selections each pack into one save key, keeping the flat store at
+// its existing key budget.
+typedef struct {
+  int coinBank; // spendable currency (run coins banked at death + rewards)
+  int cosmeticMask[COSMETIC_CATEGORY_COUNT];
+  unsigned char selectedCosmetic[COSMETIC_CATEGORY_COUNT];
+  int missionMask; // bit i set = mission i completed (reward already paid)
   int puLevel[PU_UPGRADE_COUNT]; // per-track upgrade levels, 0..MAX_UPG_LEVEL
 } Progress;
-
-// Unlockable blob skins — original candy palettes, row 0 is the free default.
-// A new skin is one more row (and one more bit of budget in skinMask).
-typedef struct {
-  Character character;
-  int cost;
-  const char *name;
-} SkinDef;
-extern const SkinDef SKINS[];
-extern const int SKIN_COUNT;
 
 // Missions — data-driven threshold checks scored once at game over against the
 // run's stats. No per-mission predicate code, no live per-frame tracking.
@@ -81,7 +109,9 @@ extern const int MISSION_COUNT;
 Progress loadProgress(void);
 void saveProgress(const Progress *p);
 
-bool skinOwned(const Progress *p, int i);
+bool cosmeticOwned(const Progress *p, int category, int item);
+// Resolve the four selected component ids into the Character used by player.c.
+Character progressCharacter(const Progress *p);
 int upgLevel(const Progress *p,
              int track); // levels owned on a PuTrack (0..MAX)
 bool missionDone(const Progress *p, int i);

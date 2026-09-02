@@ -71,15 +71,30 @@ typedef enum {
   SVG_PU_FOG_CROWN,
   SVG_PU_NO, // prohibition ring + slash, over a reused coin
 
-  // Skin accessories, worn by the blob (player.c's HAT_SVG/GLS_SVG tables map
-  // the Character slots onto these). Fixed-color art like SVG_LOGO — they bake
-  // their own palette and draw tinted WHITE, so a mint skin doesn't turn its
+  // Outfit pieces worn by the blob. Fixed-color art like SVG_LOGO: each bakes
+  // its own palette and draws tinted WHITE, so a mint body does not turn its
   // gold crown mint.
   SVG_ACC_CAP,
   SVG_ACC_CROWN,
   SVG_ACC_BOW,
+  SVG_ACC_PARTY,
+  SVG_ACC_WIZARD,
+  SVG_ACC_FLOWER,
+  SVG_ACC_HALO,
   SVG_ACC_GLASSES,
   SVG_ACC_SHADES,
+  SVG_ACC_HEARTS,
+  SVG_ACC_STARS,
+  SVG_ACC_MONOCLE,
+  SVG_ACC_GOGGLES,
+  SVG_ACC_VISOR,
+  SVG_ACC_MUSTACHE,
+  SVG_ACC_PACIFIER,
+  SVG_ACC_MASK,
+  SVG_ACC_LOLLIPOP,
+  SVG_ACC_PARTY_HORN,
+  SVG_ACC_FANGS,
+  SVG_ACC_BUBBLE,
 
   SVG_COUNT
 } SvgId;

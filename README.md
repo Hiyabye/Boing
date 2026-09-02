@@ -30,8 +30,9 @@ C99 + [raylib](https://www.raylib.com/)로 만든 수직 점프 게임.
 배로 쌓인다), 떨어지는 블록에서는 발판이 7종 테트로미노(I·O·T·S·Z·L·J)
 모양 그대로 아래로 내려오며, 옆·아래에서 맞으면 부딪힌 것으로 친다. 레벨은 무한하고 테마는 순환하므로
 규칙도 함께 순환한다. 죽으면 그 판의 코인이 은행에
-적립되고, SHOP에서 스킨과 파워업 업그레이드를 살 수 있다. 스킨마다 모자·안경
-같은 액세서리가 함께 붙는다.
+적립되고, SHOP에서 캐릭터 색·머리장식·안경·입 액세서리를 각각 골라 사고
+자유롭게 조합할 수 있다. 각 카테고리에는 8개 선택지가 있으며, 별도 팝업에서
+구매·장착한다. 파워업 업그레이드도 같은 SHOP에서 산다.
 
 메뉴·상점 등 모든 화면은 마우스 없이도 조작된다. 화살표 키로 포커스 링을
 옮기고 `Enter`로 누르며, 화면 아래에 해당 안내가 표시된다. 마우스 포인터도
@@ -52,7 +53,7 @@ Boing/
 │   ├── game.c            # 공용 Game 컨텍스트: 상태 전환, 최고점수, 버튼 배치
 │   ├── screen_splash.c   # 스플래시 (로고 + 글리프·텍스처 프리로드)
 │   ├── screen_menu.c     # 메뉴 (어트랙트 데모, 도움말/미션 오버레이)
-│   ├── screen_shop.c     # 상점 (스킨 + 파워업 업그레이드 카드)
+│   ├── screen_shop.c     # 상점 (조합형 외형 팝업 + 파워업 업그레이드 카드)
 │   ├── screen_credits.c  # 크레딧 (CRT 줌아웃 + 스크롤 릴)
 │   ├── screen_play.c     # 플레이/일시정지/게임오버 (HUD, 결과 카드)
 │   ├── player.c          # 플레이어 물리(중력, 입력, 스쿼시&스트레치)
@@ -67,7 +68,7 @@ Boing/
 │   ├── post.c            # 후처리 셰이더 — 블룸/안개/CRT/비네트 (GLSL 내장)
 │   ├── settings.c        # 설정 화면(프레임률/해상도/음악·SFX 볼륨)
 │   ├── persist.c         # save.json 정수 키-값 저장소
-│   └── progress.c        # 코인 은행 + 스킨/업그레이드/미션
+│   └── progress.c        # 코인 은행 + 외형/업그레이드/미션
 ├── include/              # 헤더 (core.h·game.h 외에는 .c와 1:1)
 ├── lib/raylib/           # raylib (git 서브모듈)
 ├── lib/nanosvg/          # nanosvg (git 서브모듈, 헤더 온리)
@@ -104,5 +105,5 @@ clang-format이 있으면 `cmake --build build --target format`으로 소스를
 기본 빌드가 `MinSizeRel` + strip이라 `build/Boing`이 곧 배포 크기다:
 
 ```sh
-ls -l build/Boing   # stripped ~583KB (597,608 B), 한도 1,474,560 B
+ls -l build/Boing   # stripped ~583KB (597,640 B), 한도 1,474,560 B
 ```

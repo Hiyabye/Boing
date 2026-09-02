@@ -119,10 +119,14 @@ void updateMenu(Game *g) {
     gotoState(g, GAMESTATE_SETTINGS);
     sfx(SFX_SELECT);
   } else if (credits) {
-    // Freeze the current menu onto the tube, then start the zoom-out.
-    BeginTextureMode(gMenuSnap);
-    drawMenu(g);
-    EndTextureMode();
+    // Freeze the current menu onto the tube, then start the zoom-out. If its
+    // optional target failed to allocate, the credits screen falls back to
+    // static during the pull-back instead.
+    if (IsRenderTextureValid(gMenuSnap)) {
+      BeginTextureMode(gMenuSnap);
+      drawMenu(g);
+      EndTextureMode();
+    }
     g->creditsAnim = 0.0f;
     g->creditsStatic = 0.5f; // static burst plays when the zoom-out finishes
     g->creditsExiting = false;

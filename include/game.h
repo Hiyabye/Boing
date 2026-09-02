@@ -27,13 +27,14 @@ typedef struct {
   Player player;
   World world;
   Settings settings;
-  Progress progress; // coin bank + skin/upgrade/mission unlocks (persisted)
+  Progress progress; // bank + outfit/upgrade/mission unlocks (persisted)
   int highScore;
   float accumulator;   // fixed-timestep carry
   bool mouseControl;   // true once the mouse moves; arrows reclaim control
   bool quit;           // set by the menu EXIT button to end the loop
   bool showHelp;       // menu "How to Play" overlay toggled by the ? button
   bool showMissions;   // menu "Missions" overlay toggled by the MISSIONS button
+  int shopCategory;    // 0 closed, otherwise CosmeticCategory + 1 modal picker
   float creditsAnim;   // 0 = fullscreen picture, 1 = zoomed out to the CRT
   float creditsStatic; // "change channel" static timer, runs once zoomed out
   bool creditsExiting; // BACK pressed: ramp creditsAnim back to 0, then MENU

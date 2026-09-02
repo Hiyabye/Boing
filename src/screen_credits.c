@@ -193,14 +193,14 @@ void drawCredits(Game *g) {
   float s = postScale();
   BeginScissorMode((int)(tube.x * s), (int)(tube.y * s), (int)(tube.width * s),
                    (int)(tube.height * s));
-  if (a < 1.0f) {
+  if (a < 1.0f && IsRenderTextureValid(gMenuSnap)) {
     // Frozen menu on the tube while zooming (src y-flipped, like the main
     // blit).
     DrawTexturePro(gMenuSnap.texture,
                    (Rectangle){0, 0, SCREEN_WIDTH, -SCREEN_HEIGHT}, tube,
                    (Vector2){0, 0}, 0.0f, WHITE);
-  } else if (g->creditsStatic > 0.0f) {
-    drawStatic(tube);
+  } else if (a < 1.0f || g->creditsStatic > 0.0f) {
+    drawStatic(tube); // also the fallback if the menu snapshot was unavailable
   } else {
     drawReel(tube);
   }
