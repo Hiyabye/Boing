@@ -77,25 +77,15 @@ typedef struct {
 
 extern const CosmeticCatalog COSMETICS[];
 
-// Persistent meta-progression: banked coins, independent cosmetic ownership
-// and selections, per-powerup upgrade levels, and completed missions. Cosmetic
-// masks and selections each pack into one save key, keeping the flat store at
-// its existing key budget.
-typedef struct {
-  int coinBank; // spendable currency (run coins banked at death + rewards)
-  int cosmeticMask[COSMETIC_CATEGORY_COUNT];
-  unsigned char selectedCosmetic[COSMETIC_CATEGORY_COUNT];
-  int missionMask; // bit i set = mission i completed (reward already paid)
-  int puLevel[PU_UPGRADE_COUNT]; // per-track upgrade levels, 0..MAX_UPG_LEVEL
-} Progress;
-
-// Missions — data-driven threshold checks scored once at game over against the
-// run's stats. No per-mission predicate code, no live per-frame tracking.
+// Tasks are scored at game over from the run stats below. Daily tasks and
+// repeatables accumulate those values across runs; achievements compare one
+// run directly against their threshold.
 typedef enum {
   MSTAT_COINS_RUN, // coins collected this run
   MSTAT_COMBO,     // best combo this run
-  MSTAT_LEVEL,     // theme band reached (0-based)
+  MSTAT_ERAS,      // number of theme bands reached (level + 1)
   MSTAT_SCORE,     // final run score
+  MSTAT_RUNS,      // one per completed run
 } MissionStat;
 typedef struct {
   const char *desc;
@@ -103,8 +93,30 @@ typedef struct {
   int threshold;
   int reward; // coins added to the bank on completion
 } MissionDef;
-extern const MissionDef MISSIONS[];
-extern const int MISSION_COUNT;
+
+#define DAILY_TASK_COUNT 3
+#define REPEATABLE_TASK_COUNT 3
+
+// Persistent meta-progression: banked coins, outfit, upgrades, three active
+// daily slots, repeatable carry, and permanent achievements. The daily lineup
+// is derived from dailyStamp, so only its three progress values are stored.
+typedef struct {
+  int coinBank; // spendable currency (run coins banked at death + rewards)
+  int cosmeticMask[COSMETIC_CATEGORY_COUNT];
+  unsigned char selectedCosmetic[COSMETIC_CATEGORY_COUNT];
+  int achievementMask; // bit i set = achievement completed and reward paid
+  int dailyStamp;      // local date as YYYYMMDD; a changed date resets progress
+  int dailyProgress[DAILY_TASK_COUNT];
+  int repeatableProgress[REPEATABLE_TASK_COUNT];
+  int puLevel[PU_UPGRADE_COUNT]; // per-track upgrade levels, 0..MAX_UPG_LEVEL
+} Progress;
+
+extern const MissionDef REPEATABLE_TASKS[];
+extern const MissionDef ACHIEVEMENTS[];
+extern const int ACHIEVEMENT_COUNT;
+// The active daily task at slot i, selected deterministically from today's
+// pool.
+const MissionDef *dailyTask(const Progress *p, int i);
 
 Progress loadProgress(void);
 void saveProgress(const Progress *p);
@@ -114,12 +126,15 @@ bool cosmeticOwned(const Progress *p, int category, int item);
 Character progressCharacter(const Progress *p);
 int upgLevel(const Progress *p,
              int track); // levels owned on a PuTrack (0..MAX)
-bool missionDone(const Progress *p, int i);
+bool achievementDone(const Progress *p, int i);
+// Reset the daily slots when the local calendar date changes. Returns true when
+// callers should persist the reset (for example while the overlay stays open).
+bool progressRefreshDaily(Progress *p);
 // Spend `cost` from the bank if affordable; returns whether it went through.
 // Caller sets the owning bit + saves on true.
 bool tryBuy(Progress *p, int cost);
-// Bank the run's coins and score any newly-completed missions (one-time).
-// Returns the number of missions newly completed (for an optional toast).
+// Bank the run's coins, advance cumulative tasks, and score achievements.
+// Returns the number of rewards paid (for an optional toast).
 int bankRun(Progress *p, const World *w);
 
 #endif // PROGRESS_H

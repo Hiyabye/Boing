@@ -93,5 +93,5 @@ Temporary Items
 ### Boing ###
 build*/
 
-# Written next to the exe at runtime (high score + settings + progress).
+# Legacy/fallback working-directory save; normally stored in Application Support.
 save.json

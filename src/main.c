@@ -79,7 +79,7 @@ int main(void) {
   AudioStream stream;
   initAudio(&stream);
 
-  configLoad("save.json"); // populate the shared map before any loader reads it
+  configLoadUser(); // populate the shared map before any loader reads it
   Progress progress = loadProgress();
   setPlayerCharacter(progressCharacter(&progress)); // equip saved outfit
   Game game = {

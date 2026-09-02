@@ -4,6 +4,8 @@
 #include "persist.h"
 
 #include <limits.h>
+#include <stdint.h>
+#include <time.h>
 
 // Independent cosmetic catalogs. Color rows carry literal palettes (theme
 // macros are runtime lvalues); wearable rows only need names and prices because
@@ -76,11 +78,13 @@ const PuUpgradeDef PU_UPGRADES[] = {
 STATIC_ASSERT(sizeof(PU_UPGRADES) / sizeof(PU_UPGRADES[0]) == PU_UPGRADE_COUNT,
               pu_upgrades_full);
 
-// This module writes one "pu%d" key per upgrade track. New saves still use
-// nine fixed keys across the game; an old bundle-skin save can retain two stale
-// keys alongside the new cosmetic pair, so guard that migration peak too.
-#define CONFIG_FIXED_KEYS 9
+// Ten scalar keys cover high score, settings, and fixed progress fields. Task
+// slots and upgrades each add one key, so their macros must drive the capacity
+// check instead of a hand-maintained total. Legacy bundle skins add two more.
+#define CONFIG_SCALAR_KEYS 10
 #define CONFIG_LEGACY_KEYS 2
+#define CONFIG_FIXED_KEYS                                                      \
+  (CONFIG_SCALAR_KEYS + DAILY_TASK_COUNT + REPEATABLE_TASK_COUNT)
 STATIC_ASSERT(CONFIG_FIXED_KEYS + CONFIG_LEGACY_KEYS + PU_UPGRADE_COUNT <=
                   CONFIG_MAX_KEYS,
               save_keys_fit);
@@ -89,17 +93,85 @@ int upgCost(int track, int level) {
   return PU_UPGRADES[track].base * (level + 1);
 }
 
-const MissionDef MISSIONS[] = {
-    {"Reach the Neon Maze", MSTAT_LEVEL, 3, 100},
+static const MissionDef DAILY_TASK_POOL[] = {
+    {"Collect 40 coins", MSTAT_COINS_RUN, 40, 40},
+    {"Earn 5000 score", MSTAT_SCORE, 5000, 50},
+    {"Build 20 combo points", MSTAT_COMBO, 20, 40},
+    {"Visit 5 era bands", MSTAT_ERAS, 5, 50},
+    {"Finish 3 runs", MSTAT_RUNS, 3, 30},
+};
+enum {
+  DAILY_POOL_COUNT = (int)(sizeof(DAILY_TASK_POOL) / sizeof(DAILY_TASK_POOL[0]))
+};
+STATIC_ASSERT(DAILY_TASK_COUNT <= DAILY_POOL_COUNT, daily_slots_fit_pool);
+
+const MissionDef REPEATABLE_TASKS[] = {
+    {"Collect 100 coins", MSTAT_COINS_RUN, 100, 50},
+    {"Earn 25000 score", MSTAT_SCORE, 25000, 75},
+    {"Finish 10 runs", MSTAT_RUNS, 10, 60},
+};
+STATIC_ASSERT(sizeof(REPEATABLE_TASKS) / sizeof(REPEATABLE_TASKS[0]) ==
+                  REPEATABLE_TASK_COUNT,
+              repeatable_tasks_full);
+
+const MissionDef ACHIEVEMENTS[] = {
+    {"Reach the Neon Maze", MSTAT_ERAS, 4, 100},
     {"Collect 50 coins in one run", MSTAT_COINS_RUN, 50, 100},
     {"Chain a x10 combo", MSTAT_COMBO, 10, 100},
     {"Score 5000 in one run", MSTAT_SCORE, 5000, 150},
-    {"Reach the Falling Blocks", MSTAT_LEVEL, 4, 200},
+    {"Reach the Falling Blocks", MSTAT_ERAS, 5, 200},
 };
-const int MISSION_COUNT = (int)(sizeof(MISSIONS) / sizeof(MISSIONS[0]));
-// missionMask pays each reward once via `1 << i`, so the 32nd mission would
+const int ACHIEVEMENT_COUNT =
+    (int)(sizeof(ACHIEVEMENTS) / sizeof(ACHIEVEMENTS[0]));
+// achievementMask pays each reward once via `1 << i`, so the 32nd row would
 // shift into the sign bit and never latch.
-STATIC_ASSERT(sizeof(MISSIONS) / sizeof(MISSIONS[0]) <= 31, missions_fit_mask);
+STATIC_ASSERT(sizeof(ACHIEVEMENTS) / sizeof(ACHIEVEMENTS[0]) <= 31,
+              achievements_fit_mask);
+
+// A tiny local shuffle gives each calendar date three unique tasks without
+// storing the lineup or perturbing raylib's gameplay RNG.
+static int dailyTaskIndex(int day, int slot) {
+  int order[DAILY_POOL_COUNT];
+  for (int i = 0; i < DAILY_POOL_COUNT; i++) {
+    order[i] = i;
+  }
+  uint32_t state = (uint32_t)day ^ 0x9e3779b9u;
+  for (int i = DAILY_POOL_COUNT - 1; i > 0; i--) {
+    state = state * 1664525u + 1013904223u;
+    int j = (int)(state % (uint32_t)(i + 1));
+    int swap = order[i];
+    order[i] = order[j];
+    order[j] = swap;
+  }
+  return order[slot];
+}
+
+const MissionDef *dailyTask(const Progress *p, int i) {
+  return &DAILY_TASK_POOL[dailyTaskIndex(p->dailyStamp, i)];
+}
+
+static int localDayStamp(void) {
+  time_t now = time(NULL);
+  struct tm *date = localtime(&now);
+  return date ? (date->tm_year + 1900) * 10000 + (date->tm_mon + 1) * 100 +
+                    date->tm_mday
+              : 0;
+}
+
+static bool refreshDailyForDay(Progress *p, int day) {
+  if (day <= 0 || p->dailyStamp == day) {
+    return false;
+  }
+  p->dailyStamp = day;
+  for (int i = 0; i < DAILY_TASK_COUNT; i++) {
+    p->dailyProgress[i] = 0;
+  }
+  return true;
+}
+
+bool progressRefreshDaily(Progress *p) {
+  return refreshDailyForDay(p, localDayStamp());
+}
 
 bool cosmeticOwned(const Progress *p, int category, int item) {
   return (p->cosmeticMask[category] & (1 << item)) != 0;
@@ -113,8 +185,8 @@ Character progressCharacter(const Progress *p) {
 }
 
 int upgLevel(const Progress *p, int track) { return p->puLevel[track]; }
-bool missionDone(const Progress *p, int i) {
-  return (p->missionMask & (1 << i)) != 0;
+bool achievementDone(const Progress *p, int i) {
+  return (p->achievementMask & (1 << i)) != 0;
 }
 
 bool tryBuy(Progress *p, int cost) {
@@ -125,41 +197,89 @@ bool tryBuy(Progress *p, int cost) {
   return true;
 }
 
-// Bank additions are non-negative. Saturate rather than overflow if a save was
-// edited to INT_MAX or an exceptionally long-running profile reaches it.
-static void addCoins(Progress *p, int amount) {
-  p->coinBank = amount > INT_MAX - p->coinBank ? INT_MAX : p->coinBank + amount;
+// Bank additions are non-negative. Use a wide amount because one huge run can
+// clear a repeatable more than once, then saturate the persisted int balance.
+static void addCoins(Progress *p, long long amount) {
+  p->coinBank = amount >= (long long)INT_MAX - p->coinBank
+                    ? INT_MAX
+                    : p->coinBank + (int)amount;
+}
+
+static int missionValue(const World *w, MissionStat stat) {
+  int value = 0;
+  switch (stat) {
+  case MSTAT_COINS_RUN:
+    value = w->coinsCollected;
+    break;
+  case MSTAT_COMBO:
+    value = w->bestCombo;
+    break;
+  case MSTAT_ERAS:
+    value = w->level < INT_MAX ? w->level + 1 : INT_MAX;
+    break;
+  case MSTAT_SCORE:
+    value = getScore(w);
+    break;
+  case MSTAT_RUNS:
+    value = 1;
+    break;
+  }
+  return value > 0 ? value : 0;
+}
+
+static int advanceDaily(Progress *p, const World *w) {
+  int paid = 0;
+  for (int i = 0; i < DAILY_TASK_COUNT; i++) {
+    const MissionDef *task = dailyTask(p, i);
+    int left = task->threshold - p->dailyProgress[i];
+    if (left <= 0) {
+      continue;
+    }
+    int value = missionValue(w, task->stat);
+    if (value >= left) {
+      p->dailyProgress[i] = task->threshold;
+      addCoins(p, task->reward);
+      paid++;
+    } else {
+      p->dailyProgress[i] += value;
+    }
+  }
+  return paid;
+}
+
+static int advanceRepeatables(Progress *p, const World *w) {
+  long long paid = 0;
+  for (int i = 0; i < REPEATABLE_TASK_COUNT; i++) {
+    const MissionDef *task = &REPEATABLE_TASKS[i];
+    long long total =
+        (long long)p->repeatableProgress[i] + missionValue(w, task->stat);
+    long long completions = total / task->threshold;
+    p->repeatableProgress[i] = (int)(total % task->threshold);
+    addCoins(p, completions * task->reward);
+    paid += completions;
+  }
+  return paid > INT_MAX ? INT_MAX : (int)paid;
+}
+
+static int advanceAchievements(Progress *p, const World *w) {
+  int paid = 0;
+  for (int i = 0; i < ACHIEVEMENT_COUNT; i++) {
+    if (!achievementDone(p, i) &&
+        missionValue(w, ACHIEVEMENTS[i].stat) >= ACHIEVEMENTS[i].threshold) {
+      p->achievementMask |= (1 << i);
+      addCoins(p, ACHIEVEMENTS[i].reward);
+      paid++;
+    }
+  }
+  return paid;
 }
 
 int bankRun(Progress *p, const World *w) {
+  progressRefreshDaily(p);
   addCoins(p, w->coinsCollected);
-  int newly = 0;
-  for (int i = 0; i < MISSION_COUNT; i++) {
-    if (missionDone(p, i)) {
-      continue; // already completed and paid
-    }
-    int v = 0;
-    switch (MISSIONS[i].stat) {
-    case MSTAT_COINS_RUN:
-      v = w->coinsCollected;
-      break;
-    case MSTAT_COMBO:
-      v = w->bestCombo;
-      break;
-    case MSTAT_LEVEL:
-      v = w->level;
-      break;
-    case MSTAT_SCORE:
-      v = getScore(w);
-      break;
-    }
-    if (v >= MISSIONS[i].threshold) {
-      p->missionMask |= (1 << i);
-      addCoins(p, MISSIONS[i].reward);
-      newly++;
-    }
-  }
-  return newly;
+  long long paid = (long long)advanceDaily(p, w) + advanceRepeatables(p, w) +
+                   advanceAchievements(p, w);
+  return paid > INT_MAX ? INT_MAX : (int)paid;
 }
 
 // Seven ownership bits per category live in cosOwned's four bytes. Each eighth
@@ -197,7 +317,16 @@ static int packCosmeticSelections(const Progress *p) {
 Progress loadProgress(void) {
   Progress p = {.cosmeticMask = {1, 1, 1, 1}};
   p.coinBank = configGetInt("coinBank", p.coinBank);
-  p.missionMask = configGetInt("missionMask", p.missionMask);
+  // Keep the old key so the five original missions migrate into achievements.
+  p.achievementMask = configGetInt("missionMask", p.achievementMask);
+  p.dailyStamp = configGetInt("dailyStamp", 0);
+  for (int i = 0; i < DAILY_TASK_COUNT; i++) {
+    p.dailyProgress[i] = configGetInt(TextFormat("day%d", i), 0);
+  }
+  for (int i = 0; i < REPEATABLE_TASK_COUNT; i++) {
+    p.repeatableProgress[i] = configGetInt(TextFormat("rep%d", i), 0);
+  }
+  progressRefreshDaily(&p);
 
   int selections = configGetInt("cosEquip", -1);
   if ((selections & COSMETIC_SAVE_MAGIC_MASK) == COSMETIC_SAVE_MAGIC) {
@@ -218,6 +347,24 @@ Progress loadProgress(void) {
     int lvl = configGetInt(TextFormat("pu%d", i), 0);
     p.puLevel[i] = lvl < 0 ? 0 : (lvl > MAX_UPG_LEVEL ? MAX_UPG_LEVEL : lvl);
   }
+  unsigned achievementBits = (1u << ACHIEVEMENT_COUNT) - 1u;
+  p.achievementMask &= (int)achievementBits;
+  for (int i = 0; i < DAILY_TASK_COUNT; i++) {
+    int max = dailyTask(&p, i)->threshold;
+    if (p.dailyProgress[i] < 0) {
+      p.dailyProgress[i] = 0;
+    } else if (p.dailyProgress[i] > max) {
+      p.dailyProgress[i] = max;
+    }
+  }
+  for (int i = 0; i < REPEATABLE_TASK_COUNT; i++) {
+    int max = REPEATABLE_TASKS[i].threshold - 1;
+    if (p.repeatableProgress[i] < 0) {
+      p.repeatableProgress[i] = 0;
+    } else if (p.repeatableProgress[i] > max) {
+      p.repeatableProgress[i] = max;
+    }
+  }
   if (p.coinBank < 0) {
     p.coinBank = 0;
   }
@@ -228,16 +375,23 @@ void saveProgress(const Progress *p) {
   configSetInt("coinBank", p->coinBank);
   configSetInt("cosOwned", packCosmeticMasks(p));
   configSetInt("cosEquip", packCosmeticSelections(p));
-  configSetInt("missionMask", p->missionMask);
+  configSetInt("missionMask", p->achievementMask);
+  configSetInt("dailyStamp", p->dailyStamp);
+  for (int i = 0; i < DAILY_TASK_COUNT; i++) {
+    configSetInt(TextFormat("day%d", i), p->dailyProgress[i]);
+  }
+  for (int i = 0; i < REPEATABLE_TASK_COUNT; i++) {
+    configSetInt(TextFormat("rep%d", i), p->repeatableProgress[i]);
+  }
   for (int i = 0; i < PU_UPGRADE_COUNT; i++) {
     configSetInt(TextFormat("pu%d", i), p->puLevel[i]);
   }
-  configSave("save.json");
+  configSaveUser();
 }
 
 #ifdef PROGRESS_SELFTEST
-// Headless check for fresh migration, packed cosmetic round-trip, spending, and
-// mission rewards. Build:
+// Headless check for task invariants, migration, cosmetic/task round-trips,
+// daily rotation/reset, repeatable overflow, spending, and rewards. Build:
 //   cc -DPROGRESS_SELFTEST src/progress.c src/persist.c -Iinclude \
 //      -Ilib/raylib/src -o /tmp/progresstest && /tmp/progresstest
 #include <assert.h>
@@ -255,11 +409,24 @@ const char *TextFormat(const char *text, ...) {
 }
 int getScore(const World *w) { return w->comboBonus; }
 
+static void checkTaskDefs(const MissionDef *tasks, int count) {
+  for (int i = 0; i < count; i++) {
+    assert(tasks[i].stat >= MSTAT_COINS_RUN && tasks[i].stat <= MSTAT_RUNS);
+    assert(tasks[i].threshold > 0 && "task threshold must be positive");
+    assert(tasks[i].reward >= 0 && "task reward must be non-negative");
+  }
+}
+
 int main(void) {
+  checkTaskDefs(DAILY_TASK_POOL, DAILY_POOL_COUNT);
+  checkTaskDefs(REPEATABLE_TASKS, REPEATABLE_TASK_COUNT);
+  checkTaskDefs(ACHIEVEMENTS, ACHIEVEMENT_COUNT);
   configLoad("/no/such/save.json");
   configSetInt("skinMask", 15);    // legacy bundle keys are ignored
   configSetInt("selectedSkin", 3); // instead of partially migrating an outfit
+  configSetInt("missionMask", 1);  // old missions become achievements
   Progress fresh = loadProgress();
+  assert(fresh.achievementMask == 1);
   for (int i = 0; i < COSMETIC_CATEGORY_COUNT; i++) {
     assert(fresh.cosmeticMask[i] == 1);
     assert(fresh.selectedCosmetic[i] == 0);
@@ -275,8 +442,13 @@ int main(void) {
   fresh.selectedCosmetic[COSMETIC_MOUTH] = MOUTHWEAR_BUBBLE;
   configSetInt("cosOwned", packCosmeticMasks(&fresh));
   configSetInt("cosEquip", packCosmeticSelections(&fresh));
+  configSetInt("dailyStamp", localDayStamp());
+  configSetInt("day0", 7);
+  configSetInt("rep0", 8);
 
   Progress loaded = loadProgress();
+  assert(loaded.dailyProgress[0] == 7);
+  assert(loaded.repeatableProgress[0] == 8);
   assert(loaded.selectedCosmetic[COSMETIC_COLOR] == COLOR_MIDNIGHT);
   assert(loaded.selectedCosmetic[COSMETIC_HEAD] == HAT_HALO);
   assert(loaded.selectedCosmetic[COSMETIC_EYES] == GLS_VISOR);
@@ -291,13 +463,53 @@ int main(void) {
   assert(invalid.cosmeticMask[COSMETIC_HEAD] == 1);
   assert(invalid.selectedCosmetic[COSMETIC_HEAD] == HAT_NONE);
 
+  Progress daily = {0};
+  assert(refreshDailyForDay(&daily, 20260701));
+  const MissionDef *d0 = dailyTask(&daily, 0);
+  const MissionDef *d1 = dailyTask(&daily, 1);
+  const MissionDef *d2 = dailyTask(&daily, 2);
+  assert(d0 != d1 && d0 != d2 && d1 != d2); // no duplicate daily slots
+  daily.dailyProgress[0] = 7;
+  assert(!refreshDailyForDay(&daily, 20260701));
+  assert(daily.dailyProgress[0] == 7);
+  assert(refreshDailyForDay(&daily, 20260702));
+  assert(daily.dailyProgress[0] == 0);
+
+  Progress cumulative = {0};
+  assert(refreshDailyForDay(&cumulative, localDayStamp()));
+  cumulative.achievementMask = (1 << ACHIEVEMENT_COUNT) - 1;
+  int dailyRewards = 0;
+  for (int i = 0; i < DAILY_TASK_COUNT; i++) {
+    dailyRewards += dailyTask(&cumulative, i)->reward;
+  }
+  World taskRun = {
+      .coinsCollected = 60, .bestCombo = 10, .level = 1, .comboBonus = 13000};
+  for (int i = 0; i < 3; i++) {
+    bankRun(&cumulative, &taskRun);
+  }
+  for (int i = 0; i < DAILY_TASK_COUNT; i++) {
+    assert(cumulative.dailyProgress[i] == dailyTask(&cumulative, i)->threshold);
+  }
+  assert(cumulative.repeatableProgress[0] == 80);    // 180 total, keep 80
+  assert(cumulative.repeatableProgress[1] == 14000); // 39000, keep 14000
+  assert(cumulative.repeatableProgress[2] == 3);
+  assert(cumulative.coinBank == 180 + 50 + 75 + dailyRewards);
+
   loaded.coinBank = 100;
   assert(tryBuy(&loaded, 70) && loaded.coinBank == 30);
   assert(!tryBuy(&loaded, 40) && loaded.coinBank == 30);
+  loaded.achievementMask = 0;
+  progressRefreshDaily(&loaded);
+  for (int i = 0; i < DAILY_TASK_COUNT; i++) {
+    loaded.dailyProgress[i] = dailyTask(&loaded, i)->threshold;
+  }
+  for (int i = 0; i < REPEATABLE_TASK_COUNT; i++) {
+    loaded.repeatableProgress[i] = 0;
+  }
   World w = {.coinsCollected = 50, .bestCombo = 10, .level = 3};
   assert(bankRun(&loaded, &w) == 3);
   assert(loaded.coinBank == 380); // 30 + 50 run coins + three 100 rewards
-  puts("ok - cosmetic migration, packing, spending, and rewards");
+  puts("ok - cosmetics, daily tasks, repeatables, and achievements");
   return 0;
 }
 #endif

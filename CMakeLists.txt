@@ -1,10 +1,22 @@
 cmake_minimum_required(VERSION 3.16)
-project(Boing C)
+
+# One release artifact for every supported Mac. Setting these before project()
+# makes our code and both source-built dependencies universal, while macOS 11
+# is the oldest release that can run the arm64 slice.
+if(CMAKE_HOST_APPLE)
+    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS release architectures" FORCE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "oldest supported macOS" FORCE)
+endif()
+
+project(Boing VERSION 1.0.0 LANGUAGES C)
+if(NOT APPLE)
+    message(FATAL_ERROR "Boing supports macOS only")
+endif()
 
 set(CMAKE_C_STANDARD 99)
 
 # Size is the hard constraint (<= 1.44MB), so default to a size-optimized build
-# and strip the binary. `build/` alone now produces the shippable executable.
+# and strip the binary. `build/` alone now produces the shippable app bundle.
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE MinSizeRel)
 endif()
@@ -25,9 +37,32 @@ add_library(nanosvg STATIC lib/nanosvg_impl.c)
 target_include_directories(nanosvg PUBLIC lib/nanosvg/src)
 target_compile_options(nanosvg PRIVATE -ffunction-sections -fdata-sections)
 
-# 2. Define your executable targets
+# 2. Define the application bundle. raylib, GLFW, and nanosvg link statically;
+# only Apple-provided system frameworks remain dynamic at runtime.
 file(GLOB_RECURSE SOURCES "src/*.c")
-add_executable(${PROJECT_NAME} ${SOURCES})
+set(BUNDLE_RESOURCES
+    resources/Boing.icns
+    LICENSE
+    lib/raylib/LICENSE
+    lib/nanosvg/LICENSE.txt
+)
+set_source_files_properties(resources/Boing.icns PROPERTIES
+    MACOSX_PACKAGE_LOCATION "Resources")
+set_source_files_properties(LICENSE PROPERTIES
+    MACOSX_PACKAGE_LOCATION "Resources/Licenses/Boing")
+set_source_files_properties(lib/raylib/LICENSE PROPERTIES
+    MACOSX_PACKAGE_LOCATION "Resources/Licenses/raylib")
+set_source_files_properties(lib/nanosvg/LICENSE.txt PROPERTIES
+    MACOSX_PACKAGE_LOCATION "Resources/Licenses/nanosvg")
+add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCES} ${BUNDLE_RESOURCES})
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Info.plist.in"
+    MACOSX_BUNDLE_BUNDLE_NAME "Boing"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "com.hiyabye.boing"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+    MACOSX_BUNDLE_COPYRIGHT "Copyright 2026 Jihoon Lee"
+)
 
 # 3. Include header search paths
 target_include_directories(${PROJECT_NAME} PRIVATE
@@ -36,9 +71,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 # Drop unreferenced code/data at link time (removes raylib's unused audio/image/
-# font-format decoders the game never calls). macOS ld64 uses -dead_strip;
-# GNU ld uses --gc-sections. Compile with per-function/data sections so the
-# linker can strip at that granularity.
+# font-format decoders the game never calls). Compile with per-function/data
+# sections so macOS ld64 can dead-strip at that granularity.
 # -Wall -Wextra on our target only (not the raylib submodule). Deliberately
 # without -Wconversion: the code leans on raylib's int APIs, so implicit
 # float->int narrowing is expected and would flood the build (see .clang-tidy).
@@ -46,29 +80,45 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # as a reference; the pitches no melody uses are intentionally present.
 target_compile_options(${PROJECT_NAME} PRIVATE
     -Wall -Wextra -Wno-unused-const-variable -ffunction-sections -fdata-sections)
-if(APPLE)
-    target_link_options(${PROJECT_NAME} PRIVATE -Wl,-dead_strip)
-else()
-    target_link_options(${PROJECT_NAME} PRIVATE -Wl,--gc-sections)
-endif()
+target_link_options(${PROJECT_NAME} PRIVATE -Wl,-dead_strip)
 
-# 4. Link raylib and macOS-specific system frameworks
-target_link_libraries(${PROJECT_NAME} PRIVATE raylib nanosvg)
-
-if(APPLE)
-    target_link_libraries(${PROJECT_NAME} PRIVATE
-        "-framework Cocoa"
-        "-framework IOKit"
-        "-framework CoreVideo"
-        "-framework OpenGL"
-    )
-endif()
+# 4. Link static third-party code and macOS system frameworks.
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    raylib
+    nanosvg
+    "-framework Cocoa"
+    "-framework IOKit"
+    "-framework CoreVideo"
+    "-framework OpenGL"
+)
 
 # Strip symbols after linking so the measured size is the shipped size (but keep
 # them for a Debug override so it stays debuggable).
 if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_STRIP} $<TARGET_FILE:${PROJECT_NAME}>)
+endif()
+
+# A local ad-hoc signature seals the complete bundle after stripping. It is not
+# a substitute for Developer ID; release signing replaces it before notarizing.
+# Check both CPU slices on every build so a thin release cannot happen silently.
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND /usr/bin/lipo $<TARGET_FILE:${PROJECT_NAME}> -verify_arch arm64 x86_64
+    COMMAND /usr/bin/codesign --force --options runtime --sign - $<TARGET_BUNDLE_DIR:${PROJECT_NAME}>
+    COMMAND /usr/bin/codesign --verify --deep --strict $<TARGET_BUNDLE_DIR:${PROJECT_NAME}>
+    VERBATIM
+)
+
+# Debug symbols intentionally exceed the shipping budget. Release builds check
+# the contest's decompressed whole-bundle limit after resources and signing.
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            -DBUNDLE=$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>
+            -DLIMIT=1474560
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckBundleSize.cmake
+        VERBATIM
+    )
 endif()
 
 # clang-tidy on every build — only our target, never the raylib submodule

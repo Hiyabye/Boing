@@ -4,17 +4,18 @@ C99 + [raylib](https://www.raylib.com/)로 만든 수직 점프 게임.
 ["Mega Jump"](https://www.halfbrick.com/games/megajump)(Halfbrick)에서 장르적
 영감을 받았으나, 코드·아트·오디오·이름은 모두 독자 제작이다. raylib은
 `lib/raylib/`에 git 서브모듈로 고정되어 CMake 서브디렉터리로 소스에서 함께
-빌드되므로 따로 설치할 시스템 의존성이 없다. (일반 `git clone`으로는
-서브모듈이 비어 있으니 아래 빌드 절차를 따를 것.) 아이콘·글리프 렌더링에는
+빌드되므로 사용자가 따로 설치할 의존성이 없다. macOS 11 이상을 지원하는
+Universal 2 앱으로 빌드되어 Apple Silicon과 Intel Mac에서 같은 `.app`을 쓴다.
+(일반 `git clone`으로는 서브모듈이 비어 있으니 아래 빌드 절차를 따를 것.) 아이콘·글리프 렌더링에는
 [nanosvg](https://github.com/memononen/nanosvg)(zlib 라이선스, Mikko Mononen)를
 `lib/nanosvg/`에 git 서브모듈로 고정해 쓴다 — 서드파티 코드는 이 둘뿐이다.
 
 [2PG Arcade 1.44MB 콘테스트](https://2pgarcade.com/contest-144mb.html)를 겨냥 —
 배포되는 게임(실행 파일 + 런타임 + 에셋)은 **1,474,560바이트(3.5" 플로피 1장)
-이하**여야 한다. 에셋 파일 대신 절차적 생성(칩튠, SFX, 배경)을 쓴다. 아이콘도
-파일이 아니라 SVG 소스 문자열을 바이너리에 박아 두고 실행 시 래스터화한다.
-후처리 셰이더도 같은 방식으로 GLSL 소스를 문자열로 박아 두고 실행 시
-컴파일한다.
+이하**여야 한다. 게임 에셋은 절차적 생성(칩튠, SFX, 배경)을 쓴다. 게임 안의 아이콘도 SVG
+소스 문자열을 바이너리에 박아 두고 실행 시 래스터화한다. Finder와 Dock에
+필요한 앱 아이콘만 직접 만든 `resources/Boing.icns`로 번들한다. 후처리
+셰이더도 GLSL 소스를 문자열로 박아 두고 실행 시 컴파일한다.
 
 ## 플레이
 
@@ -32,7 +33,10 @@ C99 + [raylib](https://www.raylib.com/)로 만든 수직 점프 게임.
 규칙도 함께 순환한다. 죽으면 그 판의 코인이 은행에
 적립되고, SHOP에서 캐릭터 색·머리장식·안경·입 액세서리를 각각 골라 사고
 자유롭게 조합할 수 있다. 각 카테고리에는 8개 선택지가 있으며, 별도 팝업에서
-구매·장착한다. 파워업 업그레이드도 같은 SHOP에서 산다.
+구매·장착한다. 파워업 업그레이드도 같은 SHOP에서 산다. MISSIONS는 세 탭으로
+나뉜다. DAILY는 날짜마다 풀에서 뽑힌 3개 누적 과제, REPEATABLE은 달성 뒤
+초과 진행도를 남기고 다시 시작하는 3개 과제, ACHIEVEMENTS는 한 번만 깨는
+영구 목표다. 진행도와 보상은 한 판이 끝날 때 자동으로 반영된다.
 
 메뉴·상점 등 모든 화면은 마우스 없이도 조작된다. 화살표 키로 포커스 링을
 옮기고 `Enter`로 누르며, 화면 아래에 해당 안내가 표시된다. 마우스 포인터도
@@ -70,14 +74,17 @@ Boing/
 │   ├── persist.c         # save.json 정수 키-값 저장소
 │   └── progress.c        # 코인 은행 + 외형/업그레이드/미션
 ├── include/              # 헤더 (core.h·game.h 외에는 .c와 1:1)
+├── resources/            # 직접 만든 macOS 앱 아이콘 원본 + icns
+├── cmake/                # Info.plist 템플릿 + 번들 용량 검사
 ├── lib/raylib/           # raylib (git 서브모듈)
 ├── lib/nanosvg/          # nanosvg (git 서브모듈, 헤더 온리)
 ├── lib/nanosvg_impl.c    # nanosvg 구현 TU (서브모듈 바깥, 별도 CMake 타겟)
 └── CMakeLists.txt
 ```
 
-세이브 파일 `save.json`은 실행 파일 옆에 런타임 생성되므로 용량 예산에 들지
-않는다.
+세이브 파일은 `~/Library/Application Support/Boing/save.json`에 런타임
+생성되므로 용량 예산에 들지 않는다. 예전 작업 디렉터리의 `save.json`은 새
+위치에 파일이 없을 때 한 번 읽고, 다음 저장 때 새 위치로 옮겨진다.
 
 ## 빌드 & 실행
 
@@ -88,13 +95,15 @@ git clone --recurse-submodules https://github.com/Hiyabye/Boing.git
 git submodule update --init --recursive
 
 cmake -S . -B build      # 최초 1회, 또는 .c 파일 추가/삭제 후
-cmake --build build      # ./build/Boing 생성
-./build/Boing
+cmake --build build      # ./build/Boing.app 생성
+open build/Boing.app
 ```
 
 `CMakeLists.txt`가 `src/*.c`를 glob하므로 `.c` 파일을 추가/삭제하면
-`cmake -S . -B build`를 다시 돌려야 한다. macOS에서는 Cocoa/IOKit/CoreVideo/
-OpenGL 프레임워크가 자동으로 링크된다.
+`cmake -S . -B build`를 다시 돌려야 한다. 빌드는 `arm64;x86_64`, 최소 macOS
+11.0으로 고정된다. raylib, GLFW, nanosvg는 정적으로 포함되고 Cocoa, IOKit,
+CoreVideo, OpenGL 같은 macOS 기본 프레임워크만 동적으로 사용한다. Windows와
+Linux는 지원하지 않는다.
 
 clang-format이 있으면 `cmake --build build --target format`으로 소스를
 일괄 정렬할 수 있고, clang-tidy가 있으면 빌드마다 자동 실행된다(둘 다
@@ -102,8 +111,48 @@ clang-format이 있으면 `cmake --build build --target format`으로 소스를
 
 ## 크기 확인
 
-기본 빌드가 `MinSizeRel` + strip이라 `build/Boing`이 곧 배포 크기다:
+기본 빌드는 `MinSizeRel` + strip + Hardened Runtime ad-hoc 서명이다. 빌드 마지막에 `.app` 안의
+모든 파일을 합산해 1,474,560바이트를 넘으면 실패한다. 현재 Universal 2 번들은
+1,372,387바이트이며 102,173바이트가 남는다.
 
 ```sh
-ls -l build/Boing   # stripped ~583KB (597,640 B), 한도 1,474,560 B
+find build/Boing.app -type f -exec stat -f %z {} \; | \
+  awk '{ total += $1 } END { print total }'
+file build/Boing.app/Contents/MacOS/Boing
+```
+
+## Developer ID 서명과 공증
+
+기본 ad-hoc 서명은 로컬 빌드가 온전한지만 보장하며 Gatekeeper 신뢰나 Apple
+공증을 제공하지 않는다. 외부 사용자에게 경고 없이 배포하려면 유료 Apple
+Developer Program 가입, Keychain의 `Developer ID Application` 인증서, 공증
+자격 증명이 필요하다. 인증서를 준비한 뒤 다음 순서로 ad-hoc 서명을 교체한다.
+빌드를 다시 하면 ad-hoc 서명으로 돌아가므로 아래 과정은 최종 빌드에만 실행한다.
+
+```sh
+IDENTITY='Developer ID Application: YOUR NAME (TEAMID)'
+PROFILE='boing-notary'
+APP='build/Boing.app'
+ZIP='build/Boing-1.0.0-macOS.zip'
+
+# 최초 한 번: Team ID를 지정하고 앱 암호는 안전한 프롬프트에서 입력
+xcrun notarytool store-credentials "$PROFILE" \
+  --apple-id 'YOU@example.com' --team-id 'TEAMID'
+
+# Hardened Runtime + 안전한 타임스탬프로 Developer ID 서명
+codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
+codesign --verify --deep --strict --verbose=2 "$APP"
+
+# 공증용 zip 제출
+rm -f "$ZIP"
+ditto -c -k --keepParent "$APP" "$ZIP"
+xcrun notarytool submit "$ZIP" --keychain-profile "$PROFILE" --wait
+
+# 공증 티켓을 앱에 붙인 뒤 최종 배포 zip을 다시 생성
+xcrun stapler staple "$APP"
+xcrun stapler validate "$APP"
+spctl --assess --type execute --verbose=4 "$APP"
+cmake -DBUNDLE="$APP" -DLIMIT=1474560 -P cmake/CheckBundleSize.cmake
+rm -f "$ZIP"
+ditto -c -k --keepParent "$APP" "$ZIP"
 ```

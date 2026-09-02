@@ -17,40 +17,48 @@ static Rectangle rCreditsBack(void) {
 }
 
 // Theater-style credits reel scrolled up the tube. Lines starting with '-'
-// render as pink section headers; blank lines are spacers, and the
-// leading/trailing ones pad the seamless loop wrap.
+// render as pink section headers and blank lines separate sections. After the
+// final row, the first row follows at REEL_GAP_LINES so the reel never empties.
 static const char *REEL_LINES[] = {
+    "- BOING! -",
     "",
-    "",
-    "",
-    "- A GAME BY -",
+    "- CREATED BY -",
     "Jihoon Lee",
     "",
+    "- ORIGINAL GAME -",
+    "Code, art, music and sound",
+    "created from scratch",
     "",
     "- BUILT WITH -",
     "raylib  (raylib.com)",
     "nanosvg  (Mikko Mononen)",
     "",
-    "",
     "- INSPIRED BY -",
     "Mega Jump  (Halfbrick)",
     "homage only, not affiliated",
     "",
-    "",
-    "- SHOWN AT -",
+    "- MADE FOR -",
     "2PG Arcade 1.44MB contest",
     "",
-    "",
     "- THANK YOU FOR PLAYING -",
-    "",
-    "",
-    "",
 };
 #define REEL_LINE_COUNT ((int)(sizeof(REEL_LINES) / sizeof(REEL_LINES[0])))
 #define REEL_LINE_H 34
+#define REEL_GAP_LINES 3
+#define REEL_SPEED 34.0f
+#define REEL_CYCLE ((REEL_LINE_COUNT + REEL_GAP_LINES) * REEL_LINE_H)
+
+static float reelRowY(Rectangle r, int row, float scroll) {
+  float y = r.y + r.height - REEL_LINE_H - scroll + row * REEL_LINE_H;
+  if (y < r.y - REEL_LINE_H) {
+    y += REEL_CYCLE;
+  }
+  return y;
+}
 
 void updateCredits(Game *g) {
-  float step = 2.0f * GetFrameTime(); // ~0.5s zoom either direction
+  float dt = GetFrameTime();
+  float step = 2.0f * dt; // ~0.5s zoom either direction
   if (g->creditsExiting) {
     g->creditsAnim = clampf(g->creditsAnim - step, 0.0f, 1.0f);
     if (g->creditsAnim <= 0.0f) {
@@ -61,7 +69,12 @@ void updateCredits(Game *g) {
   }
   g->creditsAnim = clampf(g->creditsAnim + step, 0.0f, 1.0f);
   if (g->creditsAnim >= 1.0f) { // count down the channel-change static
-    g->creditsStatic = clampf(g->creditsStatic - GetFrameTime(), 0.0f, 1.0f);
+    if (g->creditsStatic > 0.0f) {
+      g->creditsStatic = clampf(g->creditsStatic - dt, 0.0f, 1.0f);
+    } else {
+      g->creditsScroll =
+          fmodf(g->creditsScroll + REEL_SPEED * dt, (float)REEL_CYCLE);
+    }
   }
   // BACK only after the tube has fully zoomed out (don't interrupt the intro).
   if (g->creditsAnim >= 1.0f &&
@@ -149,17 +162,14 @@ static void drawStatic(Rectangle r) {
 }
 
 // The looping end-credits reel, centered on the tube (== SCREEN_WIDTH center).
-static void drawReel(Rectangle r) {
+static void drawReel(Rectangle r, float scroll) {
   DrawRectangleRec(r, (Color){10, 10, 20, 255});
-  float total = REEL_LINE_COUNT * REEL_LINE_H;
-  float scroll = fmodf((float)GetTime() * 34.0f, total);
   for (int i = 0; i < REEL_LINE_COUNT; i++) {
-    float y = r.y + r.height - scroll + i * REEL_LINE_H;
-    if (y < r.y - REEL_LINE_H) {
-      y += total; // wrapped past the top: reappear from the bottom
+    float y = reelRowY(r, i, scroll);
+    if (y < r.y + r.height) {
+      Color c = REEL_LINES[i][0] == '-' ? CANDY_PINK : RAYWHITE;
+      drawCenteredText(REEL_LINES[i], (int)y, 22, c);
     }
-    Color c = REEL_LINES[i][0] == '-' ? CANDY_PINK : RAYWHITE;
-    drawCenteredText(REEL_LINES[i], (int)y, 22, c);
   }
 }
 
@@ -202,7 +212,7 @@ void drawCredits(Game *g) {
   } else if (a < 1.0f || g->creditsStatic > 0.0f) {
     drawStatic(tube); // also the fallback if the menu snapshot was unavailable
   } else {
-    drawReel(tube);
+    drawReel(tube, g->creditsScroll);
   }
   EndScissorMode();
 
@@ -210,3 +220,25 @@ void drawCredits(Game *g) {
     uiButton(rCreditsBack(), "BACK", ICON_BACK);
   }
 }
+
+#ifdef CREDITS_SELFTEST
+// Pure reel-geometry check; dead stripping drops the unused screen renderer:
+//   cc -DCREDITS_SELFTEST -ffunction-sections src/screen_credits.c -Iinclude \
+//      -Ilib/raylib/src build/lib/raylib/raylib/libraylib.a -lm \
+//      -framework Cocoa -framework IOKit -framework CoreVideo \
+//      -framework OpenGL -Wl,-dead_strip -o /tmp/creditstest && \
+//      /tmp/creditstest
+#include <assert.h>
+
+int main(void) {
+  Rectangle tube = {190, 240, 420, 320};
+  float first = reelRowY(tube, 0, 0.0f);
+  assert(first == tube.y + tube.height - REEL_LINE_H);
+
+  float loopFirst = reelRowY(tube, 0, REEL_CYCLE);
+  float loopLast = reelRowY(tube, REEL_LINE_COUNT - 1, REEL_CYCLE);
+  assert(loopFirst == first);
+  assert(loopFirst - loopLast == (REEL_GAP_LINES + 1) * REEL_LINE_H);
+  return 0;
+}
+#endif

@@ -53,7 +53,7 @@ void startGame(Game *g, bool fromMenu) {
 }
 
 // ---------------------------------------------------------------------------
-// High score persistence (shared save.json beside the exe)
+// High score persistence (shared per-user save.json)
 // ---------------------------------------------------------------------------
 int loadHighScore(void) {
   return configGetInt("highScore", 0); // keeps 0 on a missing/garbage file
@@ -61,7 +61,7 @@ int loadHighScore(void) {
 
 void saveHighScore(int best) {
   configSetInt("highScore", best);
-  configSave("save.json");
+  configSaveUser();
 }
 
 // ---------------------------------------------------------------------------

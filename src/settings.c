@@ -143,7 +143,7 @@ void saveSettings(const Settings *s) {
   configSetInt("resIndex", s->resIndex);
   configSetInt("musicPct", volumePercent(s->musicVolume));
   configSetInt("sfxPct", volumePercent(s->sfxVolume));
-  configSave("save.json");
+  configSaveUser();
 }
 
 void applySettings(const Settings *s) {

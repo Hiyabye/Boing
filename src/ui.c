@@ -321,8 +321,8 @@ void uiButton(Rectangle r, const char *label, IconKind icon) {
 
 #ifdef UI_SELFTEST
 // Headless checks for cursor startup, trail convergence, and focus movement
-// over the two layouts the game actually has: the menu column and shop grid.
-// All are pure state or geometry and need no window or input. Build:
+// over the menu, shop, cosmetic picker, and mission-tab layouts. All are pure
+// state or geometry and need no window or input. Build:
 //   cc -DUI_SELFTEST src/ui.c src/svg.c src/tex.c src/theme.c src/font.c \
 //      lib/nanosvg_impl.c -Iinclude -Ilib/nanosvg/src -Ilib/raylib/src \
 //      build/lib/raylib/raylib/libraylib.a -lm \
@@ -359,16 +359,33 @@ int main(void) {
   assert(fabsf(gCursorTrail[CURSOR_TRAIL - 1].x - 100) < 0.01f);
   gCursorReady = false;
 
-  // The menu: one centered column, centeredBtn(352 + i*58, 240, 52).
+  // The menu: six centered buttons plus the top-left help button.
+  const float menuY[] = {352, 412, 470, 528, 586, 644};
   gCount = 0;
-  for (int i = 0; i < 5; i++) {
-    gItems[gCount++] = (Rectangle){280, 352 + i * 58, 240, 52};
+  for (int i = 0; i < 6; i++) {
+    gItems[gCount++] = (Rectangle){280, menuY[i], 240, i == 0 ? 56 : 52};
   }
-  assert(moveFrom(0, 0, 1) == 1);  // down steps one row
-  assert(moveFrom(4, 0, -1) == 3); // up steps back
-  assert(moveFrom(0, 0, -1) == 0); // no wrap past the top
-  assert(moveFrom(4, 0, 1) == 4);  // no wrap past the bottom
-  assert(moveFrom(2, 1, 0) == 2);  // nothing sideways in a column
+  int help = gCount;
+  gItems[gCount++] = (Rectangle){10, 10, 44, 44};
+  assert(moveFrom(0, 0, 1) == 1);     // down steps one row
+  assert(moveFrom(5, 0, -1) == 4);    // up steps back
+  assert(moveFrom(0, 0, -1) == help); // help is the only item above PLAY
+  assert(moveFrom(help, 0, 1) == 0);  // down returns to PLAY
+  assert(moveFrom(5, 0, 1) == 5);     // no wrap past the bottom
+  assert(moveFrom(2, 1, 0) == 2);     // nothing to the right of the column
+
+  // The mission overlay: three horizontal tabs and the close button below.
+  gCount = 0;
+  for (int i = 0; i < 3; i++) {
+    gItems[gCount++] = (Rectangle){136 + i * 184, 262, 160, 42};
+  }
+  int missionClose = gCount;
+  gItems[gCount++] = (Rectangle){310, 568, 180, 54};
+  assert(moveFrom(0, 1, 0) == 1);
+  assert(moveFrom(1, 1, 0) == 2);
+  assert(moveFrom(2, 1, 0) == 2); // no wrap past ACHIEVEMENTS
+  assert(moveFrom(1, 0, 1) == missionClose);
+  assert(moveFrom(missionClose, 0, -1) == 1);
 
   // The shop: 4 outfit categories over the ragged 3/3/3/2/1 upgrade axes,
   // then BACK. These counts mirror SHOP_PU in screen_shop.c.

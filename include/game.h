@@ -27,16 +27,18 @@ typedef struct {
   Player player;
   World world;
   Settings settings;
-  Progress progress; // bank + outfit/upgrade/mission unlocks (persisted)
+  Progress progress; // bank + outfit/upgrades/tasks (persisted)
   int highScore;
   float accumulator;   // fixed-timestep carry
   bool mouseControl;   // true once the mouse moves; arrows reclaim control
   bool quit;           // set by the menu EXIT button to end the loop
   bool showHelp;       // menu "How to Play" overlay toggled by the ? button
   bool showMissions;   // menu "Missions" overlay toggled by the MISSIONS button
+  int missionTab;      // 0 daily, 1 repeatable, 2 achievements
   int shopCategory;    // 0 closed, otherwise CosmeticCategory + 1 modal picker
   float creditsAnim;   // 0 = fullscreen picture, 1 = zoomed out to the CRT
   float creditsStatic; // "change channel" static timer, runs once zoomed out
+  float creditsScroll; // reel offset in pixels, reset on every credits entry
   bool creditsExiting; // BACK pressed: ramp creditsAnim back to 0, then MENU
   bool newBest;        // last run beat the high score (game-over banner)
   PostFx post;         // per-frame post-FX mailbox: zeroed by main(), raised by
@@ -62,7 +64,7 @@ void returnToMenu(Game *g);
 // handoff; otherwise (retry) it respawns a fresh player.
 void startGame(Game *g, bool fromMenu);
 
-// High score, in the shared save.json beside the exe.
+// High score, in the shared per-user save.json.
 int loadHighScore(void);
 void saveHighScore(int best);
 

@@ -88,7 +88,7 @@ void updatePlaying(Game *g) {
       } else {
         sfx(SFX_GAMEOVER); // ordinary death: sad tone
       }
-      // Bank this run's coins + score any newly-cleared missions, then persist.
+      // Bank coins, advance tasks/achievements, then persist the rewards.
       bankRun(&g->progress, &g->world);
       saveProgress(&g->progress);
       gotoState(g, GAMESTATE_GAMEOVER);

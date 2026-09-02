@@ -6,13 +6,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 // ponytail: fixed CONFIG_MAX_KEYS map (persist.h), grow the constant if more
-// save fields appear. New saves use 21 of 24: highScore(1) + settings(4) +
-// progress scalars(4: coinBank, cosOwned, cosEquip, missionMask) + one pu%d per
-// upgrade track(12). A legacy save can retain skinMask/selectedSkin too,
-// peaking at 23. Overflow is silent, so progress.c checks that peak against
-// capacity.
+// save fields appear. New saves use 28 of 32: highScore(1) + settings(4) +
+// progress(11 fixed task/economy fields) + one pu%d per upgrade track(12).
+// A legacy save can retain skinMask/selectedSkin too, peaking at 30. Overflow
+// is silent, so progress.c checks that peak against capacity.
 typedef struct {
   char key[24];
   int val;
@@ -125,8 +126,15 @@ void configSetInt(const char *key, int val) {
   }
 }
 
+// Write beside the live file, then atomically replace it only after fclose
+// confirms the complete JSON was written successfully.
 void configSave(const char *path) {
-  FILE *f = fopen(path, "w");
+  char temp[PATH_MAX];
+  int n = snprintf(temp, sizeof(temp), "%s.tmp", path);
+  if (n < 0 || n >= (int)sizeof(temp)) {
+    return;
+  }
+  FILE *f = fopen(temp, "w");
   if (!f) {
     return;
   }
@@ -136,14 +144,55 @@ void configSave(const char *path) {
             i + 1 < gCount ? "," : "");
   }
   fprintf(f, "}\n");
-  fclose(f);
+  bool failed = ferror(f);
+  failed |= fclose(f) != 0;
+  if (failed || rename(temp, path) != 0) {
+    unlink(temp); // keep the previous save intact on any write/replace failure
+  }
 }
+
+static bool makeDir(const char *path) {
+  return mkdir(path, 0700) == 0 || errno == EEXIST;
+}
+
+static const char *userSavePath(void) {
+  static char path[PATH_MAX];
+  char library[PATH_MAX], support[PATH_MAX], dir[PATH_MAX];
+  const char *home = getenv("HOME");
+  if (!home || !home[0] ||
+      snprintf(library, sizeof(library), "%s/Library", home) >=
+          (int)sizeof(library) ||
+      snprintf(support, sizeof(support), "%s/Application Support", library) >=
+          (int)sizeof(support) ||
+      snprintf(dir, sizeof(dir), "%s/Boing", support) >= (int)sizeof(dir) ||
+      !makeDir(library) || !makeDir(support) || !makeDir(dir) ||
+      snprintf(path, sizeof(path), "%s/save.json", dir) >= (int)sizeof(path)) {
+    return "save.json";
+  }
+  return path;
+}
+
+void configLoadUser(void) {
+  const char *path = userSavePath();
+  if (strcmp(path, "save.json") != 0 && access(path, F_OK) != 0 &&
+      access("save.json", F_OK) == 0) {
+    configLoad("save.json"); // migrate the old working-directory save on write
+  } else {
+    configLoad(path);
+  }
+}
+
+void configSaveUser(void) { configSave(userSavePath()); }
 
 #ifdef PERSIST_SELFTEST
 #include <assert.h>
-// Build: cc -DPERSIST_SELFTEST src/persist.c -o /tmp/pt && /tmp/pt
+// Atomic-write, round-trip, parser-boundary, and user-path check:
+//   cc -DPERSIST_SELFTEST src/persist.c -o /tmp/pt && /tmp/pt
 int main(void) {
   const char *path = "/tmp/persist_selftest.json";
+  const char *temp = "/tmp/persist_selftest.json.tmp";
+  unlink(path);
+  rmdir(temp);
   gCount = 0;
   configSetInt("highScore", 42);
   configSetInt("coinBank", -3);
@@ -154,6 +203,14 @@ int main(void) {
   assert(configGetInt("highScore", 0) == 100);
   assert(configGetInt("coinBank", 0) == -3);
   assert(configGetInt("missing", 7) == 7); // default fallback
+
+  // A failed temporary-file write must not truncate the live save.
+  assert(mkdir(temp, 0700) == 0);
+  configSetInt("highScore", 999);
+  configSave(path);
+  configLoad(path);
+  assert(configGetInt("highScore", 0) == 100);
+  assert(rmdir(temp) == 0);
 
   // Long internal keys truncate safely instead of relying on zeroed storage for
   // strncpy's missing terminator.
@@ -188,6 +245,28 @@ int main(void) {
 
   configLoad("/no/such/file.json"); // missing file
   assert(configGetInt("anything", 9) == 9);
+
+  char home[] = "/tmp/boing_persist_XXXXXX";
+  assert(mkdtemp(home) != NULL);
+  assert(setenv("HOME", home, 1) == 0);
+  gCount = 0;
+  configSetInt("highScore", 321);
+  configSaveUser();
+  gCount = 0;
+  configLoadUser();
+  assert(configGetInt("highScore", 0) == 321);
+  const char *user = userSavePath();
+  assert(strncmp(user, home, strlen(home)) == 0);
+  assert(unlink(user) == 0);
+  char dir[PATH_MAX];
+  snprintf(dir, sizeof(dir), "%s/Library/Application Support/Boing", home);
+  assert(rmdir(dir) == 0);
+  snprintf(dir, sizeof(dir), "%s/Library/Application Support", home);
+  assert(rmdir(dir) == 0);
+  snprintf(dir, sizeof(dir), "%s/Library", home);
+  assert(rmdir(dir) == 0);
+  assert(rmdir(home) == 0);
+  assert(unlink(path) == 0);
   return 0;
 }
 #endif
