@@ -65,20 +65,13 @@ void handlePlayerInput(Player *player, float targetX, float dir) {
   }
 }
 
-// Wrap x across the screen edges, shifting the trail by the same delta so it
-// doesn't streak across the whole view on the wrap frame.
-static void wrapHorizontal(Player *player) {
-  float dx = 0.0f;
-  if (player->position.x < 0.0f) {
-    dx = SCREEN_WIDTH;
-  } else if (player->position.x > SCREEN_WIDTH) {
-    dx = -SCREEN_WIDTH;
-  }
-  if (dx != 0.0f) {
-    player->position.x += dx;
-    for (int i = 0; i < TRAIL_LEN; i++) {
-      player->trail[i].x += dx;
-    }
+// Keep the whole blob inside the side walls and stop outward movement on hit.
+static void constrainHorizontal(Player *player) {
+  float x =
+      clampf(player->position.x, player->radius, SCREEN_WIDTH - player->radius);
+  if (x != player->position.x) {
+    player->velocity.x = 0.0f;
+    player->position.x = x;
   }
 }
 
@@ -91,7 +84,7 @@ void updatePlayer(Player *player) {
   player->velocity.x *= HORIZONTAL_DAMPING;
   player->squash *= SQUASH_DECAY; // the launch pop relaxes back to round
 
-  wrapHorizontal(player);
+  constrainHorizontal(player);
 
   pushTrail(player);
 }
@@ -121,11 +114,12 @@ void updateCrouch(Player *player) {
 }
 
 // Menu demo: pick a new random target every ~1.5s, stroll toward it at a steady
-// pace, wrap the edges, and bob gently at the floor line.
+// pace between the side walls, and bob gently at the floor line.
 void updateAttract(Player *player) {
   player->attractTimer -= GetFrameTime();
   if (player->attractTimer <= 0.0f) {
-    player->attractTarget = (float)GetRandomValue(0, SCREEN_WIDTH);
+    player->attractTarget = (float)GetRandomValue(
+        (int)player->radius, SCREEN_WIDTH - (int)player->radius);
     player->attractTimer = 1.5f;
   }
 

@@ -539,12 +539,13 @@ static void drawMazeBackdrop(float cameraY, float alpha) {
   }
 }
 
-// L5 backdrop: a faint playfield "well" grid with real tetrominoes raining in
-// the theme's tetromino colors (parallax fall, same idiom as the clouds).
+// L5 backdrop: a faint playfield "well" grid with ghosted tetrominoes. Their
+// muted color and low opacity keep them behind the brighter, outlined gameplay
+// pieces while preserving the falling-block atmosphere.
 static void drawBlocksBackdrop(float cameraY, float alpha) {
   drawNebula(cameraY, alpha);
   for (int i = 0; i * 44 <= SCREEN_WIDTH; i++) {
-    DrawRectangle(i * 44, 0, 1, SCREEN_HEIGHT, Fade(CLOUD, 0.05f * alpha));
+    DrawRectangle(i * 44, 0, 1, SCREEN_HEIGHT, Fade(CLOUD, 0.04f * alpha));
   }
   for (int i = 0; i < BLOCK_COUNT; i++) {
     float depth = parallaxDepth(i);
@@ -556,9 +557,10 @@ static void drawBlocksBackdrop(float cameraY, float alpha) {
         wrapf(i * 113.0f + (float)GetTime() * (20.0f * depth) - cameraY * depth,
               SCREEN_HEIGHT + 200.0f) -
         100.0f;
-    drawTetromino(x, y, cell, i % TETRO_COUNT,
-                  gTheme.confetti[i % CONFETTI_COUNT],
-                  (0.8f - depth * 0.25f) * alpha);
+    Color ghost =
+        ColorLerp(SKY_TOP_HIGH, gTheme.confetti[i % CONFETTI_COUNT], 0.28f);
+    drawTetromino(x, y, cell, i % TETRO_COUNT, ghost,
+                  (0.42f - depth * 0.12f) * alpha);
   }
 }
 

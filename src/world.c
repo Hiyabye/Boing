@@ -45,7 +45,7 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define COIN_SPACING 55.0f // vertical distance between spawned coins
 #define COIN_WANDER 150.0f // max horizontal step between consecutive coins
 #define COIN_DOUBLE_CAP                                                        \
-  2 // levels below this get 2 coins/row (L0-L1); L2+ single
+  THEME_COUNT // first full theme cycle gets 2 coins/row; later cycles single
 #define COMBO_TIMEOUT                                                          \
   150.0f                    // frames (~2.5s) w/o a coin before the chain resets
 #define COIN_PAIR_GAP 90.0f // horizontal gap of the bonus second coin
@@ -933,17 +933,63 @@ static void drawCoin(Vector2 c, float t, bool pellet) {
   }
 }
 
-// Falling Blocks pads are literal tetrominoes, drawn by the backdrop's own
-// helper from the same TETRO offsets padBoxes collides with. Color keys off the
-// *shape* (one color per piece type, as the genre does) rather than off the
-// position — a falling pad's y changes every frame, so an entSeed color would
-// strobe.
+// True when a tetromino has a cell at this local grid coordinate.
+static bool tetroCellAt(int shape, int x, int y) {
+  for (int k = 0; k < PAD_BOXES; k++) {
+    if (TETRO[shape][k][0] == x && TETRO[shape][k][1] == y) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Falling Blocks pads share the backdrop's shapes, but not its visual weight:
+// a dark silhouette pulls them forward, white rails mark safe landing tops,
+// and warm exposed sides mark the crush zone. Short trails make their descent
+// readable even when the player and camera are both moving.
 static void drawFallingPiece(const Platform *pl, Vector2 p, float a) {
   Color c = gTheme.confetti[pl->shape % CONFETTI_COUNT];
+  Color outline = {0x04, 0x0A, 0x0D, 0xFF};
+  Color danger = {0xFF, 0x55, 0x66, 0xFF};
   float w = tetroWidth(pl->shape);
   glowStamp((Vector2){p.x + w * 0.5f, p.y + TETRO_CELL}, w * 1.4f, c, 0.10f * a,
             0.30f * a);
+
+  for (int k = 0; k < PAD_BOXES; k++) {
+    int gx = TETRO[pl->shape][k][0], gy = TETRO[pl->shape][k][1];
+    float x = p.x + gx * TETRO_CELL, y = p.y + gy * TETRO_CELL;
+    if (!tetroCellAt(pl->shape, gx, gy - 1)) {
+      DrawLineEx((Vector2){x + 7.0f, y - 20.0f}, (Vector2){x + 7.0f, y - 7.0f},
+                 2.0f, Fade(c, 0.3f * a));
+      DrawLineEx((Vector2){x + 18.0f, y - 13.0f},
+                 (Vector2){x + 18.0f, y - 5.0f}, 1.5f,
+                 Fade(RAYWHITE, 0.22f * a));
+    }
+    DrawRectangle(x - 2.0f, y - 2.0f, TETRO_CELL + 4.0f, TETRO_CELL + 4.0f,
+                  Fade(outline, a));
+  }
+
   drawTetromino(p.x, p.y, TETRO_CELL, pl->shape, c, a);
+  for (int k = 0; k < PAD_BOXES; k++) {
+    int gx = TETRO[pl->shape][k][0], gy = TETRO[pl->shape][k][1];
+    float x = p.x + gx * TETRO_CELL, y = p.y + gy * TETRO_CELL;
+    if (!tetroCellAt(pl->shape, gx, gy - 1)) {
+      DrawRectangle(x + 2.0f, y + 2.0f, TETRO_CELL - 4.0f, 4.0f,
+                    Fade(RAYWHITE, a));
+    }
+    if (!tetroCellAt(pl->shape, gx, gy + 1)) {
+      DrawRectangle(x + 3.0f, y + TETRO_CELL - 6.0f, TETRO_CELL - 6.0f, 4.0f,
+                    Fade(danger, a));
+    }
+    if (!tetroCellAt(pl->shape, gx - 1, gy)) {
+      DrawRectangle(x + 2.0f, y + 8.0f, 3.0f, TETRO_CELL - 11.0f,
+                    Fade(danger, a));
+    }
+    if (!tetroCellAt(pl->shape, gx + 1, gy)) {
+      DrawRectangle(x + TETRO_CELL - 5.0f, y + 8.0f, 3.0f, TETRO_CELL - 11.0f,
+                    Fade(danger, a));
+    }
+  }
 }
 
 static void drawCloudPad(const Platform *pl) {
@@ -1381,6 +1427,22 @@ static World bareWorld(int level) {
 // contact strip below cannot see: an era gate that stops firing leaves the art
 // intact and the game silently back to one mechanic for the whole climb.
 static void checkEras(void) {
+  // Player movement stops at both walls instead of wrapping across the screen.
+  {
+    Player p = createPlayer();
+    p.acceleration = (Vector2){0.0f, 0.0f};
+    p.position.x = p.radius;
+    p.velocity.x = -8.0f;
+    updatePlayer(&p);
+    assert(p.position.x == p.radius && p.velocity.x == 0.0f &&
+           "player crossed the left wall");
+    p.position.x = SCREEN_WIDTH - p.radius;
+    p.velocity.x = 8.0f;
+    updatePlayer(&p);
+    assert(p.position.x == SCREEN_WIDTH - p.radius && p.velocity.x == 0.0f &&
+           "player crossed the right wall");
+  }
+
   // The spawn gate: what stamps an era's rule onto an entity at birth.
   for (int e = 0; e < THEME_COUNT; e++) {
     World w = createWorld();
