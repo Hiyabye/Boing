@@ -26,17 +26,13 @@ static Rectangle rOverlayClose(void) {
   return centeredBtn(SCREEN_HEIGHT / 2.0f + 168, 180, 54);
 }
 
-// Static "How to Play" lines — concise, no interactive walkthrough. Keep this
-// in step with what the game actually spawns: it named only Magnet and Rocket
-// long after Balloon, Shield and the four debuffs shipped.
+// The whole game loop in six short lines. Details belong in play, not here.
 static const char *HELP_LINES[] = {
-    "Move:  arrow keys or mouse",
-    "Grab coins to launch higher",
-    "Bounce off the platforms",
-    "Dodge the grape monsters",
-    "Magnet, Rocket, Balloon, Shield, Pellet help",
-    "Anchor, Dizzy, Fog, Butterfingers hurt",
-    "Each era changes the rules",
+    "Move with arrow keys or mouse",
+    "Grab coins to climb higher",
+    "Land on platforms",
+    "Grab power-ups",
+    "Avoid monsters and hazards",
     "Never fall below the screen",
 };
 #define HELP_LINE_COUNT ((int)(sizeof(HELP_LINES) / sizeof(HELP_LINES[0])))
@@ -52,19 +48,10 @@ static Rectangle overlayPanel(const char *title) {
   return panel;
 }
 
-// Line spacing is tight because the list has to clear rOverlayClose at y=568:
-// the last line starts at HELP_TOP + (n-1)*HELP_STEP and is HELP_FS tall, which
-// at eight lines lands at 552. Adding a ninth means shrinking the step again
-// (or the panel grows) — the 44px step this started with silently ran the text
-// under the button the moment a line was added, and 38 did the same at eight.
-// Width is the other bound: the panel is 600 wide and drawCenteredText does not
-// shrink to fit, so a line must measure under that at HELP_FS (the longest here
-// is the good-power-up list, 562 at HELP_FS 24). That line is what sets the
-// size — it measured 609 at the 26 this used to be, which the vector font's
-// wider advances pushed out past the panel edge on both sides.
-#define HELP_TOP 288
-#define HELP_STEP 34
-#define HELP_FS 24
+// Keep the final line above the close button and every line inside the panel.
+#define HELP_TOP 286
+#define HELP_STEP 44
+#define HELP_FS 28
 static void drawHelpOverlay(void) {
   overlayPanel("HOW TO PLAY");
   for (int i = 0; i < HELP_LINE_COUNT; i++) {
