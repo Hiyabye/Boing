@@ -103,5 +103,5 @@ clang-format이 있으면 `cmake --build build --target format`으로 소스를
 기본 빌드가 `MinSizeRel` + strip이라 `build/Boing`이 곧 배포 크기다:
 
 ```sh
-ls -l build/Boing   # stripped ~583KB (597,432 B), 한도 1,474,560 B
+ls -l build/Boing   # stripped ~583KB (597,576 B), 한도 1,474,560 B
 ```

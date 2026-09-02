@@ -128,7 +128,9 @@ void postBegin(void) {
     // untouched — treat that as a failure so we fall back to the plain,
     // MSAA-backed path instead of paying for a pointless offscreen round trip.
     gShader = LoadShaderFromMemory(NULL, POST_FS);
-    if (gShader.id == 0 || gShader.id == rlGetShaderIdDefault()) {
+    if (!IsShaderValid(gShader) || gShader.id == rlGetShaderIdDefault()) {
+      UnloadShader(gShader); // frees the locations raylib allocates on failure
+      gShader = (Shader){0};
       gFailed = true;
       return;
     }
@@ -147,7 +149,9 @@ void postBegin(void) {
       UnloadRenderTexture(gScene);
     }
     gScene = LoadRenderTexture(w, h);
-    if (gScene.id == 0) {
+    if (!IsRenderTextureValid(gScene)) {
+      UnloadRenderTexture(gScene); // also handles a partially-created target
+      gScene = (RenderTexture2D){0};
       gFailed = true;
       return;
     }
@@ -206,7 +210,7 @@ void unloadPost(void) {
   if (gScene.id != 0) {
     UnloadRenderTexture(gScene);
   }
-  if (gTried && !gFailed) {
+  if (gShader.locs != NULL) {
     UnloadShader(gShader);
   }
   gScene = (RenderTexture2D){0};

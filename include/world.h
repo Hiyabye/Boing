@@ -144,7 +144,7 @@ int worldLevel(const World *world); // 0-based theme band the climb has entered
 // per-era rule in world.c gates on this one query.
 int worldEra(const World *world);
 float worldPowerTimer(const World *world, PowerUpType type);
-bool worldInvincible(const World *world); // any active power-up grants immunity
+bool worldInvincible(const World *world); // active immunity-granting power-up
 float worldInputDir(
     const World *world); // -1 while Dizzy reverses steering, else +1
 float worldFog(

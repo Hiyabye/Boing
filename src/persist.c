@@ -2,6 +2,7 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,10 +13,12 @@
 // skinMask, selectedSkin, missionMask) + one pu%d per upgrade track(12).
 // Overflow is silent — configSetInt drops the key — so progress.c carries a
 // STATIC_ASSERT tying the per-track keys to this capacity.
-static struct {
+typedef struct {
   char key[24];
   int val;
-} gMap[CONFIG_MAX_KEYS];
+} ConfigEntry;
+
+static ConfigEntry gMap[CONFIG_MAX_KEYS];
 static int gCount;
 
 static int mapFind(const char *key) {
@@ -35,8 +38,9 @@ static const char *skipWs(const char *p) {
   return p;
 }
 
-// Parse a flat {"key": int, ...} object. Defensive: stop on any malformed
-// token and keep whatever parsed (this is a user-editable trust boundary).
+// Parse a flat {"key": int, ...} object. Build into a temporary map and only
+// commit a complete object, so a truncated or malformed save cannot leak a
+// valid-looking prefix into the game (this is a user-editable trust boundary).
 void configLoad(const char *path) {
   gCount = 0;
   FILE *f = fopen(path, "r");
@@ -45,16 +49,22 @@ void configLoad(const char *path) {
   }
   char text[2048];
   size_t n = fread(text, 1, sizeof(text) - 1, f);
+  bool tooLong = n == sizeof(text) - 1 && fgetc(f) != EOF;
+  bool readFailed = ferror(f);
   fclose(f);
+  if (readFailed || tooLong) {
+    return;
+  }
   text[n] = '\0';
 
+  ConfigEntry parsed[CONFIG_MAX_KEYS];
+  int count = 0;
   const char *p = skipWs(text);
   if (*p != '{') {
     return;
   }
   p = skipWs(p + 1);
-  while (*p != '}' && *p != '\0' &&
-         gCount < (int)(sizeof(gMap) / sizeof(gMap[0]))) {
+  while (*p != '}' && *p != '\0' && count < CONFIG_MAX_KEYS) {
     if (*p != '"') {
       return; // expected a key string
     }
@@ -79,15 +89,21 @@ void configLoad(const char *path) {
     if (end == p || errno == ERANGE || v < INT_MIN || v > INT_MAX) {
       return; // missing integer, or one the store cannot represent
     }
-    p = end;
-    strcpy(gMap[gCount].key, key);
-    gMap[gCount].val = (int)v;
-    gCount++;
-    p = skipWs(p);
+    p = skipWs(end);
+    strcpy(parsed[count].key, key);
+    parsed[count].val = (int)v;
+    count++;
     if (*p == ',') {
       p = skipWs(p + 1);
+    } else if (*p != '}') {
+      return; // entries must be comma-separated
     }
   }
+  if (*p != '}' || *skipWs(p + 1) != '\0') {
+    return; // missing close, excess entries, or trailing garbage
+  }
+  memcpy(gMap, parsed, (size_t)count * sizeof(gMap[0]));
+  gCount = count;
 }
 
 int configGetInt(const char *key, int def) {
@@ -148,9 +164,19 @@ int main(void) {
 
   FILE *g = fopen(path, "w");
   assert(g != NULL);
-  fputs("{ garbage not json", g);
+  fputs("{\"highScore\": 12, garbage", g);
   fclose(g);
-  configLoad(path); // must not crash; map ends empty/partial
+  configLoad(path); // malformed suffix must discard the valid-looking prefix
+  assert(configGetInt("highScore", 55) == 55);
+
+  g = fopen(path, "w");
+  assert(g != NULL);
+  fputs("{\"highScore\": 12}", g);
+  for (int i = 0; i < 2048; i++) {
+    fputc(' ', g);
+  }
+  fclose(g);
+  configLoad(path); // oversized input is truncation, even after a valid prefix
   assert(configGetInt("highScore", 55) == 55);
 
   g = fopen(path, "w");

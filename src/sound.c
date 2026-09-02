@@ -1290,14 +1290,20 @@ static float renderVoice(int type, int pos, float pitch) {
 }
 
 void initAudio(AudioStream *stream) {
+  *stream = (AudioStream){0};
   InitAudioDevice();
+  if (!IsAudioDeviceReady()) {
+    return; // no device: the game continues silently
+  }
   SetAudioStreamBufferSizeDefault(BUFFER_SIZE);
 
   // Nothing is baked here: main.c feeds one track per frame through
   // audioPreloadStep(), with menu music first. Until a track's buffer exists,
   // updateAudio reads it as silence; the splash itself stays silent.
   *stream = LoadAudioStream(SAMPLE_RATE, 32, 1);
-  PlayAudioStream(*stream);
+  if (IsAudioStreamValid(*stream)) {
+    PlayAudioStream(*stream);
+  }
 }
 
 // Bake the next un-baked track. Menu goes first so the splash can start its
@@ -1314,7 +1320,7 @@ bool audioPreloadStep(void) {
 }
 
 void updateAudio(AudioStream *stream) {
-  if (!IsAudioStreamProcessed(*stream)) {
+  if (!IsAudioStreamValid(*stream) || !IsAudioStreamProcessed(*stream)) {
     return;
   }
 
@@ -1363,8 +1369,13 @@ void updateAudio(AudioStream *stream) {
 }
 
 void deinitAudio(AudioStream *stream) {
-  UnloadAudioStream(*stream);
-  CloseAudioDevice();
+  if (IsAudioStreamValid(*stream)) {
+    UnloadAudioStream(*stream);
+  }
+  if (IsAudioDeviceReady()) {
+    CloseAudioDevice();
+  }
+  *stream = (AudioStream){0};
 
   for (int t = 0; t < TRACK_COUNT; t++) {
     free(loopBuffer[t]);
