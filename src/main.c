@@ -50,6 +50,8 @@ static void updateMusicLayers(const Game *g) {
   float fallSpeed = clampf((g->player.velocity.y - 2.0f) / 18.0f, 0.0f, 1.0f);
   float depth = clampf(
       (screenY - SCREEN_HEIGHT * 0.5f) / (SCREEN_HEIGHT * 0.35f), 0.0f, 1.0f);
+  // Match updateWorld's peak reference: the camera starts climbing once the
+  // player's best point rises above screen center.
   float ascent = SCREEN_HEIGHT / 2.0f - g->world.bestY;
   float finale = worldEra(&g->world) == THEME_COUNT - 1 &&
                          themeBandProgressAt(ascent) >= 0.75f

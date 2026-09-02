@@ -56,7 +56,7 @@ OS 화살표 대신 게임 자체 커서로 그린다.
 ```
 Boing/
 ├── src/
-│   ├── main.c            # 게임 루프 + STATES[] 디스패치 + 오디오 프리로드
+│   ├── main.c            # 게임 루프 + STATES[] 디스패치 + 오디오 제어·프리로드
 │   ├── game.c            # 공용 Game 컨텍스트: 상태 전환, 최고점수, 버튼 배치
 │   ├── screen_splash.c   # 스플래시 (로고 + 글리프·텍스처 프리로드)
 │   ├── screen_menu.c     # 메뉴 (어트랙트 데모, 도움말/미션 오버레이)
@@ -116,7 +116,7 @@ clang-format이 있으면 `cmake --build build --target format`으로 소스를
 
 기본 빌드는 `MinSizeRel` + strip + Hardened Runtime ad-hoc 서명이다. 빌드 마지막에 `.app` 안의
 모든 파일을 합산해 1,474,560바이트를 넘으면 실패한다. 현재 Universal 2 번들은
-1,372,403바이트이며 102,157바이트가 남는다.
+1,372,531바이트이며 102,029바이트가 남는다.
 
 ```sh
 find build/Boing.app -type f -exec stat -f %z {} \; | \

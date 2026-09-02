@@ -131,10 +131,9 @@ void drawPowerupGlyph(PowerUpType type, Vector2 c, float R, float t);
 bool isPlayerFallen(const World *world, const Player *player);
 int getScore(const World *world);
 
-// Accessors so callers (HUD/camera/loop) read state without poking World
-// fields. (C can't fully hide a stack struct without a heap/opaque pointer —
-// overkill here — so the fields stay public; these just keep main.c from
-// reaching in.)
+// Named accessors for common/derived reads at module boundaries. The stack
+// struct stays public because making it opaque would require heap ownership;
+// callers still read a few plain fields when composing HUD or audio state.
 float worldCameraY(const World *world);
 float worldShake(const World *world);
 int worldLevel(const World *world); // 0-based theme band the climb has entered

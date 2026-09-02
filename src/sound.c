@@ -1215,6 +1215,9 @@ typedef struct {
 static Voice voices[MAX_VOICES];
 
 void sfxPitched(SfxId id, float pitch) {
+  if (id < 0 || id >= SFX_COUNT || pitch <= 0.0f || !isfinite(pitch)) {
+    return;
+  }
   for (int i = 0; i < MAX_VOICES; i++) {
     if (!voices[i].active) {
       voices[i] = (Voice){true, id, 0, pitch};
@@ -1552,15 +1555,37 @@ void deinitAudio(AudioStream *stream) {
 }
 
 #ifdef SOUND_SELFTEST
-// Headless startup check: proves preload order, finite normalized loops, and
-// non-silent dynamic layers. Build:
+// Headless check for authored definitions, preload order, finite normalized
+// loops, and non-silent dynamic layers. Build:
 //   cc -DSOUND_SELFTEST src/sound.c -Iinclude -Ilib/raylib/src \
 //      build/lib/raylib/raylib/libraylib.a -lm -framework Cocoa \
 //      -framework IOKit -framework CoreVideo -framework OpenGL \
 //      -o /tmp/soundtest && /tmp/soundtest
 #include <stdio.h>
 
+static void checkTrackDefs(void) {
+  for (int t = 0; t < TRACK_COUNT; t++) {
+    const Track *track = &TRACKS[t];
+    assert(track->notes != NULL && track->count > 0);
+    assert(track->duration > 0.0f &&
+           floorf(track->duration) == track->duration);
+    assert(track->timbre >= TIMBRE_WARM && track->timbre <= TIMBRE_SQUARE);
+    assert(track->drums >= DRUMS_NONE && track->drums <= DRUMS_DRIVING);
+    assert(track->echo >= 0.0f && track->echo <= 1.0f);
+    for (int n = 0; n < track->count; n++) {
+      const Note *note = &track->notes[n];
+      assert(note->frequency > 0.0f && note->start >= 0.0f &&
+             note->duration > 0.0f);
+      assert(note->start + note->duration <= track->duration);
+    }
+  }
+  for (int i = 0; i < SFX_COUNT; i++) {
+    assert(sfxLen[i] > 0);
+  }
+}
+
 int main(void) {
+  checkTrackDefs();
   SetRandomSeed(1234);
   assert(!audioPreloadStep());
   assert(loopBuffer[TRACK_MENU] != NULL &&
@@ -1610,6 +1635,12 @@ int main(void) {
   hitSimplifyLeft = 0;
 
   memset(voices, 0, sizeof(voices));
+  sfxPitched((SfxId)-1, 1.0f);
+  sfxPitched(SFX_COIN, 0.0f);
+  sfxPitched(SFX_COIN, NAN);
+  for (int i = 0; i < MAX_VOICES; i++) {
+    assert(!voices[i].active && "invalid SFX request consumed a voice");
+  }
   for (int era = 0; era < THEME_COUNT; era++) {
     musicEraTransition(era);
     assert(voices[era].active && voices[era].type == SFX_LEVELUP);

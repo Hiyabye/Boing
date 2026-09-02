@@ -61,7 +61,8 @@ typedef enum {
 
 void sfx(SfxId id); // trigger a one-shot effect
 // Same, pitched: `pitch` scales every frequency (1.0 = normal). Drives the
-// rising coin-combo blip.
+// rising coin-combo blip. Invalid ids and non-positive/non-finite pitches are
+// ignored.
 void sfxPitched(SfxId id, float pitch);
 
 #endif // SOUND_H
