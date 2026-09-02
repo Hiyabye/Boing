@@ -295,6 +295,9 @@ int main(int argc, char **argv) {
       {.vignette = 1.0f},                             //
   };
   const char *NAMES[] = {"base", "bloom", "fog", "crt", "vignette"};
+  STATIC_ASSERT(sizeof(NAMES) / sizeof(NAMES[0]) ==
+                    sizeof(CASES) / sizeof(CASES[0]),
+                post_case_names_complete);
   const int N = sizeof(CASES) / sizeof(CASES[0]);
 
   Image base = shot(&CASES[0]);

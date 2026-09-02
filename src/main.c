@@ -81,7 +81,7 @@ int main(void) {
 
   configLoadUser(); // populate the shared map before any loader reads it
   Progress progress = loadProgress();
-  setPlayerCharacter(progressCharacter(&progress)); // equip saved outfit
+  setPlayerCharacter(progressCharacter(&progress)); // saved outfit + UI accent
   Game game = {
       .state = GAMESTATE_SPLASH,
       .prevState = GAMESTATE_MENU,

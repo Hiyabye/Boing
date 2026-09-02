@@ -22,8 +22,13 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # 1. Add raylib from your local subdirectory
-# This automatically configures raylib's own targets
+# This automatically configures raylib's own targets. AppleClang 21 warns on an
+# upstream stb_vorbis pointer-wrap guard, so silence only that vendored warning
+# without changing the submodule or weakening diagnostics on our target.
 add_subdirectory(lib/raylib)
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+    target_compile_options(raylib PRIVATE -Wno-tautological-compare)
+endif()
 
 # nanosvg (zlib license) as its own tiny target. It is header-only and pinned as
 # a git submodule at lib/nanosvg/, so the one translation unit defining its two
@@ -41,20 +46,38 @@ target_compile_options(nanosvg PRIVATE -ffunction-sections -fdata-sections)
 # only Apple-provided system frameworks remain dynamic at runtime.
 file(GLOB_RECURSE SOURCES "src/*.c")
 set(BUNDLE_RESOURCES
-    resources/Boing.icns
-    LICENSE
-    lib/raylib/LICENSE
-    lib/nanosvg/LICENSE.txt
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/Boing.icns"
+    "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+    "${CMAKE_CURRENT_SOURCE_DIR}/lib/raylib/LICENSE"
+    "${CMAKE_CURRENT_SOURCE_DIR}/lib/nanosvg/LICENSE.txt"
 )
-set_source_files_properties(resources/Boing.icns PROPERTIES
-    MACOSX_PACKAGE_LOCATION "Resources")
-set_source_files_properties(LICENSE PROPERTIES
-    MACOSX_PACKAGE_LOCATION "Resources/Licenses/Boing")
-set_source_files_properties(lib/raylib/LICENSE PROPERTIES
-    MACOSX_PACKAGE_LOCATION "Resources/Licenses/raylib")
-set_source_files_properties(lib/nanosvg/LICENSE.txt PROPERTIES
-    MACOSX_PACKAGE_LOCATION "Resources/Licenses/nanosvg")
-add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCES} ${BUNDLE_RESOURCES})
+add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${SOURCES})
+# CMake's generated MACOSX_PACKAGE_LOCATION copies run after TARGET POST_BUILD
+# commands under Unix Makefiles, which would sign and size-check an incomplete
+# bundle. Copy explicitly before linking instead; LINK_DEPENDS makes a changed
+# resource relink, recopy, resign, and recheck the app.
+set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
+    ${BUNDLE_RESOURCES})
+add_custom_command(TARGET ${PROJECT_NAME} PRE_LINK
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Resources/Licenses/Boing"
+        "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Resources/Licenses/raylib"
+        "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Resources/Licenses/nanosvg"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Boing.icns"
+        "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Resources/Boing.icns"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+        "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Resources/Licenses/Boing/LICENSE"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/raylib/LICENSE"
+        "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Resources/Licenses/raylib/LICENSE"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/nanosvg/LICENSE.txt"
+        "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Resources/Licenses/nanosvg/LICENSE.txt"
+    COMMENT "Copying bundle resources before signing"
+    VERBATIM
+)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Info.plist.in"
     MACOSX_BUNDLE_BUNDLE_NAME "Boing"
