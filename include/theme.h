@@ -6,8 +6,8 @@
 // The palette is runtime state now: a game can hold several themes and morph
 // between them as the player climbs (see theme.c / THEMES[]). `gTheme` is the
 // blended palette for the *current frame*; themeUpdate() recomputes it from the
-// ascent. The color macros below just read `gTheme`, shared by world,
-// background, and UI draw sites.
+// ascent. Scene-color macros read `gTheme`; the UI accent macros read the
+// selected outfit colors instead.
 
 typedef enum {
   BACKDROP_HILLS, // L1: day sky, clouds + rolling green hills/bushes
@@ -34,9 +34,9 @@ typedef struct {
   Color sun, sunCore;
   // Backdrop decor body + shade (clouds for nature, blocks for arcade).
   Color cloud, cloudShade;
-  // Candy UI accents and the shared procedural face-line color. Outfit body
-  // colors live in progress.c and are copied into Character independently.
-  Color candyPink, candyPinkDk, mouth;
+  // Shared procedural face-line color. The UI accent follows the selected
+  // outfit instead, so it lives separately from the altitude-based palette.
+  Color mouth;
   // Coins, ground, monsters, power-ups.
   Color coinHi, coinLo, grass, grassDk, grape, grapeDk;
   Color magnetRed, rocketBody, rocketFin, flame;
@@ -47,8 +47,10 @@ typedef struct {
   int track; // music/SFX track id for this theme
 } Theme;
 
-// The blended palette for the current frame; the macros below read it.
+// The blended palette for the current frame, plus the selected outfit colors
+// used by UI_ACCENT. setPlayerCharacter() keeps the latter pair in sync.
 extern Theme gTheme;
+extern Color gUiAccent, gUiAccentDark;
 
 // The theme table (defined in theme.c; THEME_COUNT rows).
 extern const Theme THEMES[];
@@ -67,7 +69,7 @@ float themeGlow(void);
 // loop once past the last band (nature->arcade->nature->…).
 int themeLevelAt(float ascent);
 
-// Color macros read the runtime blended palette — call sites are unchanged.
+// Scene colors read the blended palette; UI accents follow the selected outfit.
 #define SKY_TOP (gTheme.skyTop)
 #define SKY_BOT (gTheme.skyBot)
 #define SKY_TOP_HIGH (gTheme.skyTopHigh)
@@ -76,8 +78,8 @@ int themeLevelAt(float ascent);
 #define SUN_CORE (gTheme.sunCore)
 #define CLOUD (gTheme.cloud)
 #define CLOUD_SHADE (gTheme.cloudShade)
-#define CANDY_PINK (gTheme.candyPink)
-#define CANDY_PINK_DK (gTheme.candyPinkDk)
+#define UI_ACCENT (gUiAccent)
+#define UI_ACCENT_DK (gUiAccentDark)
 #define MOUTH (gTheme.mouth)
 #define COIN_HI (gTheme.coinHi)
 #define COIN_LO (gTheme.coinLo)

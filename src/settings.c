@@ -237,7 +237,7 @@ static void drawRow(const Settings *s, int row, const char *label,
 void drawSettingsMenu(const Settings *s) {
   DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(SKY_TOP_HIGH, 0.85f));
 
-  drawCenteredText("SETTINGS", SCREEN_HEIGHT / 5, 60, CANDY_PINK);
+  drawCenteredText("SETTINGS", SCREEN_HEIGHT / 5, 60, UI_ACCENT);
 
   for (int r = 0; r < ROW_COUNT; r++) {
     drawRow(s, r, ROW_LABELS[r], formatValue(s, r));

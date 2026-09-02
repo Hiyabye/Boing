@@ -22,13 +22,18 @@
 // ponytail: the selected shop outfit lives in a module global (mirrors how this
 // file already reads gTheme), so createPlayer stays arg-free and its call sites
 // do not grow cosmetic parameters. Defaults to the free Bubblegum outfit until
-// main() applies saved progress. Literal colors because CANDY_PINK is runtime.
+// main() applies saved progress. Literal colors keep the pre-load fallback on
+// the free Bubblegum outfit.
 static Character gCharacter = {{255, 127, 176, 255},
                                {228, 70, 139, 255},
                                HAT_NONE,
                                GLS_NONE,
                                MOUTHWEAR_NONE};
-void setPlayerCharacter(Character c) { gCharacter = c; }
+void setPlayerCharacter(Character c) {
+  gCharacter = c;
+  gUiAccent = c.body;
+  gUiAccentDark = c.bodyDark;
+}
 
 Player createPlayer(void) {
   Player p = {

@@ -292,7 +292,7 @@ void drawIcon(IconKind kind, float cx, float cy, float s, Color c) {
 // Renders the button; activation is detected by the caller via uiItem(r).
 void uiButton(Rectangle r, const char *label, IconKind icon) {
   bool hover = mouseInRect(r);
-  Color base = hover ? CANDY_PINK : CANDY_PINK_DK;
+  Color base = hover ? UI_ACCENT : UI_ACCENT_DK;
   DrawRectangleRounded(r, BTN_ROUNDNESS, ROUND_SEGMENTS, Fade(BLACK, 0.25f));
   DrawRectangleRounded((Rectangle){r.x, r.y, r.width, r.height - BTN_LIP},
                        BTN_ROUNDNESS, ROUND_SEGMENTS, base);

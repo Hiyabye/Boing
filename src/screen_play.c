@@ -229,7 +229,7 @@ static void drawSummaryCard(Game *g) {
 
   Rectangle panel = {SCREEN_WIDTH / 2.0f - 210, 240, 420, 300};
   DrawRectangleRounded(panel, 0.08f, 12, Fade(BLACK, 0.5f));
-  DrawRectangleRoundedLines(panel, 0.08f, 12, CANDY_PINK);
+  DrawRectangleRoundedLines(panel, 0.08f, 12, UI_ACCENT);
 
   struct {
     const char *label, *value;

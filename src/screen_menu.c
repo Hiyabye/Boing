@@ -54,8 +54,8 @@ static Rectangle overlayPanel(const char *title, Color fill) {
   DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.55f));
   Rectangle panel = {SCREEN_WIDTH / 2.0f - 300, 180, 600, 420};
   DrawRectangleRounded(panel, 0.08f, 12, fill);
-  DrawRectangleRoundedLines(panel, 0.08f, 12, CANDY_PINK);
-  drawCenteredText(title, 210, 48, CANDY_PINK);
+  DrawRectangleRoundedLines(panel, 0.08f, 12, UI_ACCENT);
+  drawCenteredText(title, 210, 48, UI_ACCENT);
   return panel;
 }
 
@@ -105,7 +105,7 @@ static void drawTaskRow(Rectangle panel, const MissionDef *task, int progress,
   float fill = clampf(progress / (float)task->threshold, 0.0f, 1.0f);
   DrawRectangleRounded(bar, 0.9f, 8, Fade(BLACK, 0.35f));
   DrawRectangleRounded((Rectangle){bar.x, bar.y, bar.width * fill, bar.height},
-                       0.9f, 8, done ? GOLD : CANDY_PINK);
+                       0.9f, 8, done ? GOLD : UI_ACCENT);
   const char *count = TextFormat("%d OF %d", progress, task->threshold);
   drawTextShadow(count, (int)(row.x + (row.width - uiTextWidth(count, 14)) / 2),
                  y + 33, 14, RAYWHITE);
@@ -238,7 +238,7 @@ void drawMenu(Game *g) {
   drawGround();           // so the attract blob stands on grass, like gameplay
   drawPlayer(&g->player); // the wandering attract blob
   int bob = (int)(sinf((float)GetTime() * 2.0f) * 10.0f);
-  drawCenteredText("BOING!", SCREEN_HEIGHT / 4 - 40 + bob, 80, CANDY_PINK);
+  drawCenteredText("BOING!", SCREEN_HEIGHT / 4 - 40 + bob, 80, UI_ACCENT);
   drawCenteredText(TextFormat("BEST %d", g->highScore), SCREEN_HEIGHT / 4 + 60,
                    24, COIN_LO);
   uiButton(rMenuPlay(), "PLAY", ICON_PLAY);

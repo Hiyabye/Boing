@@ -222,10 +222,10 @@ static void drawPicker(const Progress *p, int category) {
   DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.38f));
   Rectangle panel = rPickerPanel();
   DrawRectangleRounded(panel, 0.07f, 12, Fade(BLACK, 0.92f));
-  DrawRectangleRoundedLines(panel, 0.07f, 12, CANDY_PINK);
+  DrawRectangleRoundedLines(panel, 0.07f, 12, UI_ACCENT);
 
   const CosmeticCatalog *catalog = &COSMETICS[category];
-  drawCenteredText(TextFormat("CHOOSE %s", catalog->name), 158, 30, CANDY_PINK);
+  drawCenteredText(TextFormat("CHOOSE %s", catalog->name), 158, 30, UI_ACCENT);
   for (int i = 0; i < catalog->count; i++) {
     drawCosmeticCard(p, category, i, rPickerItem(i), false);
   }
@@ -236,7 +236,7 @@ void drawShop(Game *g) {
   Progress *p = &g->progress;
   drawMenuBackground();
   DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.55f));
-  drawCenteredText("SHOP", 40, 60, CANDY_PINK);
+  drawCenteredText("SHOP", 40, 60, UI_ACCENT);
 
   const char *bankStr = TextFormat("%d", p->coinBank);
   float bx = SCREEN_WIDTH / 2.0f - (uiTextWidth(bankStr, 30) + 30) / 2.0f;
@@ -249,7 +249,7 @@ void drawShop(Game *g) {
     drawCosmeticCard(p, i, p->selectedCosmetic[i], r, true);
     const char *name = COSMETICS[i].name;
     drawTextShadow(name, (int)(r.x + r.width / 2 - uiTextWidth(name, 15) / 2),
-                   (int)r.y + 7, 15, CANDY_PINK);
+                   (int)r.y + 7, 15, UI_ACCENT);
   }
 
   drawCenteredText("UPGRADES", 306, 20, RAYWHITE);
@@ -259,7 +259,7 @@ void drawShop(Game *g) {
     drawTextShadow(
         SHOP_PU[pu].name,
         (int)(card.x + card.width / 2 - uiTextWidth(SHOP_PU[pu].name, 18) / 2),
-        (int)card.y + 12, 18, CANDY_PINK);
+        (int)card.y + 12, 18, UI_ACCENT);
     drawPowerupGlyph(SHOP_PU[pu].icon,
                      (Vector2){card.x + card.width / 2, card.y + 54}, 18.0f,
                      (float)GetTime());

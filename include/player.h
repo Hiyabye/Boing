@@ -79,7 +79,7 @@ typedef struct Player {
 } Player;
 
 Player createPlayer(void);
-// Set the composed outfit createPlayer stamps onto new blobs.
+// Set the composed outfit createPlayer stamps onto new blobs and its UI accent.
 void setPlayerCharacter(Character c);
 // Keyboard arrows steer directly; with no arrow held the blob follows targetX
 // (the mouse column, in world x). Pass a sentinel outside the screen to ignore.

@@ -17,7 +17,7 @@ static Rectangle rCreditsBack(void) {
 }
 
 // Theater-style credits reel scrolled up the tube. Lines starting with '-'
-// render as pink section headers and blank lines separate sections. After the
+// use the selected UI accent and blank lines separate sections. After the
 // final row, the first row follows at REEL_GAP_LINES so the reel never empties.
 static const char *REEL_LINES[] = {
     "- BOING! -",
@@ -167,7 +167,7 @@ static void drawReel(Rectangle r, float scroll) {
   for (int i = 0; i < REEL_LINE_COUNT; i++) {
     float y = reelRowY(r, i, scroll);
     if (y < r.y + r.height) {
-      Color c = REEL_LINES[i][0] == '-' ? CANDY_PINK : RAYWHITE;
+      Color c = REEL_LINES[i][0] == '-' ? UI_ACCENT : RAYWHITE;
       drawCenteredText(REEL_LINES[i], (int)y, 22, c);
     }
   }
