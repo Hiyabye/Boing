@@ -274,3 +274,8 @@ int themeLevelAt(float ascent) {
   }
   return (int)(ascent / BAND_HEIGHT);
 }
+
+float themeBandProgressAt(float ascent) {
+  int level = themeLevelAt(ascent);
+  return clampf(ascent / BAND_HEIGHT - (float)level, 0.0f, 1.0f);
+}

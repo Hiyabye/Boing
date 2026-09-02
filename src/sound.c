@@ -2,6 +2,7 @@
 
 #include "core.h" // STATIC_ASSERT
 #include "raylib.h"
+#include "theme.h" // THEME_COUNT for era-stinger completeness
 
 #include <assert.h>
 #include <math.h>
@@ -907,6 +908,27 @@ static float fade = 1.0f; // 0..1 weight of curTrack (1 = crossfade complete)
 // Crossfade duration in samples (~2s).
 #define FADE_SAMPLES (2 * SAMPLE_RATE)
 
+// Lightweight live layers follow the current track's beat (with one fallback
+// clock before it is baked). They are synthesized during streaming, so rising
+// combos, a dangerous fall, and the finale need no extra loop buffers or data.
+#define BEAT_SAMPLES (SAMPLE_RATE / 2) // 120 BPM quarter note
+#define HIT_SIMPLIFY_SAMPLES (SAMPLE_RATE * 6 / 5)
+#define HIT_RECOVER_SAMPLES (SAMPLE_RATE * 4 / 5)
+static unsigned dynamicsPos;
+static int musicCombo;
+static float dangerTarget, dangerMix;
+static float finaleTarget, finaleMix;
+static int hitSimplifyLeft;
+static float simpleMusic;
+
+void setMusicDynamics(int combo, float danger, float finale) {
+  musicCombo = combo > 0 ? combo : 0;
+  dangerTarget = clampf(danger, 0.0f, 1.0f);
+  finaleTarget = clampf(finale, 0.0f, 1.0f);
+}
+
+void musicMonsterHit(void) { hitSimplifyLeft = HIT_SIMPLIFY_SAMPLES; }
+
 // Independent channel levels (0..1); settings.c pushes these via setVolumes.
 static float musicVol = 1.0f, sfxVol = 1.0f;
 void setVolumes(float music, float sfx) {
@@ -1152,6 +1174,12 @@ void setTrack(int track) {
   prevTrack = curTrack;
   curTrack = track;
   fade = (isLevelTrack(track) && isLevelTrack(prevTrack)) ? 0.0f : 1.0f;
+  if (!isLevelTrack(track)) {
+    musicCombo = 0;
+    dangerTarget = dangerMix = 0.0f;
+    finaleTarget = finaleMix = 0.0f;
+    hitSimplifyLeft = 0;
+  }
 }
 
 // --- Procedural sound effects ------------------------------------------------
@@ -1197,6 +1225,19 @@ void sfxPitched(SfxId id, float pitch) {
 
 void sfx(SfxId id) { sfxPitched(id, 1.0f); }
 
+// One compact fanfare, transposed per arriving era so each boundary has a
+// recognizable stinger without five more note lists. Roots: A, D, F, E, C.
+static const float ERA_STINGER_PITCH[] = {0.84f, 1.12f, 1.335f, 1.26f, 1.0f};
+STATIC_ASSERT(sizeof(ERA_STINGER_PITCH) / sizeof(ERA_STINGER_PITCH[0]) ==
+                  THEME_COUNT,
+              era_stinger_pitches_full);
+
+void musicEraTransition(int era) {
+  if (era >= 0 && era < THEME_COUNT) {
+    sfxPitched(SFX_LEVELUP, ERA_STINGER_PITCH[era]);
+  }
+}
+
 static float square(float freq, float t) {
   return fmodf(freq * t, 1.0f) < 0.5f ? 1.0f : -1.0f;
 }
@@ -1204,6 +1245,118 @@ static float square(float freq, float t) {
 // Linear frequency sweep: base at pos=0, falling by `depth` over the effect.
 static float sweep(float base, float depth, int pos, int len) {
   return base - depth * (float)pos / len;
+}
+
+static float hitEnvelope(int phase, int len) {
+  if (phase < 0 || phase >= len) {
+    return 0.0f;
+  }
+  float env = 1.0f - (float)phase / len;
+  if (phase < 64) {
+    env *= (float)phase / 64.0f;
+  }
+  return env * env;
+}
+
+// Deterministic sample noise keeps the streamed percussion independent of
+// gameplay RNG while avoiding another precomputed buffer.
+static float layerNoise(unsigned sample) {
+  sample ^= sample >> 16;
+  sample *= 0x7feb352du;
+  sample ^= sample >> 15;
+  return (float)(sample & 0xffffu) / 32767.5f - 1.0f;
+}
+
+static float comboStage(int combo, int start) {
+  return clampf(((float)combo - start) / 4.0f, 0.0f, 1.0f);
+}
+
+static float renderComboPercussion(unsigned pos, int combo) {
+  if (combo <= 2) {
+    return 0.0f;
+  }
+
+  float out = 0.0f;
+  int hatPhase = (int)(pos % (BEAT_SAMPLES / 2));
+  out += 0.045f * comboStage(combo, 2) *
+         hitEnvelope(hatPhase, (int)(0.035f * SAMPLE_RATE)) * layerNoise(pos);
+
+  int kickPhase = (int)(pos % BEAT_SAMPLES);
+  int kickLen = (int)(0.14f * SAMPLE_RATE);
+  float kickEnv = hitEnvelope(kickPhase, kickLen);
+  if (kickEnv > 0.0f) {
+    float t = (float)kickPhase / SAMPLE_RATE;
+    float f = sweep(145.0f, 90.0f, kickPhase, kickLen);
+    out += 0.1f * comboStage(combo, 6) * kickEnv * sinf(2.0f * PI * f * t);
+  }
+
+  int snarePhase = (int)(pos % (BEAT_SAMPLES * 2)) - BEAT_SAMPLES;
+  int snareLen = (int)(0.11f * SAMPLE_RATE);
+  float snareEnv = hitEnvelope(snarePhase, snareLen);
+  if (snareEnv > 0.0f) {
+    float t = (float)snarePhase / SAMPLE_RATE;
+    float body = sinf(2.0f * PI * 190.0f * t);
+    out += 0.07f * comboStage(combo, 10) * snareEnv *
+           (0.75f * layerNoise(pos) + 0.25f * body);
+  }
+
+  return out;
+}
+
+static float dangerBeat(unsigned pos, unsigned offset) {
+  unsigned period = BEAT_SAMPLES * 2u;
+  int phase = (int)((pos + period - offset) % period);
+  int len = (int)(0.14f * SAMPLE_RATE);
+  float env = hitEnvelope(phase, len);
+  if (env <= 0.0f) {
+    return 0.0f;
+  }
+  float t = (float)phase / SAMPLE_RATE;
+  return env * sinf(2.0f * PI * sweep(78.0f, 28.0f, phase, len) * t);
+}
+
+static float renderDangerPulse(unsigned pos, float gain) {
+  if (gain <= 0.0f) {
+    return 0.0f;
+  }
+  unsigned second = (unsigned)(0.2f * SAMPLE_RATE);
+  return 0.13f * gain * (dangerBeat(pos, 0) + 0.72f * dangerBeat(pos, second));
+}
+
+// A new A-minor countermelody enters only for the final quarter of Falling
+// Blocks. Eight notes loop over four seconds and add almost no binary data.
+static const float FINALE_NOTES[] = {A5, C6, E6, B5, D6, F6, E6, GS6};
+static float renderFinaleMelody(unsigned pos, float gain) {
+  if (gain <= 0.0f) {
+    return 0.0f;
+  }
+  int phase = (int)(pos % BEAT_SAMPLES);
+  int len = (int)(0.43f * SAMPLE_RATE);
+  float env = hitEnvelope(phase, len);
+  if (env <= 0.0f) {
+    return 0.0f;
+  }
+  float t = (float)phase / SAMPLE_RATE;
+  int note = (int)(pos / BEAT_SAMPLES) %
+             (int)(sizeof(FINALE_NOTES) / sizeof(FINALE_NOTES[0]));
+  float freq = FINALE_NOTES[note];
+  float voice = 0.65f * square(freq, t) + 0.35f * sinf(2.0f * PI * freq * t);
+  return 0.09f * gain * env * voice;
+}
+
+static float smoothLayer(float current, float target) {
+  return current + (target - current) * 0.0005f;
+}
+
+static float hitRestore(void) {
+  if (hitSimplifyLeft <= 0) {
+    return 1.0f;
+  }
+  float restore = hitSimplifyLeft > HIT_RECOVER_SAMPLES
+                      ? 0.0f
+                      : 1.0f - (float)hitSimplifyLeft / HIT_RECOVER_SAMPLES;
+  hitSimplifyLeft--;
+  return restore;
 }
 
 // One sample for a voice, amplitude-scaled with a linear decay envelope.
@@ -1337,6 +1490,8 @@ void updateAudio(AudioStream *stream) {
                      ? loopBuffer[prevTrack][loopPos[prevTrack]]
                      : 0.0f;
     float music = fade * cur + (1.0f - fade) * prev;
+    unsigned layerPos =
+        loopSamples[curTrack] ? (unsigned)loopPos[curTrack] : dynamicsPos;
     if (loopSamples[curTrack]) {
       loopPos[curTrack] = (loopPos[curTrack] + 1) % loopSamples[curTrack];
     }
@@ -1349,6 +1504,18 @@ void updateAudio(AudioStream *stream) {
         fade = 1.0f;
       }
     }
+
+    dangerMix = smoothLayer(dangerMix, dangerTarget);
+    finaleMix = smoothLayer(finaleMix, finaleTarget);
+    simpleMusic += 0.025f * (music - simpleMusic);
+    float layers = renderComboPercussion(layerPos, musicCombo) +
+                   renderFinaleMelody(layerPos, finaleMix);
+    float restore = hitRestore();
+    float reduced = 0.7f * simpleMusic;
+    music = reduced + (music + layers - reduced) * restore;
+    music += renderDangerPulse(layerPos, dangerMix);
+    dynamicsPos++;
+
     float s = 0.85f * music * musicVol; // headroom for SFX on top
 
     float e = 0.0f; // SFX summed separately so its level scales independently
@@ -1385,8 +1552,8 @@ void deinitAudio(AudioStream *stream) {
 }
 
 #ifdef SOUND_SELFTEST
-// Headless startup check: proves the menu track is attempted first and every
-// generated loop is finite, non-silent and normalized. Build:
+// Headless startup check: proves preload order, finite normalized loops, and
+// non-silent dynamic layers. Build:
 //   cc -DSOUND_SELFTEST src/sound.c -Iinclude -Ilib/raylib/src \
 //      build/lib/raylib/raylib/libraylib.a -lm -framework Cocoa \
 //      -framework IOKit -framework CoreVideo -framework OpenGL \
@@ -1412,7 +1579,45 @@ int main(void) {
     }
     assert(peak > 0.89f && peak < 0.91f && "track is silent or not normalized");
   }
-  printf("ok - menu first, %d finite normalized tracks\n", TRACK_COUNT);
+
+  float lowDrumEnergy = 0.0f, drumEnergy = 0.0f, dangerEnergy = 0.0f;
+  float finaleEnergy = 0.0f;
+  for (unsigned i = 0; i < SAMPLE_RATE * 2u; i++) {
+    assert(renderComboPercussion(i, 0) == 0.0f);
+    assert(renderDangerPulse(i, 0.0f) == 0.0f);
+    assert(renderFinaleMelody(i, 0.0f) == 0.0f);
+    float drum = renderComboPercussion(i, 18);
+    float danger = renderDangerPulse(i, 1.0f);
+    float finale = renderFinaleMelody(i, 1.0f);
+    assert(isfinite(drum) && fabsf(drum) < 0.3f);
+    assert(isfinite(danger) && fabsf(danger) < 0.3f);
+    assert(isfinite(finale) && fabsf(finale) < 0.3f);
+    lowDrumEnergy += fabsf(renderComboPercussion(i, 4));
+    drumEnergy += fabsf(drum);
+    dangerEnergy += fabsf(danger);
+    finaleEnergy += fabsf(finale);
+  }
+  assert(lowDrumEnergy > 1.0f && drumEnergy > lowDrumEnergy * 1.5f);
+  assert(dangerEnergy > 1.0f && finaleEnergy > 1.0f);
+
+  setMusicDynamics(-1, 2.0f, -1.0f);
+  assert(musicCombo == 0 && dangerTarget == 1.0f && finaleTarget == 0.0f);
+  musicMonsterHit();
+  assert(hitSimplifyLeft == HIT_SIMPLIFY_SAMPLES);
+  assert(hitRestore() == 0.0f);
+  hitSimplifyLeft = HIT_RECOVER_SAMPLES / 2;
+  assert(fabsf(hitRestore() - 0.5f) < 0.001f);
+  hitSimplifyLeft = 0;
+
+  memset(voices, 0, sizeof(voices));
+  for (int era = 0; era < THEME_COUNT; era++) {
+    musicEraTransition(era);
+    assert(voices[era].active && voices[era].type == SFX_LEVELUP);
+    assert(fabsf(voices[era].pitch - ERA_STINGER_PITCH[era]) < 0.001f);
+  }
+
+  printf("ok - %d tracks and dynamic layers are finite/non-silent\n",
+         TRACK_COUNT);
   return 0;
 }
 #endif

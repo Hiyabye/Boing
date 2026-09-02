@@ -31,6 +31,14 @@ typedef enum {
 // and game-over switches cut immediately. No-op if already set.
 void setTrack(int track);
 
+// Live gameplay layers mixed over the baked theme track. `danger` and `finale`
+// are 0..1; combo progressively adds percussion. Non-playing states pass zero.
+void setMusicDynamics(int combo, float danger, float finale);
+// Event accents kept separate from generic SFX so only a real monster hit
+// strips the arrangement, while each arriving era gets its own stinger pitch.
+void musicMonsterHit(void);
+void musicEraTransition(int era);
+
 // Independent music / SFX levels (0..1), applied in the mix (settings.c drives
 // these instead of a single SetMasterVolume so the two channels split).
 void setVolumes(float music, float sfx);

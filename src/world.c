@@ -637,6 +637,7 @@ static void updateMonsters(World *world, Player *player) {
         splatMonster(world, m);
       } else {
         m->active = false;
+        musicMonsterHit();
         hitPlayer(world, player);
       }
     }
@@ -841,7 +842,7 @@ void updateWorld(World *world, Player *player) {
     world->level = lvl;
     world->levelBanner = LEVEL_BANNER_FRAMES; // the era's rules just changed;
                                               // the HUD says which era it is
-    sfx(SFX_LEVELUP);
+    musicEraTransition(worldEra(world));
   }
 
   // Idle combo reset: no coin grabbed within COMBO_TIMEOUT drops the chain.

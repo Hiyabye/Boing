@@ -40,6 +40,24 @@ static int trackForState(GameState state) {
   }
 }
 
+static void updateMusicLayers(const Game *g) {
+  if (g->state != GAMESTATE_PLAYING) {
+    setMusicDynamics(0, 0.0f, 0.0f);
+    return;
+  }
+
+  float screenY = g->player.position.y - g->world.cameraY;
+  float fallSpeed = clampf((g->player.velocity.y - 2.0f) / 18.0f, 0.0f, 1.0f);
+  float depth = clampf(
+      (screenY - SCREEN_HEIGHT * 0.5f) / (SCREEN_HEIGHT * 0.35f), 0.0f, 1.0f);
+  float ascent = SCREEN_HEIGHT / 2.0f - g->world.bestY;
+  float finale = worldEra(&g->world) == THEME_COUNT - 1 &&
+                         themeBandProgressAt(ascent) >= 0.75f
+                     ? 1.0f
+                     : 0.0f;
+  setMusicDynamics(g->world.combo, fallSpeed * depth, finale);
+}
+
 // ---------------------------------------------------------------------------
 // FSM dispatch table
 // ---------------------------------------------------------------------------
@@ -116,6 +134,7 @@ int main(void) {
     // of holding the menu behind tracks it does not use.
     audioPreloadStep();
     // Splash stays silent; audio begins with the first real screen.
+    updateMusicLayers(&game);
     if (game.state != GAMESTATE_SPLASH) {
       updateAudio(&stream);
     }

@@ -65,9 +65,12 @@ int themeTrack(void);
 // Post-processing bloom weight (0..1) for the current blend - subtle in
 // daylight, full in the neon level, blended across the band like the palette.
 float themeGlow(void);
-// 0-based level fully entered at `ascent` (see theme.c); unbounded — themes
-// loop once past the last band (nature->arcade->nature->…).
+// 0-based level fully entered at `ascent` (see theme.c); unbounded - themes
+// loop once past the last band (nature->arcade->nature->...).
 int themeLevelAt(float ascent);
+// Progress through that level's band (0..1). Kept here so gameplay/audio does
+// not duplicate the private band-height tuning constant.
+float themeBandProgressAt(float ascent);
 
 // Scene colors read the blended palette; UI accents follow the selected outfit.
 #define SKY_TOP (gTheme.skyTop)
