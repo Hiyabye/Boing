@@ -69,95 +69,128 @@ static const SvgDef SVG_DEFS[] = {
      " fill=\"#fff\"/></svg>",
      SVG_ICON_PX},
 
-    // SVG_PLAY — rounded right-pointing triangle.
+    // SVG_PLAY: plump candy triangle with a carved gleam and sugar sparkles.
+    {SVG_HEAD "<path fill-rule=\"evenodd\" fill=\"#fff\" stroke=\"#fff\""
+              " stroke-width=\"1.6\" stroke-linejoin=\"round\" d=\""
+              "M6.8 4.4L18.7 12L6.8 19.6Z"
+              "M9.1 7.4C10.4 8 11.5 8.8 12.6 9.6C11.1 9.1 10.2 8.9 9.1 8.8Z\"/>"
+              "<circle cx=\"19.5\" cy=\"5.1\" r=\"1.15\" fill=\"#fff\"/>"
+              "<circle cx=\"21.4\" cy=\"7.6\" r=\"0.55\" fill=\"#fff\""
+              " opacity=\"0.7\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_PAUSE: two candy sticks with tiny pressed-in bubbles.
     {SVG_HEAD
-     "<path d=\"M9.3 6.6L17.2 12L9.3 17.4Z\" fill=\"#fff\" stroke=\"#fff\""
-     " stroke-width=\"2.6\" stroke-linejoin=\"round\"/></svg>",
+     "<path fill-rule=\"evenodd\" fill=\"#fff\" d=\""
+     "M8.2 3.7C6.45 3.7 5.6 4.8 5.6 6.3V17.7C5.6 19.2 6.45 20.3 8.2 "
+     "20.3C9.95 20.3 10.8 19.2 10.8 17.7V6.3C10.8 4.8 9.95 3.7 8.2 3.7Z"
+     "M8.2 6.2A0.75 0.75 0 1 0 8.2 7.7A0.75 0.75 0 1 0 8.2 6.2Z"
+     "M15.8 3.7C14.05 3.7 13.2 4.8 13.2 6.3V17.7C13.2 19.2 14.05 20.3 "
+     "15.8 20.3C17.55 20.3 18.4 19.2 18.4 17.7V6.3C18.4 4.8 17.55 3.7 "
+     "15.8 3.7Z"
+     "M15.8 6.2A0.75 0.75 0 1 0 15.8 7.7A0.75 0.75 0 1 0 15.8 6.2Z\"/>"
+     "<circle cx=\"20.4\" cy=\"18.2\" r=\"0.8\" fill=\"#fff\""
+     " opacity=\"0.65\"/></svg>",
      SVG_ICON_PX},
 
-    // SVG_PAUSE — two rounded bars.
-    {SVG_HEAD "<rect x=\"6.6\" y=\"4.8\" width=\"4.3\" height=\"14.4\" "
-              "rx=\"2.15\" fill=\"#fff\"/>"
-              "<rect x=\"13.1\" y=\"4.8\" width=\"4.3\" height=\"14.4\" "
-              "rx=\"2.15\" fill=\"#fff\"/></svg>",
-     SVG_ICON_PX},
-
-    // SVG_GEAR — 8 trapezoid teeth around a real bore (evenodd). Generated:
-    // tip r=9.6, root r=6.9, bore r=3.6, tooth 0.22/0.42 of the 45 deg pitch.
+    // SVG_GEAR: eight rounded teeth, a true bore, and a candy hub.
     {SVG_HEAD
      "<path fill-rule=\"evenodd\" fill=\"#fff\" stroke=\"#fff\" "
-     "stroke-width=\"1.1\""
-     " stroke-linejoin=\"round\" d=\""
+     "stroke-width=\"1.1\" stroke-linejoin=\"round\" d=\""
      "M9.76 5.47L10.35 2.54L13.65 2.54L14.24 5.47L15.04 5.8L17.52 4.15L19.85 "
-     "6.48"
-     "L18.2 8.96L18.53 9.76L21.46 10.35L21.46 13.65L18.53 14.24L18.2 15.04"
-     "L19.85 17.52L17.52 19.85L15.04 18.2L14.24 18.53L13.65 21.46L10.35 21.46"
-     "L9.76 18.53L8.96 18.2L6.48 19.85L4.15 17.52L5.8 15.04L5.47 14.24L2.54 "
-     "13.65"
-     "L2.54 10.35L5.47 9.76L5.8 8.96L4.15 6.48L6.48 4.15L8.96 5.8Z"
-     "M12 8.4C13.99 8.4 15.6 10.01 15.6 12C15.6 13.99 13.99 15.6 12 15.6"
-     "C10.01 15.6 8.4 13.99 8.4 12C8.4 10.01 10.01 8.4 12 8.4Z\"/></svg>",
+     "6.48L18.2 8.96L18.53 9.76L21.46 10.35L21.46 13.65L18.53 14.24L18.2 "
+     "15.04L19.85 17.52L17.52 19.85L15.04 18.2L14.24 18.53L13.65 21.46L10.35 "
+     "21.46L9.76 18.53L8.96 18.2L6.48 19.85L4.15 17.52L5.8 15.04L5.47 "
+     "14.24L2.54 13.65L2.54 10.35L5.47 9.76L5.8 8.96L4.15 6.48L6.48 "
+     "4.15L8.96 5.8Z"
+     "M12 8.2A3.8 3.8 0 1 0 12 15.8A3.8 3.8 0 1 0 12 8.2Z\"/>"
+     "<circle cx=\"12\" cy=\"12\" r=\"1.15\" fill=\"#fff\"/>"
+     "<circle cx=\"20.6\" cy=\"4.2\" r=\"0.75\" fill=\"#fff\""
+     " opacity=\"0.7\"/></svg>",
      SVG_ICON_PX},
 
-    // SVG_RETRY — 300 deg band with the gap at the top, arrowhead on the open
-    // end pointing across it. Two paths: they overlap, and one nonzero path
-    // would cancel the overlap to a hole.
+    // SVG_RETRY: broad rewind swoop with a center sugar star.
     {SVG_HEAD
-     "<path fill=\"#fff\" d=\"M18.51 7.14A8.5 8.5 0 1 1 10.52 4.23L11.01 6.99"
-     "A5.7 5.7 0 1 0 16.37 8.94Z\"/>"
-     "<path fill=\"#fff\" stroke=\"#fff\" stroke-width=\"1\" "
-     "stroke-linejoin=\"round\""
-     " d=\"M15.18 9.93L14.48 4.51L19.7 6.14Z\"/></svg>",
+     "<path fill=\"#fff\" d=\"M19.5 7.4A9 9 0 1 1 10.4 3.2L10.9 6.25A5.9 "
+     "5.9 0 1 0 16.95 9Z\"/>"
+     "<path fill=\"#fff\" stroke=\"#fff\" stroke-width=\"0.8\""
+     " stroke-linejoin=\"round\" d=\"M14.25 10.15L14.25 3.55L20.35 5.85Z\"/>"
+     "<path fill=\"#fff\" d=\"M11.8 8.8L12.65 10.85L14.8 11.1L13.15 "
+     "12.55L13.65 14.65L11.8 13.55L9.95 14.65L10.45 12.55L8.8 11.1L10.95 "
+     "10.85Z\" opacity=\"0.75\"/></svg>",
      SVG_ICON_PX},
 
-    // SVG_BACK — rounded left-pointing triangle, mirroring SVG_PLAY.
+    // SVG_BACK: chunky arrow with a long soft tail and motion drops.
     {SVG_HEAD
-     "<path d=\"M14.7 6.6L6.8 12L14.7 17.4Z\" fill=\"#fff\" stroke=\"#fff\""
-     " stroke-width=\"2.6\" stroke-linejoin=\"round\"/></svg>",
+     "<path fill=\"#fff\" stroke=\"#fff\" stroke-width=\"1.2\""
+     " stroke-linejoin=\"round\" d=\"M10.2 4.6L2.8 12L10.2 19.4L10.2 "
+     "15.1H20.2C21.2 15.1 21.7 14.35 21.7 13.45V10.55C21.7 9.65 21.2 8.9 "
+     "20.2 8.9H10.2Z\"/>"
+     "<circle cx=\"18.8\" cy=\"5.2\" r=\"1\" fill=\"#fff\""
+     " opacity=\"0.7\"/><circle cx=\"21.5\" cy=\"6.3\" r=\"0.5\""
+     " fill=\"#fff\" opacity=\"0.55\"/></svg>",
      SVG_ICON_PX},
 
-    // SVG_HOME — roof + walls in one silhouette, the door punched out
-    // (evenodd).
-    {SVG_HEAD "<path fill-rule=\"evenodd\" fill=\"#fff\" stroke=\"#fff\" "
-              "stroke-width=\"1.4\""
-              " stroke-linejoin=\"round\" d=\""
-              "M12 3.5L20.8 11.1L19.3 11.1L19.3 20L4.7 20L4.7 11.1L3.2 11.1Z"
-              "M10.3 20L10.3 14.4L13.7 14.4L13.7 20Z\"/></svg>",
-     SVG_ICON_PX},
-
-    // SVG_EXIT — an X: one rounded bar, mirrored by the two rotations.
-    {SVG_HEAD "<rect x=\"10.05\" y=\"3.4\" width=\"3.9\" height=\"17.2\" "
-              "rx=\"1.95\" fill=\"#fff\""
-              " transform=\"rotate(45 12 12)\"/>"
-              "<rect x=\"10.05\" y=\"3.4\" width=\"3.9\" height=\"17.2\" "
-              "rx=\"1.95\" fill=\"#fff\""
-              " transform=\"rotate(-45 12 12)\"/></svg>",
-     SVG_ICON_PX},
-
-    // SVG_HEART — two bezier lobes meeting in a clean point, no circle seams.
-    {SVG_HEAD "<path fill=\"#fff\" d=\"M12 20.8C12 20.8 3.4 15 3.4 9.1C3.4 6.2 "
-              "5.7 3.9 8.5 3.9"
-              "C10.3 3.9 11.4 4.8 12 5.9C12.6 4.8 13.7 3.9 15.5 3.9C18.3 3.9 "
-              "20.6 6.2 20.6 9.1"
-              "C20.6 15 12 20.8 12 20.8Z\"/></svg>",
-     SVG_ICON_PX},
-
-    // SVG_SHOP — a stack of three coins, tapering slightly for perspective.
+    // SVG_HOME: candy cottage with chimney, round window, and open door.
     {SVG_HEAD
-     "<ellipse cx=\"12\" cy=\"5.6\" rx=\"7.2\" ry=\"2.6\" fill=\"#fff\"/>"
-     "<ellipse cx=\"12\" cy=\"12\" rx=\"8\" ry=\"2.6\" fill=\"#fff\"/>"
-     "<ellipse cx=\"12\" cy=\"18.4\" rx=\"8.8\" ry=\"2.6\" "
-     "fill=\"#fff\"/></svg>",
+     "<path fill-rule=\"evenodd\" fill=\"#fff\" stroke=\"#fff\""
+     " stroke-width=\"1.1\" stroke-linejoin=\"round\" d=\""
+     "M2.4 10.9L12 2.9L21.6 10.9L19.7 10.9L19.7 20.6L4.3 20.6L4.3 "
+     "10.9Z M9.9 20.6V15.1C9.9 14.35 10.45 13.8 11.2 13.8H12.8C13.55 "
+     "13.8 14.1 14.35 14.1 15.1V20.6Z M7.1 12.2A1.65 1.65 0 1 0 7.1 "
+     "15.5A1.65 1.65 0 1 0 7.1 12.2Z\"/>"
+     "<path fill=\"#fff\" d=\"M16.4 3.5H19.1V7.4L16.4 5.15Z\"/>"
+     "<circle cx=\"12.9\" cy=\"17.1\" r=\"0.45\" fill=\"#fff\"/></svg>",
      SVG_ICON_PX},
 
-    // SVG_MISSIONS — a checklist: one ticked item beside two task bars.
+    // SVG_EXIT: open candy door with an arrow stepping out.
+    {SVG_HEAD "<path fill-rule=\"evenodd\" fill=\"#fff\" d=\"M3.2 "
+              "3.1H14.1V8H11.2V6H6.1V18H11.2V16H14.1V20.9H3.2Z "
+              "M5.9 5.8H11.4V18.2H5.9Z\"/>"
+              "<path fill=\"#fff\" stroke=\"#fff\" stroke-width=\"1.1\""
+              " stroke-linejoin=\"round\" d=\"M12.2 8.4H17V5.7L22.2 12L17 "
+              "18.3V15.6H12.2Z\"/>"
+              "<circle cx=\"8.2\" cy=\"12\" r=\"0.75\" fill=\"#fff\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_HEART: plump candy heart with a cut gleam and orbiting sprinkles.
     {SVG_HEAD
-     "<path d=\"M2.6 12.3L6.4 16.1L12.4 7.4\" fill=\"none\" stroke=\"#fff\""
-     " stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"
-     "<rect x=\"14.4\" y=\"5.9\" width=\"7.2\" height=\"3\" rx=\"1.5\" "
+     "<path fill-rule=\"evenodd\" fill=\"#fff\" d=\"M12 21C12 21 3.1 15.3 3.1 "
+     "9.1C3.1 5.9 5.55 3.5 8.5 3.5C10.25 3.5 11.4 4.35 12 5.55C12.6 "
+     "4.35 13.75 3.5 15.5 3.5C18.45 3.5 20.9 5.9 20.9 9.1C20.9 15.3 "
+     "12 21 12 21Z M7.1 6.25C6.15 6.85 5.7 7.75 5.8 8.75C6.3 7.9 6.95 7.4 7.95 "
+     "7.1Z\"/>"
+     "<circle cx=\"19.9\" cy=\"3.4\" r=\"1\" fill=\"#fff\"/>"
+     "<circle cx=\"22\" cy=\"5.9\" r=\"0.48\" fill=\"#fff\""
+     " opacity=\"0.65\"/><circle cx=\"2.2\" cy=\"16.9\" r=\"0.65\""
+     " fill=\"#fff\" opacity=\"0.65\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_SHOP: striped candy stall with windows and a coin sign.
+    {SVG_HEAD
+     "<path fill-rule=\"evenodd\" fill=\"#fff\" d=\"M3.2 9.7H20.8V21H3.2Z "
+     "M5.8 12.5H10.3V16.8H5.8Z M14.2 12.5H18.4V21H14.2Z\"/>"
+     "<path fill=\"#fff\" stroke=\"#fff\" stroke-width=\"0.9\""
+     " stroke-linejoin=\"round\" d=\"M4 3H20L22 8.1C22 9.8 20.65 10.8 19.15 "
+     "10.8C17.9 10.8 17.15 10.15 16.6 9.2C16.05 10.15 15.25 10.8 14 10.8C12.75 "
+     "10.8 12 10.15 11.45 9.2C10.9 10.15 10.1 10.8 8.85 10.8C7.6 10.8 6.85 "
+     "10.15 6.3 9.2C5.75 10.15 5 10.8 3.75 10.8C2.25 10.8 1.1 9.8 2 8.1Z\"/>"
+     "<circle cx=\"12\" cy=\"4.9\" r=\"1.15\" fill=\"none\""
+     " stroke=\"#fff\" stroke-width=\"0.8\"/></svg>",
+     SVG_ICON_PX},
+
+    // SVG_MISSIONS: candy clipboard with two checks and a star seal.
+    {SVG_HEAD
+     "<rect x=\"3.1\" y=\"3.6\" width=\"17.8\" height=\"18.1\" rx=\"3.2\""
+     " fill=\"none\" stroke=\"#fff\" stroke-width=\"2.2\"/>"
+     "<rect x=\"8.2\" y=\"1.8\" width=\"7.6\" height=\"4.2\" rx=\"2.1\" "
      "fill=\"#fff\"/>"
-     "<rect x=\"14.4\" y=\"15.1\" width=\"7.2\" height=\"3\" rx=\"1.5\" "
-     "fill=\"#fff\"/></svg>",
+     "<path d=\"M5.8 10.4L7.3 11.9L9.8 8.7M11.6 10.3H17.9M5.8 "
+     "16L7.3 17.5L9.8 14.3M11.6 15.9H15.3\" fill=\"none\" stroke=\"#fff\""
+     " stroke-width=\"1.7\" stroke-linecap=\"round\" "
+     "stroke-linejoin=\"round\"/>"
+     "<path fill=\"#fff\" d=\"M18.1 14.4L18.8 16L20.5 16.15L19.2 "
+     "17.3L19.6 19L18.1 18.1L16.6 19L17 17.3L15.7 16.15L17.4 16Z\"/></svg>",
      SVG_ICON_PX},
 
     // SVG_LOGO — serif "H" wordmark + flourish, in a 200x231 viewBox laid out

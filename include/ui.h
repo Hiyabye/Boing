@@ -17,8 +17,8 @@ typedef enum {
   ICON_HOME,
   ICON_EXIT,
   ICON_HEART,
-  ICON_SHOP,     // stacked-coins glyph for the shop
-  ICON_MISSIONS, // checklist glyph (check tick + task lines) for missions
+  ICON_SHOP,     // candy storefront glyph for the shop
+  ICON_MISSIONS, // clipboard, checks, and star seal for missions
   ICON_COUNT
 } IconKind;
 
