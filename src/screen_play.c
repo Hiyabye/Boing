@@ -144,10 +144,19 @@ STATIC_ASSERT(sizeof(ERA_NAMES) / sizeof(ERA_NAMES[0]) == THEME_COUNT,
 // Score badge + coin tally + level bar + power-up timer bars, in screen space
 // (drawn after the world's rlPopMatrix, in the frame's scaled 800x800 space).
 static void drawHud(const World *world) {
+  float pw = 360, ph = 12, px = (SCREEN_WIDTH - pw) / 2.0f, py = 30;
   const char *scoreStr = TextFormat("SCORE %d", getScore(world));
-  DrawRectangleRounded((Rectangle){8, 8, uiTextWidth(scoreStr, 30) + 24, 40},
-                       0.4f, 8, Fade(BLACK, 0.28f));
-  drawTextShadow(scoreStr, 20, 13, 30, RAYWHITE);
+  int scoreSize = 30;
+  // Keep 8px clear of the level bar; the badge starts at x=8 and adds 24px
+  // of horizontal padding around the text.
+  const int scoreMaxWidth = (int)px - 40;
+  while (scoreSize > 8 && uiTextWidth(scoreStr, scoreSize) > scoreMaxWidth) {
+    scoreSize--;
+  }
+  DrawRectangleRounded(
+      (Rectangle){8, 8, uiTextWidth(scoreStr, scoreSize) + 24, 40}, 0.4f, 8,
+      Fade(BLACK, 0.28f));
+  drawTextShadow(scoreStr, 20, 8 + (40 - scoreSize) / 2, scoreSize, RAYWHITE);
 
   // Coin tally: a mini coin glyph + count, tucked below the score badge on the
   // left so the top-right pause button doesn't hide it.
@@ -165,7 +174,6 @@ static void drawHud(const World *world) {
   int lo, hi;
   float f;
   themeBlend(&lo, &hi, &f);
-  float pw = 360, ph = 12, px = (SCREEN_WIDTH - pw) / 2.0f, py = 30;
   const char *lvlStr = TextFormat("LEVEL %d", worldLevel(world) + 1);
   drawTextShadow(lvlStr, (int)(SCREEN_WIDTH - uiTextWidth(lvlStr, 18)) / 2, 8,
                  18, RAYWHITE);
