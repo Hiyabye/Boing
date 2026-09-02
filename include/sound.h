@@ -14,8 +14,8 @@ void deinitAudio(AudioStream *stream);
 bool audioPreloadStep(void);
 
 // Music track ids (indices into TRACKS[] in sound.c). 0..4 are the five level
-// tracks (theme.c's THEMES[].track uses those bare literals, one per climb
-// band); menu and game over are FSM-driven (main.c), not themes.
+// tracks (theme.c's THEMES[].track names those ids, one per climb band); menu
+// and game over are FSM-driven (main.c), not themes.
 typedef enum {
   TRACK_L1,       // 0 - Sunny Hills (day)
   TRACK_L2,       // 1 - Birdsong Skies

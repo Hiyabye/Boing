@@ -1,6 +1,7 @@
 #include "theme.h"
 
-#include "core.h" // clampf
+#include "core.h"  // clampf
+#include "sound.h" // MusicTrack ids for Theme.track
 
 #include <stddef.h> // offsetof
 
@@ -48,7 +49,7 @@ const Theme THEMES[] = {
                 {0xFF, 0x9E, 0x3D, 0xFF},
             },
         .backdrop = BACKDROP_HILLS,
-        .track = 0,
+        .track = TRACK_L1,
     },
     // 1 - Birdsong Skies: clear azure air, sunlit cloud banks and migrating
     // birds. Platforms drift sideways on the wind.
@@ -84,7 +85,7 @@ const Theme THEMES[] = {
                 {0x9D, 0xDE, 0xF5, 0xFF},
             },
         .backdrop = BACKDROP_SKIES,
-        .track = 1,
+        .track = TRACK_L2,
     },
     // 2 - Night Blocks: moonlit deep-blue sky, pixel stars, blocky terrain. A
     // voxel-survival dusk (homage to blocky night-survival games).
@@ -120,7 +121,7 @@ const Theme THEMES[] = {
                 {0xFF, 0xE3, 0x6B, 0xFF},
             },
         .backdrop = BACKDROP_STARS,
-        .track = 2,
+        .track = TRACK_L3,
     },
     // 3 - Neon Maze: purple-black void, neon maze walls + pellet dots, ghost
     // creatures (homage to the golden-age dot-muncher maze arcades).
@@ -156,7 +157,7 @@ const Theme THEMES[] = {
                 {0xFF, 0x9E, 0x3D, 0xFF},
             },
         .backdrop = BACKDROP_MAZE,
-        .track = 3,
+        .track = TRACK_L4,
     },
     // 4 - Falling Blocks: green digital sky, falling neon tetromino backdrop.
     // The endgame (homage to the falling-block puzzle era).
@@ -192,12 +193,14 @@ const Theme THEMES[] = {
             {0xE6, 0x8A, 0x2D, 0xFF},
         },
         .backdrop = BACKDROP_BLOCKS,
-        .track = 4,
+        .track = TRACK_L5,
     },
 };
 // THEME_COUNT is a macro (theme.h) so tables keyed off the theme list can be
 // checked at compile time; keep it honest about the table it names.
 STATIC_ASSERT(sizeof(THEMES) / sizeof(THEMES[0]) == THEME_COUNT, themes_full);
+// Level tracks are the first contiguous MusicTrack ids, one per theme row.
+STATIC_ASSERT(THEME_COUNT == TRACK_MENU, theme_level_tracks_full);
 
 Theme gTheme;
 

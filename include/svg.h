@@ -13,8 +13,8 @@
 // and proper anti-aliasing, which raylib's primitive draws do not have.
 //
 // The masters are rasterized far above their largest on-screen device size
-// (see SVG_RASTER_PX) and downsampled through mipmaps, so they stay sharp at
-// any window scale. Nothing ever upscales them.
+// (see SVG_ICON_PX/SVG_LOGO_PX in svg.c) and downsampled through mipmaps, so
+// they stay sharp at any window scale. Nothing ever upscales them.
 
 typedef enum {
   // Mouse pointer. First in the enum on purpose: svgPreloadStep() bakes in

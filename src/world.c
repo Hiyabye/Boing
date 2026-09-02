@@ -1468,8 +1468,27 @@ static void checkEras(void) {
     assert(p.coinBank == INT_MAX && "coin bank overflowed");
   }
 
+  // Table values the completeness assert cannot prove. Every timer must be
+  // drawable, and every era needs at least one weighted choice per category.
+  for (int t = 0; t < POWERUP_COUNT; t++) {
+    assert(POWERUP_DEFS[t].duration > 0.0f && "non-positive power-up duration");
+    assert(POWERUP_DEFS[t].spawnWeight >= 0 && "negative power-up weight");
+  }
+
   // The spawn gate: what stamps an era's rule onto an entity at birth.
   for (int e = 0; e < THEME_COUNT; e++) {
+    int goodWeight = 0, badWeight = 0;
+    for (int t = 0; t < POWERUP_COUNT; t++) {
+      int weight = spawnWeightOf((PowerUpType)t, e);
+      assert(weight >= 0 && "negative effective power-up weight");
+      if (POWERUP_DEFS[t].debuff) {
+        badWeight += weight;
+      } else {
+        goodWeight += weight;
+      }
+    }
+    assert(goodWeight > 0 && badWeight > 0 && "empty power-up category");
+
     World w = createWorld();
     w.level = e;
     Player p = createPlayer();
@@ -1494,7 +1513,10 @@ static void checkEras(void) {
     // The pellet is reachable only where there are ghosts to frighten.
     assert((spawnWeightOf(POWERUP_PELLET, e) > 0) == (e == ERA_MAZE));
     for (int k = 0; k < 50; k++) {
-      assert((pickPowerup(false, e) == POWERUP_PELLET) <= (e == ERA_MAZE));
+      PowerUpType good = pickPowerup(false, e);
+      PowerUpType bad = pickPowerup(true, e);
+      assert(!POWERUP_DEFS[good].debuff && POWERUP_DEFS[bad].debuff);
+      assert((good == POWERUP_PELLET) <= (e == ERA_MAZE));
     }
   }
 

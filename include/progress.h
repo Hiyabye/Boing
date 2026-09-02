@@ -71,7 +71,7 @@ typedef enum {
 } MissionStat;
 typedef struct {
   const char *desc;
-  int stat; // MissionStat
+  MissionStat stat;
   int threshold;
   int reward; // coins added to the bank on completion
 } MissionDef;
