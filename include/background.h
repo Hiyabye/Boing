@@ -5,6 +5,9 @@
 
 void drawMenuBackground(void);
 void drawGameBackground(float cameraY);
+// Near-camera theme details drawn after the world, kept to the screen edges so
+// they add depth without hiding the player, hazards, or HUD.
+void drawGameForeground(float cameraY);
 
 // The seven tetromino footprints as (dx,dy) cells, all non-negative, so
 // `origin + d*cell` is both where a cell is drawn and where it collides. The

@@ -1731,6 +1731,7 @@ int main(int argc, char **argv) {
     drawWorld(&w);
     drawPowerAura(&w, &p);
     drawPlayer(&p);
+    drawGameForeground(cameraY);
     EndTextureMode();
 
     Image im = LoadImageFromTexture(rt.texture);

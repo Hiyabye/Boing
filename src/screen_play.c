@@ -266,6 +266,9 @@ void drawPlay(Game *g) {
   drawPowerAura(&g->world, &g->player); // living glow behind the blob
   drawPlayer(&g->player);
   rlPopMatrix();
+  // Near-camera theme details sit in front of the world but stay clipped to
+  // the outer edges, preserving the playfield and HUD readability.
+  drawGameForeground(cameraY);
 
   // Post-processing for this frame. Bloom follows the altitude's theme, from
   // subtle daylight to the strongest neon glow. The Fog debuff is a blur +

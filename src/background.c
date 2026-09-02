@@ -201,9 +201,9 @@ static void drawMeadowSprig(float x, float y, float side, float s,
 static void drawForegroundFoliage(float cameraY, float alpha) {
   float sway = 0.04f * sinf(-cameraY * 0.001f);
   drawMeadowSprig(-8.0f, 830.0f, 1.0f, 1.1f + sway, alpha);
-  drawMeadowSprig(50.0f, 840.0f, 1.0f, 0.82f - sway, 0.8f * alpha);
+  drawMeadowSprig(24.0f, 840.0f, 1.0f, 0.82f - sway, 0.8f * alpha);
   drawMeadowSprig(808.0f, 830.0f, -1.0f, 1.18f - sway, alpha);
-  drawMeadowSprig(755.0f, 845.0f, -1.0f, 0.78f + sway, 0.8f * alpha);
+  drawMeadowSprig(776.0f, 845.0f, -1.0f, 0.78f + sway, 0.8f * alpha);
 }
 
 static void drawPollen(float cameraY, float alpha) {
@@ -219,7 +219,8 @@ static void drawPollen(float cameraY, float alpha) {
 }
 
 // L1 backdrop: a storybook valley with atmospheric mountain planes, patterned
-// meadow fields, a winding river, textured trees, and close foliage parallax.
+// meadow fields, a winding river, and textured trees. Close foliage lives in
+// the foreground pass so it can silhouette the world's outer edges.
 static void drawHillsBackdrop(float cameraY, float alpha) {
   drawTex(TEX_NEBULA, SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT * 0.32f,
           SCREEN_WIDTH * 1.35f, SCREEN_HEIGHT * 0.75f, 0.0f,
@@ -265,7 +266,6 @@ static void drawHillsBackdrop(float cameraY, float alpha) {
   drawCottage(610.0f, ridgeY(610.0f, 525.0f, 48.0f, 40.0f, 0.0f) + 8.0f, 0.88f,
               0.9f * alpha);
   drawPollen(cameraY, alpha);
-  drawForegroundFoliage(cameraY, alpha);
 }
 
 // One bright sky bird, built from simple animated shapes so its wingbeat stays
@@ -568,6 +568,105 @@ static void drawBlocksBackdrop(float cameraY, float alpha) {
   }
 }
 
+// Near-camera layers. Unlike the backdrop above, these draw after the world so
+// their clipped edge silhouettes can pass in front of it. Keep all opaque ink
+// inside the outer ~60px: depth is useful only while gameplay stays readable.
+static void drawSkiesForeground(float cameraY, float alpha) {
+  for (int i = 0; i < 4; i++) {
+    float depth = 0.56f + (i % 2) * 0.1f;
+    float s = 48.0f + (i % 2) * 8.0f;
+    float x = (i % 2) ? SCREEN_WIDTH + 94.0f : -94.0f;
+    float y =
+        wrapf(i * 267.0f + (float)GetTime() * (8.0f + i) - cameraY * depth,
+              SCREEN_HEIGHT + 360.0f) -
+        180.0f;
+    drawCloud(x, y, s, CLOUD, 0.3f * alpha);
+  }
+}
+
+static void drawStarsForeground(float cameraY, float alpha) {
+  for (int i = 0; i < 5; i++) {
+    float depth = 0.58f + (i % 3) * 0.06f;
+    float s = 54.0f + (i % 2) * 10.0f;
+    float x = (i % 2) ? SCREEN_WIDTH + s * 0.35f : -s * 0.35f;
+    float y =
+        wrapf(i * 241.0f - cameraY * depth, SCREEN_HEIGHT + 300.0f) - 150.0f;
+    drawVoxelIsland(x, y, s, 0.42f * alpha);
+  }
+}
+
+static void drawMazeForeground(float cameraY, float alpha) {
+  float off = wrapf(-cameraY * 0.72f + (float)GetTime() * 9.0f, 180.0f);
+  Color glow = Fade(CLOUD, 0.13f * alpha);
+  Color wall = Fade(ColorBrightness(CLOUD, 0.35f), 0.38f * alpha);
+  BeginBlendMode(BLEND_ADDITIVE);
+  DrawRectangle(0, 0, 9, SCREEN_HEIGHT, glow);
+  DrawRectangle(SCREEN_WIDTH - 9, 0, 9, SCREEN_HEIGHT, glow);
+  for (int side = 0; side < 2; side++) {
+    for (int i = -1; i < 6; i++) {
+      float y = i * 180.0f + off;
+      Rectangle r = {side ? SCREEN_WIDTH - 52.0f : 0.0f, y, 52.0f, 8.0f};
+      DrawRectangleRounded(
+          (Rectangle){r.x - 3.0f, r.y - 3.0f, r.width + 6.0f, 14.0f}, 1.0f, 4,
+          glow);
+      DrawRectangleRounded(r, 1.0f, 4, wall);
+      drawTex(TEX_PUFF, side ? SCREEN_WIDTH - 8.0f : 8.0f, y + 4.0f, 42.0f,
+              42.0f, 0.0f, glow);
+    }
+  }
+  EndBlendMode();
+}
+
+static float tetrominoWidth(int shape, float cell) {
+  int maxX = 0;
+  for (int i = 0; i < 4; i++) {
+    if (TETRO[shape][i][0] > maxX) {
+      maxX = TETRO[shape][i][0];
+    }
+  }
+  return (maxX + 1) * cell;
+}
+
+static void drawBlocksForeground(float cameraY, float alpha) {
+  for (int i = 0; i < 4; i++) {
+    int shape = (i * 2 + 1) % TETRO_COUNT;
+    float depth = 0.58f + (i % 2) * 0.12f;
+    float cell = 30.0f + (i % 2) * 7.0f;
+    float width = tetrominoWidth(shape, cell);
+    float x = (i % 2) ? SCREEN_WIDTH - 44.0f : 44.0f - width;
+    float y = wrapf(i * 257.0f + (float)GetTime() * (22.0f + i * 3.0f) -
+                        cameraY * depth,
+                    SCREEN_HEIGHT + 280.0f) -
+              140.0f;
+    Color c = ColorLerp(SKY_TOP_HIGH, gTheme.confetti[(i + 2) % CONFETTI_COUNT],
+                        0.55f);
+    drawTetromino(x, y, cell, shape, c, 0.38f * alpha);
+  }
+}
+
+static void drawForeground(BackdropStyle style, float cameraY, float alpha) {
+  if (alpha <= 0.01f) {
+    return;
+  }
+  switch (style) {
+  case BACKDROP_HILLS:
+    drawForegroundFoliage(cameraY, alpha);
+    break;
+  case BACKDROP_SKIES:
+    drawSkiesForeground(cameraY, alpha);
+    break;
+  case BACKDROP_STARS:
+    drawStarsForeground(cameraY, alpha);
+    break;
+  case BACKDROP_MAZE:
+    drawMazeForeground(cameraY, alpha);
+    break;
+  case BACKDROP_BLOCKS:
+    drawBlocksForeground(cameraY, alpha);
+    break;
+  }
+}
+
 static void drawBackdrop(BackdropStyle style, float cameraY, float alpha) {
   if (alpha <= 0.01f) {
     return;
@@ -612,6 +711,12 @@ void drawMenuBackground(void) {
 // morphs continuously across the whole band (below); only the shapes wait.
 #define BACKDROP_XFADE_START 0.85f
 
+static float backdropCrossfade(float f) {
+  return f <= BACKDROP_XFADE_START
+             ? 0.0f
+             : (f - BACKDROP_XFADE_START) / (1.0f - BACKDROP_XFADE_START);
+}
+
 // Sky gradient morphs continuously with altitude (blended palette); the two
 // neighbor themes' backdrop *shapes* crossfade only in the last ~15% of the
 // band (BACKDROP_XFADE_START) so the next level's decor appears near the end.
@@ -624,16 +729,24 @@ void drawGameBackground(float cameraY) {
   int lo, hi;
   float f;
   themeBlend(&lo, &hi, &f);
-  float fx = f <= BACKDROP_XFADE_START
-                 ? 0.0f
-                 : (f - BACKDROP_XFADE_START) / (1.0f - BACKDROP_XFADE_START);
+  float fx = backdropCrossfade(f);
   drawBackdrop(THEMES[lo].backdrop, cameraY, 1.0f - fx);
   drawBackdrop(THEMES[hi].backdrop, cameraY, fx);
 }
 
+void drawGameForeground(float cameraY) {
+  int lo, hi;
+  float f;
+  themeBlend(&lo, &hi, &f);
+  float fx = backdropCrossfade(f);
+  drawForeground(THEMES[lo].backdrop, cameraY, 1.0f - fx);
+  drawForeground(THEMES[hi].backdrop, cameraY, fx);
+}
+
 #ifdef BG_SELFTEST
-// Contact strip of all five backdrops, so the later eras can be eyeballed
-// without climbing 80,000 units. Same reason the `post` selftest exists. Needs
+// Contact strip of all five backdrops plus their foreground depth layers, so
+// the later eras can be eyeballed without climbing 80,000 units. Same reason
+// the `post` selftest exists. Needs
 // a real GL context (unlike the svg/tex ones) because it renders the actual
 // draw path.
 //   cc -DBG_SELFTEST src/background.c src/theme.c src/tex.c \
@@ -642,6 +755,7 @@ void drawGameBackground(float cameraY) {
 //      \ -o /tmp/bgtest && /tmp/bgtest /tmp/bgstrip.png
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // Only has to land *inside* each band, so a change to BAND_HEIGHT in theme.c
 // degrades the strip rather than breaking it. Sampled just past each band's
@@ -662,11 +776,40 @@ int main(int argc, char **argv) {
   for (int i = 0; i < THEME_COUNT; i++) {
     BeginTextureMode(rt);
     ClearBackground(BLACK);
-    drawGameBackground(-(i * BAND + BAND * 0.05f)); // just inside the band
+    float cameraY = -(i * BAND + BAND * 0.05f);
+    drawGameBackground(cameraY); // just inside the band
     EndTextureMode();
+    Image base = LoadImageFromTexture(rt.texture);
 
+    // Add the near layer to the same target so the image pair proves two things
+    // the contact strip alone cannot: every theme contributes foreground ink,
+    // and none of it leaks into the central playfield.
+    BeginTextureMode(rt);
+    drawGameForeground(cameraY);
+    EndTextureMode();
     Image im = LoadImageFromTexture(rt.texture);
+    ImageFlipVertical(&base);
     ImageFlipVertical(&im); // framebuffer textures are bottom-up
+    const Color *bp = base.data, *fp = im.data;
+    int edgeChanged = 0, centerChanged = 0;
+    for (int y = 0; y < im.height; y++) {
+      for (int x = 0; x < im.width; x++) {
+        int k = y * im.width + x;
+        int d = abs(fp[k].r - bp[k].r) + abs(fp[k].g - bp[k].g) +
+                abs(fp[k].b - bp[k].b);
+        if (d > 6) {
+          if (x < 100 || x >= im.width - 100) {
+            edgeChanged++;
+          } else {
+            centerChanged++;
+          }
+        }
+      }
+    }
+    assert(edgeChanged > 100 && "theme foreground drew no visible edge ink");
+    assert(centerChanged == 0 && "theme foreground obscures the playfield");
+    UnloadImage(base);
+
     // Every translucent draw blends the target's *alpha* channel down as well
     // as its color, so the readback is a correct picture carrying junk alpha.
     // Left alone, ImageDrawImage would then blend the cell onto the black
