@@ -105,7 +105,7 @@ cmake --build build      # compile; produces ./build/Boing
        -framework Cocoa -framework IOKit -framework CoreVideo -framework OpenGL \
        -o /tmp/textest && /tmp/textest /tmp/texsheet.png
     ```
-  - `bg` / `world`: the two art contact strips - all five backdrops, and one fixed gameplay scene rendered once per era (each cell dressed with its era's mechanic: wind-trailed drifting pads, a pad mid-crumble, frightened ghosts, falling pieces) - so later eras can be eyeballed without climbing 80,000 units. Both need a GL context. `world` additionally runs `checkEras()` first, a headless pass that checks the player's side walls and drives `updateWorld` through each era's rule (spawn gates, horizontal drift + edge reflection, crumble, ghost chase/flee/eat, block descent + crush) - the failures the strip can't see, since the art looks identical when a gate stops firing.
+  - `bg` / `world`: the two art contact strips - all five backdrops, and one fixed gameplay scene rendered once per era (each cell dressed with its era's mechanic: wind-trailed drifting pads, a pad mid-crumble, frightened ghosts, falling pieces) - so later eras can be eyeballed without climbing 80,000 units. Both need a GL context. `world` additionally runs `checkEras()` first, a headless pass that checks the player's side walls and coin-bank saturation, then drives `updateWorld` through each era's rule (spawn gates, horizontal drift + edge reflection, crumble, ghost chase/flee/eat, block descent + crush) - the failures the strip can't see, since the art looks identical when a gate stops firing.
     ```sh
     cc -DBG_SELFTEST src/background.c src/theme.c src/tex.c \
        -Iinclude -Ilib/raylib/src build/lib/raylib/raylib/libraylib.a -lm \
@@ -260,7 +260,7 @@ There are exactly two `RenderTexture`s: post's scene target (above) and `gMenuSn
   - `PU_UPGRADES[PU_UPGRADE_COUNT]` — `{label, base}` per upgrade **track**, `cost(level) = base*(level+1)` via `upgCost`. The `PuTrack` enum is the 12 tracks: Magnet/Rocket/Balloon each Spawn/Effect/Duration, Shield Spawn/Effect only (its duration is an until-hit flag), plus one shared `PU_DEBUFF_SUPPRESS`. `MAX_UPG_LEVEL` = 5 buyable levels each, stored in `puLevel[]`. `STATIC_ASSERT`ed complete.
   - `MISSIONS[]` — data-driven `{desc, stat, threshold, reward}` threshold checks (no predicate code), scored once at game over by `bankRun` against one-time `missionMask` bits. Shown read-only in the MENU overlay, **not** in the shop.
 
-  Query helpers: `skinOwned`/`upgLevel`/`missionDone`, `tryBuy` (the single spend guard), `bankRun`. The skin applies via `setPlayerSkin` and the upgrade levels via `worldSetUpgrades` — both **module globals** mirroring the `gTheme` pattern, so constructor call sites stay unchanged. `loadProgress` clamps everything it reads (`save.json` is a user-editable trust boundary). Adding a skin / upgrade track / mission is one table row.
+  Query helpers: `skinOwned`/`upgLevel`/`missionDone`, `tryBuy` (the single spend guard), `bankRun`. The skin applies via `setPlayerSkin` and the upgrade levels via `worldSetUpgrades` — both **module globals** mirroring the `gTheme` pattern, so constructor call sites stay unchanged. `loadProgress` clamps persisted levels and the coin bank, restores default-skin ownership, and rejects invalid or unowned skin selections (`save.json` is a user-editable trust boundary). Coin-bank additions saturate at `INT_MAX` rather than overflowing. Adding a skin / upgrade track / mission is one table row.
 
 ## Robustness convention
 

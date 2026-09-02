@@ -267,8 +267,8 @@ void drawPlay(Game *g) {
   drawPowerAura(&g->world, &g->player); // rotating rings for active power-ups
   rlPopMatrix();
 
-  // Post-processing for this frame. Bloom follows the altitude's theme, so the
-  // neon level glows and the daylight one doesn't. The Fog debuff is a blur +
+  // Post-processing for this frame. Bloom follows the altitude's theme, from
+  // subtle daylight to the strongest neon glow. The Fog debuff is a blur +
   // drifting haze in the same pass — which means it fogs the HUD too, unlike
   // the flat dim rect it replaced; that's the point, it's a hazard. Fades out
   // over the last ~30 frames so it lifts smoothly instead of popping.

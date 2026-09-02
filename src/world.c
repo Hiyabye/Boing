@@ -872,7 +872,7 @@ void updateWorld(World *world, Player *player) {
 // width, so a glow of radius r asks for 2*r.
 //
 // The theme's bloom weight is *added to* a base rather than replacing it: the
-// day era has themeGlow() == 0, and weighting it out entirely would leave the
+// day era's weight is deliberately small, and using it alone would leave the
 // daylight coins flatter than they were before any of this. So Sunny Hills
 // keeps the light it always had and the neon eras blaze on top of it.
 static void glowStamp(Vector2 c, float w, Color tint, float base, float lit) {
@@ -1247,8 +1247,7 @@ void drawPowerupGlyph(PowerUpType type, Vector2 c, float R, float t) {
     drawSvg(SVG_PU_NO, c.x, c.y, R * 2.0f, 0.0f, RED);
     break;
   }
-  case POWERUP_ROCKET:
-  default: {
+  case POWERUP_ROCKET: {
     float fl = R * (0.6f + 0.35f * sinf(t * 22.0f)); // flame flicker
     DrawPoly((Vector2){c.x, c.y + R * 0.9f + fl * 0.4f}, 3, fl, 90,
              Fade(FLAME, 0.7f));
@@ -1266,6 +1265,8 @@ void drawPowerupGlyph(PowerUpType type, Vector2 c, float R, float t) {
                Fade(RAYWHITE, 0.8f)); // window shine
     break;
   }
+  case POWERUP_COUNT:
+    break;
   }
 }
 
@@ -1408,6 +1409,7 @@ int getScore(const World *world) {
 //      -framework IOKit -framework CoreVideo -framework OpenGL \
 //      -o /tmp/worldtest && /tmp/worldtest /tmp/worldstrip.png
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 
 #define BAND 20000.0f // see BG_SELFTEST: only has to land inside a band
@@ -1441,6 +1443,14 @@ static void checkEras(void) {
     updatePlayer(&p);
     assert(p.position.x == SCREEN_WIDTH - p.radius && p.velocity.x == 0.0f &&
            "player crossed the right wall");
+  }
+
+  // The coin bank saturates instead of overflowing on an extreme save value.
+  {
+    Progress p = {.coinBank = INT_MAX - 1};
+    World w = {.coinsCollected = 2};
+    bankRun(&p, &w);
+    assert(p.coinBank == INT_MAX && "coin bank overflowed");
   }
 
   // The spawn gate: what stamps an era's rule onto an entity at birth.

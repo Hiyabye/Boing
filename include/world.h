@@ -50,7 +50,7 @@ typedef enum {
   // Debuffs (bad pickups to dodge): flagged `debuff` in POWERUP_DEFS.
   POWERUP_ANCHOR, // heavier gravity, falls faster
   POWERUP_DIZZY,  // reversed steering
-  POWERUP_FOG,    // screen dims, cuts visibility
+  POWERUP_FOG,    // blurs and hazes the screen, cutting visibility
   POWERUP_BUTTER, // butterfingers: coins slip through, can't collect
   POWERUP_COUNT
 } PowerUpType;

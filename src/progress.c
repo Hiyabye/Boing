@@ -3,6 +3,8 @@
 #include "core.h" // STATIC_ASSERT
 #include "persist.h"
 
+#include <limits.h>
+
 // Skin palettes: {body, bodyDark, hat, glasses}. Literal Colors (not the gTheme
 // macros, which are runtime lvalues and can't initialize a static table).
 // Bubblegum matches the original player pink so the default look is unchanged.
@@ -88,8 +90,14 @@ bool tryBuy(Progress *p, int cost) {
   return true;
 }
 
+// Bank additions are non-negative. Saturate rather than overflow if a save was
+// edited to INT_MAX or an exceptionally long-running profile reaches it.
+static void addCoins(Progress *p, int amount) {
+  p->coinBank = amount > INT_MAX - p->coinBank ? INT_MAX : p->coinBank + amount;
+}
+
 int bankRun(Progress *p, const World *w) {
-  p->coinBank += w->coinsCollected;
+  addCoins(p, w->coinsCollected);
   int newly = 0;
   for (int i = 0; i < MISSION_COUNT; i++) {
     if (missionDone(p, i)) {
@@ -112,7 +120,7 @@ int bankRun(Progress *p, const World *w) {
     }
     if (v >= MISSIONS[i].threshold) {
       p->missionMask |= (1 << i);
-      p->coinBank += MISSIONS[i].reward;
+      addCoins(p, MISSIONS[i].reward);
       newly++;
     }
   }

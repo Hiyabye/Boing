@@ -93,7 +93,7 @@ int main(void) {
       .progress = progress,
       .highScore = loadHighScore(),
   };
-  applySettings(&game.settings); // target FPS, window size, master volume
+  applySettings(&game.settings); // target FPS, window size, audio levels
 
   // Draw runs in fixed 800x800 logical coords; a GPU scale matrix maps them to
   // post's offscreen target each frame, so the resolution setting resizes the

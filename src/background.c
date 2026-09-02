@@ -465,10 +465,14 @@ static void drawGhost(float x, float y, float s, Color c, float a) {
 
 // Small stable hash for the maze wall/pellet pattern (per world cell).
 static int hash2(int i, int j) {
-  int h = i * 92837111 + j * 689287499;
-  h ^= h >> 13;
-  h *= 1274126177;
-  return h & 0x7fffffff;
+  unsigned h = (unsigned)i * 92837111u + (unsigned)j * 689287499u;
+  unsigned shifted = h >> 13;
+  if (h & 0x80000000u) {
+    shifted |= 0xfff80000u; // preserve the old arithmetic right shift
+  }
+  h ^= shifted;
+  h *= 1274126177u;
+  return (int)(h & 0x7fffffffu);
 }
 
 // L4 backdrop: a scrolling neon maze (broken corridors, not a full grid) with
@@ -582,7 +586,6 @@ static void drawBackdrop(BackdropStyle style, float cameraY, float alpha) {
     drawBlocksBackdrop(cameraY, alpha);
     break;
   case BACKDROP_HILLS:
-  default:
     drawHillsBackdrop(cameraY, alpha);
     break;
   }
