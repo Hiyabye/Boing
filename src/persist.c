@@ -103,6 +103,7 @@ void configSetInt(const char *key, int val) {
   }
   if (gCount < (int)(sizeof(gMap) / sizeof(gMap[0]))) {
     strncpy(gMap[gCount].key, key, sizeof(gMap[gCount].key) - 1);
+    gMap[gCount].key[sizeof(gMap[gCount].key) - 1] = '\0';
     gMap[gCount].val = val;
     gCount++;
   }
@@ -137,6 +138,13 @@ int main(void) {
   assert(configGetInt("highScore", 0) == 100);
   assert(configGetInt("coinBank", 0) == -3);
   assert(configGetInt("missing", 7) == 7); // default fallback
+
+  // Long internal keys truncate safely instead of relying on zeroed storage for
+  // strncpy's missing terminator.
+  gCount = 0;
+  memset(gMap[0].key, 'x', sizeof(gMap[0].key));
+  configSetInt("123456789012345678901234567890", 1);
+  assert(gMap[0].key[sizeof(gMap[0].key) - 1] == '\0');
 
   FILE *g = fopen(path, "w");
   assert(g != NULL);
