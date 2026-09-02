@@ -4,8 +4,8 @@
 #include "raylib.h"
 
 // Mouse-driven UI, shared by every screen. All hit-testing is done in virtual
-// (SCREEN_WIDTH x SCREEN_HEIGHT) coordinates so it matches the fixed-size
-// render target regardless of the actual window resolution.
+// (SCREEN_WIDTH x SCREEN_HEIGHT) coordinates so it matches the logical draw
+// space regardless of the actual window resolution.
 
 typedef enum {
   ICON_NONE,
@@ -18,8 +18,8 @@ typedef enum {
   ICON_EXIT,
   ICON_HEART,
   ICON_SHOP,     // stacked-coins glyph for the shop
-  ICON_MISSIONS, // checklist glyph (check tick + task lines) for the missions
-                 // tab
+  ICON_MISSIONS, // checklist glyph (check tick + task lines) for missions
+  ICON_COUNT
 } IconKind;
 
 // Window mouse position mapped into the virtual 800x800 render space.
@@ -65,11 +65,11 @@ int uiTextWidth(const char *text, int size);
 void drawTextShadow(const char *text, int x, int y, int size, Color color);
 void drawCenteredText(const char *text, int y, int fontSize, Color color);
 
-// Rounded button with hover highlight + optional shape icon and label, drawn
-// in draw(); detect its click separately with clicked(rect) in update().
+// Rounded button with hover highlight + optional icon and label, drawn in
+// draw(); pair it with uiItem(rect) in update() for mouse and keyboard input.
 void uiButton(Rectangle r, const char *label, IconKind icon);
 
-// Draw one primitive-only icon centered at (cx,cy), sized ~s, in color c.
+// Draw one SVG icon centered at (cx,cy), sized ~s, in color c.
 void drawIcon(IconKind kind, float cx, float cy, float s, Color c);
 
 #endif // UI_H

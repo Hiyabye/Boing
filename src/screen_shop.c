@@ -21,7 +21,9 @@
 
 // Skin swatches across one row, then one card per power-up laid out the same
 // way, each card stacking its upgrade axes vertically, then Back.
-static Rectangle rShopSkin(int i) { return centeredRow(175, 120, 110, i, 4); }
+static Rectangle rShopSkin(int i) {
+  return centeredRow(175, 120, 110, i, SKIN_COUNT);
+}
 
 // Power-up columns for the upgrade grid: header name, an icon (PowerUpType for
 // drawPowerupGlyph — the Debuffs card borrows the Anchor glyph), and its

@@ -229,7 +229,7 @@ static const Note NOTES_NATURE[] = {
     {A2, 31.5f, 0.25f},   {A3, 31.75f, 0.25f},
 };
 
-// Track L4 — Falling Blocks: energetic puzzle-arcade theme (A minor, 64s loop).
+// Track L5 - Falling Blocks: energetic puzzle-arcade theme (A minor, 64s loop).
 // Same {frequency, start, duration} form as NOTES_NATURE (start/duration in
 // seconds within this track's loop). The shared A2 tonic-pedal pad plays under
 // every track; keep each track's loop length a whole number of seconds so that
@@ -655,7 +655,55 @@ static const Note NOTES_ARCADE[] = {
     {A3, 63.75f, 0.25f},
 };
 
-// Track L2 — Night Blocks: calm, sparse, melancholic Am–F–C–G pad with a
+// Track L2 - Birdsong Skies: light A-major arpeggios with high bird-call
+// answers (16s loop). Sparse soft tones leave air between phrases.
+static const Note NOTES_SKIES[] = {
+    // floating lead
+    {A4, 0.0f, 0.45f},
+    {CS5, 0.5f, 0.45f},
+    {E5, 1.0f, 0.9f},
+    {B4, 2.0f, 0.45f},
+    {D5, 2.5f, 0.45f},
+    {FS5, 3.0f, 0.9f},
+    {CS5, 4.0f, 0.45f},
+    {E5, 4.5f, 0.45f},
+    {A5, 5.0f, 0.9f},
+    {E5, 6.0f, 0.45f},
+    {CS5, 6.5f, 0.45f},
+    {B4, 7.0f, 0.9f},
+    {A4, 8.0f, 0.45f},
+    {CS5, 8.5f, 0.45f},
+    {FS5, 9.0f, 0.9f},
+    {E5, 10.0f, 0.45f},
+    {B4, 10.5f, 0.45f},
+    {D5, 11.0f, 0.9f},
+    {CS5, 12.0f, 0.45f},
+    {E5, 12.5f, 0.45f},
+    {B5, 13.0f, 0.9f},
+    {E5, 14.0f, 0.45f},
+    {CS5, 14.5f, 0.45f},
+    {A4, 15.0f, 0.9f},
+    // quick high answers, like calls crossing the stereo-less open space
+    {E6, 1.75f, 0.18f},
+    {FS6, 1.98f, 0.18f},
+    {A6, 5.75f, 0.18f},
+    {E6, 5.98f, 0.18f},
+    {CS6, 9.75f, 0.18f},
+    {E6, 9.98f, 0.18f},
+    {B5, 13.75f, 0.18f},
+    {A5, 13.98f, 0.18f},
+    // slow roots and fifths keep the breeze grounded without percussion
+    {A3, 0.0f, 1.9f},
+    {E4, 2.0f, 1.9f},
+    {D3, 4.0f, 1.9f},
+    {A3, 6.0f, 1.9f},
+    {FS3, 8.0f, 1.9f},
+    {CS4, 10.0f, 1.9f},
+    {E3, 12.0f, 1.9f},
+    {B3, 14.0f, 1.9f},
+};
+
+// Track L3 - Night Blocks: calm, sparse, melancholic Am-F-C-G pad with a
 // slow pentatonic melody + high sparkle (A minor, 32s loop).
 static const Note NOTES_NIGHT[] = {
     // melody (long, breathing)
@@ -695,7 +743,7 @@ static const Note NOTES_NIGHT[] = {
     {G2, 28.0f, 3.9f},
 };
 
-// Track L3 — Neon Maze: tense, driving chase riff over Am–Dm–E, staccato
+// Track L4 - Neon Maze: tense, driving chase riff over Am-Dm-E, staccato
 // melody stabs + walking octave bass (A minor, 16s loop).
 static const Note NOTES_MAZE[] = {
     // melody stabs
@@ -822,23 +870,31 @@ typedef struct {
 } Track;
 #define TRACK(a, dur, tb, dr, ec)                                              \
   {(a), (int)(sizeof(a) / sizeof((a)[0])), (dur), (tb), (dr), (ec)}
-// TRACK_L1..L4/MENU/GAMEOVER live in sound.h (themes select L1..L4 by climb
+// TRACK_L1..L5/MENU/GAMEOVER live in sound.h (themes select L1..L5 by climb
 // band; main.c hard-cuts to MENU/GAMEOVER by state). Each track's duration must
 // give the A2 pedal whole cycles (110Hz * integer seconds) for a seamless seam
 // — 16/32/64/8s all qualify.
+// Positional in exact MusicTrack order, so dropping any row shortens the table
+// and fails the count check instead of leaving a zero-filled track.
 static const Track TRACKS[] = {
-    [TRACK_L1] = TRACK(NOTES_NATURE, 32.0f, TIMBRE_WARM, DRUMS_FOUR, 0.2f),
-    [TRACK_L2] = TRACK(NOTES_NIGHT, 32.0f, TIMBRE_SOFT, DRUMS_NONE, 0.35f),
-    [TRACK_L3] = TRACK(NOTES_MAZE, 16.0f, TIMBRE_PULSE, DRUMS_DRIVING, 0.15f),
-    [TRACK_L4] =
-        TRACK(NOTES_ARCADE, 64.0f, TIMBRE_SQUARE, DRUMS_DRIVING, 0.15f),
-    [TRACK_MENU] = TRACK(NOTES_MENU, 32.0f, TIMBRE_WARM, DRUMS_NONE, 0.2f),
-    [TRACK_GAMEOVER] =
-        TRACK(NOTES_GAMEOVER, 8.0f, TIMBRE_SOFT, DRUMS_NONE, 0.2f),
+    TRACK(NOTES_NATURE, 32.0f, TIMBRE_WARM, DRUMS_FOUR, 0.2f),
+    TRACK(NOTES_SKIES, 16.0f, TIMBRE_SOFT, DRUMS_NONE, 0.3f),
+    TRACK(NOTES_NIGHT, 32.0f, TIMBRE_SOFT, DRUMS_NONE, 0.35f),
+    TRACK(NOTES_MAZE, 16.0f, TIMBRE_PULSE, DRUMS_DRIVING, 0.15f),
+    TRACK(NOTES_ARCADE, 64.0f, TIMBRE_SQUARE, DRUMS_DRIVING, 0.15f),
+    TRACK(NOTES_MENU, 32.0f, TIMBRE_WARM, DRUMS_NONE, 0.2f),
+    TRACK(NOTES_GAMEOVER, 8.0f, TIMBRE_SOFT, DRUMS_NONE, 0.2f),
 };
-#define TRACK_COUNT ((int)(sizeof(TRACKS) / sizeof(TRACKS[0])))
-// Every MusicTrack id must have a TRACKS[] row — a gap would leave a NULL loop.
-STATIC_ASSERT(TRACK_COUNT == TRACK_GAMEOVER + 1, tracks_full);
+// Every MusicTrack id must have a TRACKS[] row.
+STATIC_ASSERT(sizeof(TRACKS) / sizeof(TRACKS[0]) == TRACK_COUNT, tracks_full);
+
+// Startup priority: the only track the first real screen needs, then gameplay
+// in climb order, then the game-over track.
+static const MusicTrack PRELOAD_ORDER[] = {TRACK_MENU,    TRACK_L1, TRACK_L2,
+                                           TRACK_L3,      TRACK_L4, TRACK_L5,
+                                           TRACK_GAMEOVER};
+STATIC_ASSERT(sizeof(PRELOAD_ORDER) / sizeof(PRELOAD_ORDER[0]) == TRACK_COUNT,
+              audio_preload_order_full);
 
 // One precomputed loop buffer per track. Playback crossfades between the
 // currently-selected track and the one we're fading out of.
@@ -1017,32 +1073,38 @@ static void buildLoop(int track) {
   int samples = (int)(TRACKS[track].duration * SAMPLE_RATE);
   loopSamples[track] = samples;
 
-  loopBuffer[track] = malloc(samples * sizeof(float));
+  loopBuffer[track] = calloc((size_t)samples, sizeof(float));
   float *buf = loopBuffer[track];
   if (buf == NULL) {
     return; // out of memory: leave the slot NULL; updateAudio plays it silent
   }
   // Layered build: (a) notes + pedal, (b) drums, (c) echo, (d) normalize.
-  for (int i = 0; i < samples; i++) {
-    float t = (float)i / SAMPLE_RATE;
-    float sample = 0.0f;
-    for (int n = 0; n < noteCount; n++) {
-      float local = t - notes[n].start;
-      if (local >= 0.0f && local < notes[n].duration) {
-        sample += 0.5f * accent(notes[n].start) *
-                  adsr(local, notes[n].duration) *
+  // Walk only each note's live span. The old sample-first loop tested every
+  // note against every sample, spending almost all startup time rejecting
+  // silent notes (especially in the 64-second track).
+  for (int n = 0; n < noteCount; n++) {
+    float gain = 0.5f * accent(notes[n].start);
+    int start = (int)(notes[n].start * SAMPLE_RATE);
+    for (int i = start; i < samples; i++) {
+      float local = (float)i / SAMPLE_RATE - notes[n].start;
+      if (local >= notes[n].duration) {
+        break;
+      }
+      if (local >= 0.0f) {
+        buf[i] += gain * adsr(local, notes[n].duration) *
                   tone(notes[n].frequency, local, timbre);
       }
     }
+  }
+  for (int i = 0; i < samples; i++) {
+    float t = (float)i / SAMPLE_RATE;
     // Soft tonic (A2) pedal pad under everything for warmth, with slow tremolo.
     // A2=110Hz over an integer number of seconds is whole cycles, so the loop
     // seam stays seamless for any track (32s -> 3520, 64s -> 7040).
     float trem = 0.85f + 0.15f * sinf(2.0f * PI * 0.2f * t);
-    sample +=
+    buf[i] +=
         0.07f * trem *
         (sinf(2.0f * PI * A2 * t) + 0.5f * sinf(2.0f * PI * A2 * 2.0f * t));
-
-    buf[i] = sample;
   }
 
   // (b) Percussion, baked straight into the buffer with seam-wrapping tails.
@@ -1073,10 +1135,10 @@ static void buildLoop(int track) {
   }
 }
 
-// The four level tracks crossfade into each other as the theme morphs
-// mid-climb; menu and game over are separate screens, so switching to/from them
-// is a hard cut — no music bleeds across a UI boundary.
-static bool isLevelTrack(int t) { return t >= TRACK_L1 && t <= TRACK_L4; }
+// The five level tracks crossfade at theme-band boundaries; menu and game over
+// are separate screens, so switching to/from them is a hard cut - no music
+// bleeds across a UI boundary.
+static bool isLevelTrack(int t) { return t >= TRACK_L1 && t <= TRACK_L5; }
 
 // Switch to `track` (no-op if already selected). Crossfades over FADE_SAMPLES
 // only between two level tracks; any switch involving menu/game over cuts
@@ -1098,16 +1160,16 @@ void setTrack(int track) {
 
 // Effect lengths in samples (SfxId lives in sound.h).
 static const int sfxLen[] = {
-    [SFX_COIN] = (int)(0.12f * SAMPLE_RATE),
-    [SFX_BOUNCE] = (int)(0.15f * SAMPLE_RATE),
-    [SFX_POWERUP] = (int)(0.35f * SAMPLE_RATE),
-    [SFX_HIT] = (int)(0.40f * SAMPLE_RATE),
-    [SFX_SELECT] = (int)(0.08f * SAMPLE_RATE),
-    [SFX_LEVELUP] = (int)(0.70f * SAMPLE_RATE),
-    [SFX_GAMEOVER] = (int)(0.50f * SAMPLE_RATE),
-    [SFX_SPLAT] = (int)(0.18f * SAMPLE_RATE),
-    [SFX_PICKUP] = (int)(0.22f * SAMPLE_RATE),
-    [SFX_NEWBEST] = (int)(1.10f * SAMPLE_RATE),
+    (int)(0.12f * SAMPLE_RATE), // SFX_COIN
+    (int)(0.15f * SAMPLE_RATE), // SFX_BOUNCE
+    (int)(0.35f * SAMPLE_RATE), // SFX_POWERUP
+    (int)(0.40f * SAMPLE_RATE), // SFX_HIT
+    (int)(0.08f * SAMPLE_RATE), // SFX_SELECT
+    (int)(0.70f * SAMPLE_RATE), // SFX_LEVELUP
+    (int)(0.50f * SAMPLE_RATE), // SFX_GAMEOVER
+    (int)(0.18f * SAMPLE_RATE), // SFX_SPLAT
+    (int)(0.22f * SAMPLE_RATE), // SFX_PICKUP
+    (int)(1.10f * SAMPLE_RATE), // SFX_NEWBEST
 };
 // Every SfxId must have a length — a 0 slot divides by zero in renderVoice.
 STATIC_ASSERT(sizeof(sfxLen) / sizeof(sfxLen[0]) == SFX_COUNT,
@@ -1158,7 +1220,7 @@ static float renderVoice(int type, int pos, float pitch) {
   float s = 0.0f;
   // ponytail: the neon levels (Maze/Blocks) get a harsher, brighter 8-bit
   // variant per effect — hand-tuned, not a data table like the music.
-  bool arc = (curTrack == TRACK_L3 || curTrack == TRACK_L4);
+  bool arc = (curTrack == TRACK_L4 || curTrack == TRACK_L5);
   switch (type) {
   case SFX_COIN: // rising two-note blip (brighter on arcade)
     s = square(pos < len / 2 ? (arc ? D6 : B5) : (arc ? G6 : E6), t);
@@ -1231,24 +1293,23 @@ void initAudio(AudioStream *stream) {
   InitAudioDevice();
   SetAudioStreamBufferSizeDefault(BUFFER_SIZE);
 
-  // Nothing is baked here: every track streams in via audioPreloadStep()
-  // during the startup splash, so the window paints its first frame
-  // immediately instead of after a track's worth of prerender. Until a track's
-  // buffer exists updateAudio reads it as silence, and the splash is silent
-  // anyway (main skips updateAudio in that state).
+  // Nothing is baked here: main.c feeds one track per frame through
+  // audioPreloadStep(), with menu music first. Until a track's buffer exists,
+  // updateAudio reads it as silence; the splash itself stays silent.
   *stream = LoadAudioStream(SAMPLE_RATE, 32, 1);
   PlayAudioStream(*stream);
 }
 
-// Bake the next un-baked track. Marches an index forward so a failed malloc
-// (buildLoop leaves the slot NULL) isn't retried forever — it still counts as
-// done. Returns true once all TRACK_COUNT tracks have been attempted.
+// Bake the next un-baked track. Menu goes first so the splash can start its
+// black dip immediately; main.c keeps calling this during the dip and beyond,
+// so gameplay tracks never hold the menu hostage. A failed malloc still counts
+// as attempted and is not retried forever.
 bool audioPreloadStep(void) {
   static int next = 0;
   if (next >= TRACK_COUNT) {
     return true;
   }
-  buildLoop(next++); // idempotent: TRACK_MENU (already baked) is a no-op
+  buildLoop(PRELOAD_ORDER[next++]);
   return next >= TRACK_COUNT;
 }
 
@@ -1311,3 +1372,36 @@ void deinitAudio(AudioStream *stream) {
     loopPos[t] = 0;
   }
 }
+
+#ifdef SOUND_SELFTEST
+// Headless startup check: proves the menu track is attempted first and every
+// generated loop is finite, non-silent and normalized. Build:
+//   cc -DSOUND_SELFTEST src/sound.c -Iinclude -Ilib/raylib/src \
+//      build/lib/raylib/raylib/libraylib.a -lm -framework Cocoa \
+//      -framework IOKit -framework CoreVideo -framework OpenGL \
+//      -o /tmp/soundtest && /tmp/soundtest
+#include <stdio.h>
+
+int main(void) {
+  SetRandomSeed(1234);
+  assert(!audioPreloadStep());
+  assert(loopBuffer[TRACK_MENU] != NULL &&
+         "menu track was not preloaded first");
+  assert(loopBuffer[TRACK_L1] == NULL && "gameplay track preempted menu music");
+  while (!audioPreloadStep()) {
+  }
+
+  for (int t = 0; t < TRACK_COUNT; t++) {
+    assert(loopBuffer[t] != NULL && loopSamples[t] > 0);
+    float peak = 0.0f;
+    for (int i = 0; i < loopSamples[t]; i++) {
+      assert(isfinite(loopBuffer[t][i]));
+      float mag = fabsf(loopBuffer[t][i]);
+      peak = (mag > peak) ? mag : peak;
+    }
+    assert(peak > 0.89f && peak < 0.91f && "track is silent or not normalized");
+  }
+  printf("ok - menu first, %d finite normalized tracks\n", TRACK_COUNT);
+  return 0;
+}
+#endif

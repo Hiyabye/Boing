@@ -16,16 +16,13 @@ static const int RES_OPTIONS[] = {600,  700,  800,  900, 1000,
 
 // The settings screen is one row per option. Adding a row = a new RowKind, a
 // table entry, and a case in changeRow()/formatValue() below.
-typedef enum { ROW_FPS, ROW_RES, ROW_MUSIC, ROW_SFX } RowKind;
-static const char *const ROW_LABELS[] = {
-    [ROW_FPS] = "FRAMERATE",
-    [ROW_RES] = "RESOLUTION",
-    [ROW_MUSIC] = "MUSIC",
-    [ROW_SFX] = "SFX",
-};
-#define ROW_COUNT ((int)(sizeof(ROW_LABELS) / sizeof(ROW_LABELS[0])))
+typedef enum { ROW_FPS, ROW_RES, ROW_MUSIC, ROW_SFX, ROW_COUNT } RowKind;
+// Positional in exact RowKind order, so a missing label shortens the table.
+static const char *const ROW_LABELS[] = {"FRAMERATE", "RESOLUTION", "MUSIC",
+                                         "SFX"};
 // Every RowKind must have a label (and a case in the row switches below).
-STATIC_ASSERT(ROW_COUNT == ROW_SFX + 1, rows_full);
+STATIC_ASSERT(sizeof(ROW_LABELS) / sizeof(ROW_LABELS[0]) == ROW_COUNT,
+              rows_full);
 
 static int selRow = 0;
 static int dragRow = -1; // row whose slider is being dragged, -1 = none

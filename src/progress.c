@@ -30,18 +30,17 @@ const int SKIN_COUNT = (int)(sizeof(SKINS) / sizeof(SKINS[0]));
 // is the real capacity of the save format, not just of the loop below.
 STATIC_ASSERT(sizeof(SKINS) / sizeof(SKINS[0]) <= 31, skins_fit_mask);
 
-// Unsized on purpose, here and in the progress.h declaration — see POWERUP_DEFS
-// in world.c for why both matter and for the designated-initializer limit.
+// Unsized and positional on purpose, here and in the progress.h declaration:
+// dropping any PuTrack row must shorten the table and fail the count check.
 const PuUpgradeDef PU_UPGRADES[] = {
     // label, base cost (level cost = base * (level+1)). Spawn cheapest, Effect
     // dearest; the shared debuff-suppress is the premium sink.
     // Short axis-only labels: the SHOP card header supplies the power-up name.
-    [PU_MAGNET_SPAWN] = {"Spawn", 40},    [PU_MAGNET_EFFECT] = {"Range", 60},
-    [PU_MAGNET_DURATION] = {"Time", 50},  [PU_ROCKET_SPAWN] = {"Spawn", 40},
-    [PU_ROCKET_EFFECT] = {"Thrust", 60},  [PU_ROCKET_DURATION] = {"Time", 50},
-    [PU_BALLOON_SPAWN] = {"Spawn", 40},   [PU_BALLOON_EFFECT] = {"Lift", 60},
-    [PU_BALLOON_DURATION] = {"Time", 50}, [PU_SHIELD_SPAWN] = {"Spawn", 40},
-    [PU_SHIELD_EFFECT] = {"Hits", 80},    [PU_DEBUFF_SUPPRESS] = {"Rarer", 100},
+    {"Spawn", 40},  {"Range", 60},  {"Time", 50}, // Magnet
+    {"Spawn", 40},  {"Thrust", 60}, {"Time", 50}, // Rocket
+    {"Spawn", 40},  {"Lift", 60},   {"Time", 50}, // Balloon
+    {"Spawn", 40},  {"Hits", 80},                 // Shield
+    {"Rarer", 100},                               // Debuffs
 };
 // Enum-indexed: a new PuTrack without a row here loops past the array end, and
 // puLevel[] in Progress must match this size (both keyed by PU_UPGRADE_COUNT).
@@ -62,11 +61,11 @@ int upgCost(int track, int level) {
 }
 
 const MissionDef MISSIONS[] = {
-    {"Reach the Neon Maze", MSTAT_LEVEL, 2, 100},
+    {"Reach the Neon Maze", MSTAT_LEVEL, 3, 100},
     {"Collect 50 coins in one run", MSTAT_COINS_RUN, 50, 100},
     {"Chain a x10 combo", MSTAT_COMBO, 10, 100},
     {"Score 5000 in one run", MSTAT_SCORE, 5000, 150},
-    {"Reach the Falling Blocks", MSTAT_LEVEL, 3, 200},
+    {"Reach the Falling Blocks", MSTAT_LEVEL, 4, 200},
 };
 const int MISSION_COUNT = (int)(sizeof(MISSIONS) / sizeof(MISSIONS[0]));
 // Same bitmask ceiling as SKINS above: missionMask pays each reward once via

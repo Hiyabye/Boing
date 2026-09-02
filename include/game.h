@@ -70,7 +70,7 @@ void saveHighScore(int best);
 // ---------------------------------------------------------------------------
 // Button rects live in virtual (800x800) space. Convention: each button is one
 // rect helper in its screen's file, referenced by uiButton(rect,...) in draw()
-// and by clicked(rect) in the matching update(). These two build the common
+// and by uiItem(rect) in the matching update(). These two build the common
 // layouts: a w-wide, h-tall button centered at row y, and button `idx` of `n`
 // equal buttons laid out as one centered row.
 Rectangle centeredBtn(float y, float w, float h);

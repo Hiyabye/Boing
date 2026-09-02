@@ -11,16 +11,17 @@
 
 typedef enum {
   BACKDROP_HILLS, // L1: day sky, clouds + rolling green hills/bushes
-  BACKDROP_STARS, // L2: night sky, moon + pixel stars + blocky terrain
-  BACKDROP_MAZE,  // L3: neon maze lattice + pellet dots on a dark ground
-  BACKDROP_BLOCKS // L4: falling neon tetromino cells
+  BACKDROP_SKIES, // L2: open blue sky, high clouds + flying birds
+  BACKDROP_STARS, // L3: night sky, moon + pixel stars + blocky terrain
+  BACKDROP_MAZE,  // L4: neon maze lattice + pellet dots on a dark ground
+  BACKDROP_BLOCKS // L5: falling neon tetromino cells
 } BackdropStyle;
 
 // Number of rows in THEMES[] (theme.c static-asserts the table matches) and the
 // per-theme particle-color count. Macros, not `const int`, so tables keyed off
 // the theme list can be checked at compile time — see ERA_NAMES in
 // screen_play.c, which must stay one name per theme.
-#define THEME_COUNT 4
+#define THEME_COUNT 5
 #define CONFETTI_COUNT 6
 
 // One theme. Every Color must come before `backdrop` — themeUpdate() blends the
@@ -56,10 +57,10 @@ void themeUpdate(float ascent);
 // The two neighbor theme indices and blend factor f (0..1) from the last
 // themeUpdate — used by the background to crossfade backdrop shapes.
 void themeBlend(int *lo, int *hi, float *f);
-// The music/SFX track for the current blend (switches at the band midpoint).
+// The music/SFX track for the current level (switches at the band boundary).
 int themeTrack(void);
-// Post-processing bloom weight (0..1) for the current blend — 0 on the daylight
-// level, full on the neon one, blended across the band like the palette.
+// Post-processing bloom weight (0..1) for the current blend - subtle in
+// daylight, full in the neon level, blended across the band like the palette.
 float themeGlow(void);
 // 0-based level fully entered at `ascent` (see theme.c); unbounded — themes
 // loop once past the last band (nature->arcade->nature->…).

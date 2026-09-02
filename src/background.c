@@ -7,9 +7,7 @@
 
 #include <math.h>
 
-#define CLOUD_COUNT 14
 #define BLOCK_COUNT 20
-#define HILL_COUNT 10
 #define STAR_COUNT 44
 #define MAZE_CELL 110.0f
 #define SUN_X (SCREEN_WIDTH * 0.78f)
@@ -26,12 +24,13 @@ static float wrapf(float value, float range) {
 // up during a theme transition.
 static float parallaxDepth(int i) { return 0.25f + (i % 3) * 0.2f; }
 
-// Fluffy cloud: a clump of three TEX_CLOUD stamps. One quad would read as a
-// circle however much noise is inside it — the mask is radial — so the lumpy
-// silhouette still has to come from the arrangement, exactly as the old
-// five-circle stack made it. What the texture buys is the chewed edge and the
-// internal structure the flat circles never had.
+// Fluffy cloud: one shaded underpaint plus three TEX_CLOUD body stamps. One
+// quad would read as a circle however much noise is inside it, so the lumpy
+// silhouette still comes from the arrangement. The texture supplies the
+// chewed edge and internal structure that flat circles cannot.
 static void drawCloud(float x, float y, float s, Color c, float a) {
+  drawTex(TEX_CLOUD, x, y + 0.4f * s, 5.3f * s, 2.6f * s, 0.0f,
+          Fade(CLOUD_SHADE, 0.38f * a));
   Color col = Fade(c, a);
   drawTex(TEX_CLOUD, x - 1.3f * s, y + 0.15f * s, 2.9f * s, 2.1f * s, 0.0f,
           col);
@@ -77,7 +76,7 @@ static void drawBlockC(float x, float y, float s, Color c, float a) {
 }
 
 // The seven tetromino footprints as (dx,dy) cells; drawTetromino stamps four
-// beveled cells so the L4 backdrop rains real shapes, not lone squares.
+// beveled cells so the L5 backdrop rains real shapes, not lone squares.
 // Kept non-negative so world.c can use the same offsets as collision boxes.
 const signed char TETRO[][4][2] = {
     {{0, 0}, {1, 0}, {2, 0}, {3, 0}}, // I
@@ -99,101 +98,240 @@ void drawTetromino(float x, float y, float cell, int shape, Color c, float a) {
   }
 }
 
-// A rounded grassy mound: shaded skirt, rounded crown, and a brighter sunlit
-// grass cap on top for depth (vs. the old flat single-color ellipse).
-static void drawHill(float x, float baseY, float w, Color base, float a) {
-  Color body = Fade(base, a);
-  DrawRectangle(x - w, baseY, 2.0f * w, w, body); // skirt to the baseline
-  DrawEllipse(x, baseY, w, w * 0.55f, body);      // rounded crown
-  DrawEllipse(x, baseY - w * 0.08f, w * 0.82f, w * 0.4f,
-              Fade(ColorBrightness(base, 0.28f), a)); // sunlit grass cap
+// The landscape is built from broad illustrated planes instead of stacked
+// ellipses. Each ridge is an x-monotonic polygon, so it has a clean silhouette
+// without a rectangular skirt showing through the layer above it.
+#define RIDGE_POINTS 19
+static float ridgeY(float x, float baseY, float amp, float phase, float peaks) {
+  float u = (x + phase) / SCREEN_WIDTH;
+  float rolling =
+      sinf(u * PI * 2.0f) + sinf(u * PI * 5.0f + phase * 0.01f) * 0.28f;
+  float mountain = -0.45f - fabsf(sinf(u * PI * 3.0f + phase * 0.008f)) -
+                   fabsf(sinf(u * PI * 7.0f)) * 0.18f;
+  return baseY + amp * (rolling * (1.0f - peaks) + mountain * peaks);
 }
 
-// A little round-canopy tree: brown trunk + layered green foliage with a
-// highlight, for the crests of the L1 hills.
-static void drawTree(float x, float groundY, float s, float a) {
-  DrawRectangle(x - s * 0.12f, groundY - s * 1.1f, s * 0.24f, s * 1.1f,
-                Fade((Color){0x7A, 0x4A, 0x2A, 0xFF}, a)); // trunk
-  Color g = GRASS, gd = GRASS_DK;
-  DrawCircle(x, groundY - s * 1.5f, s * 0.75f, Fade(gd, a));
-  DrawCircle(x - s * 0.4f, groundY - s * 1.3f, s * 0.6f, Fade(gd, a));
-  DrawCircle(x + s * 0.4f, groundY - s * 1.3f, s * 0.6f, Fade(gd, a));
-  DrawCircle(x, groundY - s * 1.6f, s * 0.62f, Fade(g, a));
-  DrawCircle(x - s * 0.3f, groundY - s * 1.75f, s * 0.32f,
-             Fade(ColorBrightness(g, 0.3f), a)); // sun-catch highlight
+static void drawLandscapeBand(float baseY, float amp, float phase, Color c,
+                              float alpha, float rim, float peaks) {
+  Vector2 ridge[RIDGE_POINTS];
+  Vector2 fan[RIDGE_POINTS + 3];
+  fan[0] = (Vector2){SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT + 120.0f};
+  fan[1] = (Vector2){SCREEN_WIDTH + 80.0f, SCREEN_HEIGHT + 120.0f};
+  for (int i = 0; i < RIDGE_POINTS; i++) {
+    float x = -80.0f + i * (SCREEN_WIDTH + 160.0f) / (RIDGE_POINTS - 1);
+    ridge[i] = (Vector2){x, ridgeY(x, baseY, amp, phase, peaks)};
+  }
+  // raylib culls clockwise triangles in its y-down shape coordinates, so the
+  // fan boundary runs from bottom-right across the ridge right-to-left.
+  for (int i = 0; i < RIDGE_POINTS; i++) {
+    fan[i + 2] = ridge[RIDGE_POINTS - 1 - i];
+  }
+  fan[RIDGE_POINTS + 2] = (Vector2){-80.0f, SCREEN_HEIGHT + 120.0f};
+  DrawTriangleFan(fan, RIDGE_POINTS + 3, Fade(c, alpha));
+  DrawSplineCatmullRom(ridge, RIDGE_POINTS, rim,
+                       Fade(ColorBrightness(c, -0.08f), alpha * 0.22f));
 }
 
-// A rounded shrub: three overlapping leaves with a top highlight.
-static void drawBush(float x, float y, float s, float a) {
-  Color g = GRASS, gd = GRASS_DK;
-  DrawCircle(x - s * 0.6f, y, s * 0.6f, Fade(gd, a));
-  DrawCircle(x + s * 0.6f, y, s * 0.6f, Fade(gd, a));
-  DrawCircle(x, y - s * 0.2f, s * 0.8f, Fade(g, a));
-  DrawCircle(x - s * 0.25f, y - s * 0.35f, s * 0.32f,
-             Fade(ColorBrightness(g, 0.3f), a));
+// Soft textured crowns keep the trees in the same painted language as the
+// clouds. The sparse trunks and branches remain crisp enough to read at depth.
+static void drawStoryTree(float x, float groundY, float s, float alpha) {
+  Color wood = Fade((Color){0x72, 0x4A, 0x32, 0xFF}, alpha);
+  DrawLineEx((Vector2){x, groundY},
+             (Vector2){x + s * 0.08f, groundY - s * 1.55f}, s * 0.2f, wood);
+  DrawLineEx((Vector2){x, groundY - s * 0.9f},
+             (Vector2){x - s * 0.5f, groundY - s * 1.35f}, s * 0.1f, wood);
+  drawTex(TEX_CLOUD, x, groundY - s * 1.55f, s * 2.5f, s * 2.0f, 0.0f,
+          Fade(GRASS_DK, alpha));
+  drawTex(TEX_CLOUD, x - s * 0.45f, groundY - s * 1.75f, s * 1.5f, s * 1.35f,
+          -8.0f, Fade(GRASS, alpha));
+  drawTex(TEX_CLOUD, x + s * 0.48f, groundY - s * 1.65f, s * 1.45f, s * 1.25f,
+          9.0f, Fade(ColorBrightness(GRASS, 0.2f), alpha * 0.8f));
 }
 
-// A distant gull: a four-segment "m" silhouette drifting across the sky.
-static void drawBird(float x, float y, float s, float a) {
-  Color c = Fade((Color){0x44, 0x52, 0x6E, 0xFF}, a);
-  Vector2 p0 = {x - s, y}, p1 = {x - s * 0.4f, y - s * 0.4f}, p2 = {x, y};
-  Vector2 p3 = {x + s * 0.4f, y - s * 0.4f}, p4 = {x + s, y};
-  DrawLineEx(p0, p1, 2.0f, c);
-  DrawLineEx(p1, p2, 2.0f, c);
-  DrawLineEx(p2, p3, 2.0f, c);
-  DrawLineEx(p3, p4, 2.0f, c);
+static void drawCottage(float x, float y, float s, float alpha) {
+  Color wall = Fade((Color){0xFF, 0xED, 0xC8, 0xFF}, alpha);
+  Color roof = Fade((Color){0xC8, 0x5A, 0x48, 0xFF}, alpha);
+  DrawRectangleRounded(
+      (Rectangle){x - 28.0f * s, y - 28.0f * s, 56.0f * s, 28.0f * s}, 0.12f, 4,
+      wall);
+  DrawTriangle((Vector2){x - 36.0f * s, y - 26.0f * s},
+               (Vector2){x + 36.0f * s, y - 26.0f * s},
+               (Vector2){x, y - 55.0f * s}, roof);
+  DrawRectangle(x + 14.0f * s, y - 18.0f * s, 10.0f * s, 18.0f * s,
+                Fade((Color){0x76, 0x55, 0x48, 0xFF}, alpha));
+  DrawRectangle(x - 19.0f * s, y - 17.0f * s, 11.0f * s, 9.0f * s,
+                Fade(SUN_CORE, alpha));
+  drawTex(TEX_PUFF, x - 13.5f * s, y - 12.5f * s, 28.0f * s, 22.0f * s, 0.0f,
+          Fade(SUN, alpha * 0.28f));
 }
 
-// Slowly rotating sun rays behind the disc (L1 only — never on the L2 moon).
-static void drawSunRays(float alpha) {
-  float t = (float)GetTime() * 0.2f;
-  for (int i = 0; i < 12; i++) {
-    float ang = t + i * (PI / 6.0f);
-    Vector2 a = {SUN_X + cosf(ang) * SUN_R * 1.3f,
-                 SUN_Y + sinf(ang) * SUN_R * 1.3f};
-    Vector2 b = {SUN_X + cosf(ang) * SUN_R * 2.1f,
-                 SUN_Y + sinf(ang) * SUN_R * 2.1f};
-    DrawLineEx(a, b, 4.0f, Fade(SUN, 0.22f * alpha));
+static void drawPatchwork(float alpha) {
+  drawLandscapeBand(570.0f, 34.0f, 170.0f, ColorBrightness(GRASS, 0.16f),
+                    0.82f * alpha, 3.0f, 0.0f);
+  drawLandscapeBand(635.0f, 30.0f, 350.0f, ColorLerp(GRASS, COIN_HI, 0.16f),
+                    0.78f * alpha, 3.0f, 0.0f);
+  drawLandscapeBand(700.0f, 26.0f, 80.0f, ColorBrightness(GRASS_DK, 0.12f),
+                    0.72f * alpha, 3.0f, 0.0f);
+}
+
+static void drawRiver(float alpha) {
+  Vector2 river[] = {{450, 474}, {425, 520}, {475, 575}, {430, 640},
+                     {505, 710}, {450, 770}, {520, 850}};
+  Color water = ColorLerp(SKY_TOP, SKY_BOT, 0.5f);
+  DrawSplineCatmullRom(river, 7, 24.0f, Fade(water, 0.62f * alpha));
+  DrawSplineCatmullRom(river, 7, 4.0f, Fade(SUN_CORE, 0.58f * alpha));
+}
+
+static void drawMeadowSprig(float x, float y, float side, float s,
+                            float alpha) {
+  Vector2 stem[] = {{x, y},
+                    {x + side * 14.0f * s, y - 58.0f * s},
+                    {x + side * 8.0f * s, y - 126.0f * s},
+                    {x + side * 34.0f * s, y - 192.0f * s}};
+  Color dark = Fade(ColorBrightness(GRASS_DK, -0.28f), 0.68f * alpha);
+  DrawSplineCatmullRom(stem, 4, 5.0f * s, dark);
+  for (int i = 1; i < 4; i++) {
+    float leafSide = (i % 2) ? -side : side;
+    drawTex(TEX_CLOUD, stem[i].x + leafSide * 20.0f * s, stem[i].y + 10.0f * s,
+            58.0f * s, 24.0f * s, leafSide * 28.0f,
+            Fade(GRASS_DK, 0.7f * alpha));
   }
 }
 
-// L1 backdrop: rayed sun + drifting gulls + rolling hills dressed with trees &
-// bushes + parallax clouds.
+static void drawForegroundFoliage(float cameraY, float alpha) {
+  float sway = 0.04f * sinf(-cameraY * 0.001f);
+  drawMeadowSprig(-8.0f, 830.0f, 1.0f, 1.1f + sway, alpha);
+  drawMeadowSprig(50.0f, 840.0f, 1.0f, 0.82f - sway, 0.8f * alpha);
+  drawMeadowSprig(808.0f, 830.0f, -1.0f, 1.18f - sway, alpha);
+  drawMeadowSprig(755.0f, 845.0f, -1.0f, 0.78f + sway, 0.8f * alpha);
+}
+
+static void drawPollen(float cameraY, float alpha) {
+  for (int i = 0; i < 18; i++) {
+    float x = wrapf(i * 97.0f + (float)GetTime() * (4.0f + i % 3),
+                    SCREEN_WIDTH + 40.0f) -
+              20.0f;
+    float y = wrapf(i * 83.0f - cameraY * 0.22f, SCREEN_HEIGHT + 80.0f) - 40.0f;
+    float r = 1.0f + (i % 3) * 0.55f;
+    DrawCircle(x, y + sinf((float)GetTime() + i) * 5.0f, r,
+               Fade(SUN_CORE, (0.18f + (i % 4) * 0.06f) * alpha));
+  }
+}
+
+// L1 backdrop: a storybook valley with atmospheric mountain planes, patterned
+// meadow fields, a winding river, textured trees, and close foliage parallax.
 static void drawHillsBackdrop(float cameraY, float alpha) {
-  drawSunRays(alpha);
+  drawTex(TEX_NEBULA, SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT * 0.32f,
+          SCREEN_WIDTH * 1.35f, SCREEN_HEIGHT * 0.75f, 0.0f,
+          Fade(SUN_CORE, 0.09f * alpha));
   drawSun(alpha);
-  for (int i = 0; i < 5; i++) {
-    float x =
-        wrapf((float)GetTime() * 18.0f + i * 190.0f, SCREEN_WIDTH + 120.0f) -
-        60.0f;
-    float y = 70.0f + i * 34.0f + 8.0f * sinf((float)GetTime() * 0.8f + i);
-    drawBird(x, y, 9.0f, 0.5f * alpha);
-  }
-  for (int i = 0; i < HILL_COUNT; i++) {
-    float depth = 0.15f + (i % 2) * 0.15f;
-    float w = 120.0f + (i % 3) * 70.0f;
-    float x = wrapf(i * 233.0f + (float)GetTime() * (3.0f * depth),
-                    SCREEN_WIDTH + 500.0f) -
-              250.0f;
+
+  for (int i = 0; i < 7; i++) {
+    float depth = 0.1f + (i % 3) * 0.08f;
+    float s = 22.0f + (i % 3) * 8.0f;
+    float x = wrapf(i * 197.0f + (float)GetTime() * (5.0f * depth),
+                    SCREEN_WIDTH + 380.0f) -
+              190.0f;
     float y =
-        wrapf(i * 180.0f - cameraY * depth, SCREEN_HEIGHT + 400.0f) - 100.0f;
-    float a = (0.6f - depth * 0.3f) * alpha;
-    drawHill(x, y, w, (i % 2) ? GRASS_DK : GRASS, a);
-    if (i % 3 == 0) {
-      drawTree(x + w * 0.3f, y, 26.0f, a);
-    } else if (i % 3 == 1) {
-      drawBush(x - w * 0.2f, y - 6.0f, 18.0f, a);
-    }
+        wrapf(80.0f + i * 91.0f - cameraY * depth, SCREEN_HEIGHT + 340.0f) -
+        170.0f;
+    drawCloud(x, y, s, CLOUD, (0.58f - depth * 0.35f) * alpha);
   }
-  for (int i = 0; i < CLOUD_COUNT; i++) {
-    float depth = parallaxDepth(i);
-    float s = 14.0f + (i % 3) * 9.0f;
-    float x = wrapf(i * 151.0f + (float)GetTime() * (6.0f * depth),
-                    SCREEN_WIDTH + 300.0f) -
-              150.0f;
+
+  Color farMountain =
+      ColorBrightness(ColorLerp(SKY_TOP, GRASS_DK, 0.18f), -0.18f);
+  Color nearMountain =
+      ColorBrightness(ColorLerp(CLOUD_SHADE, GRASS_DK, 0.58f), -0.1f);
+  drawLandscapeBand(455.0f, 110.0f, 90.0f, farMountain, 0.92f * alpha, 3.0f,
+                    0.88f);
+  drawLandscapeBand(510.0f, 105.0f, 310.0f, nearMountain, 0.9f * alpha, 4.0f,
+                    0.78f);
+  drawLandscapeBand(525.0f, 48.0f, 40.0f, ColorBrightness(GRASS, 0.04f),
+                    0.98f * alpha, 5.0f, 0.0f);
+
+  drawPatchwork(alpha);
+  drawRiver(alpha);
+  drawTex(TEX_CLOUD, 180.0f, 615.0f, 260.0f, 105.0f, -8.0f,
+          Fade(ColorBrightness(GRASS_DK, -0.2f), 0.08f * alpha));
+  drawTex(TEX_CLOUD, 650.0f, 690.0f, 310.0f, 120.0f, 6.0f,
+          Fade(ColorBrightness(GRASS_DK, -0.2f), 0.07f * alpha));
+
+  for (int i = 0; i < 7; i++) {
+    float x = 24.0f + i * 126.0f;
+    float ground = ridgeY(x, 525.0f, 48.0f, 40.0f, 0.0f) + 8.0f;
+    drawStoryTree(x, ground, 18.0f + (i % 3) * 4.0f,
+                  (0.72f + (i % 2) * 0.1f) * alpha);
+  }
+  drawCottage(610.0f, ridgeY(610.0f, 525.0f, 48.0f, 40.0f, 0.0f) + 8.0f, 0.88f,
+              0.9f * alpha);
+  drawPollen(cameraY, alpha);
+  drawForegroundFoliage(cameraY, alpha);
+}
+
+// One bright sky bird, built from simple animated shapes so its wingbeat stays
+// readable against the cloud banks. Sizes vary by parallax layer below.
+static void drawSkyBird(float x, float y, float s, float phase, float alpha) {
+  float flap = sinf((float)GetTime() * 5.0f + phase);
+  Color body = Fade((Color){0x4D, 0x59, 0x6D, 0xFF}, alpha);
+  Color wing = Fade((Color){0x71, 0x7D, 0x90, 0xFF}, alpha);
+  DrawTriangle((Vector2){x - s * 0.65f, y},
+               (Vector2){x - s * 1.15f, y - s * 0.32f},
+               (Vector2){x - s * 0.95f, y + s * 0.28f}, body);
+  DrawEllipse(x, y, s * 0.78f, s * 0.32f, body);
+  DrawTriangle((Vector2){x - s * 0.15f, y},
+               (Vector2){x - s * 0.65f, y - s * (0.55f + flap * 0.3f)},
+               (Vector2){x + s * 0.4f, y - s * 0.08f}, wing);
+  DrawCircle(x + s * 0.68f, y - s * 0.12f, s * 0.28f, body);
+  DrawTriangle((Vector2){x + s * 0.9f, y - s * 0.12f},
+               (Vector2){x + s * 1.25f, y - s * 0.02f},
+               (Vector2){x + s * 0.9f, y + s * 0.08f}, Fade(COIN_LO, alpha));
+  DrawCircle(x + s * 0.76f, y - s * 0.18f, fmaxf(1.0f, s * 0.045f),
+             Fade(BLACK, alpha));
+}
+
+// L2 backdrop: open azure air, layered high cloud banks, wind ribbons and
+// migrating birds. There is deliberately no ground plane, so the climb feels
+// clear of Sunny Hills before Night Blocks closes in.
+static void drawSkiesBackdrop(float cameraY, float alpha) {
+  drawTex(TEX_NEBULA, SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT * 0.35f,
+          SCREEN_WIDTH * 1.3f, SCREEN_HEIGHT * 0.8f, 0.0f,
+          Fade(SUN_CORE, 0.1f * alpha));
+  drawSun(0.9f * alpha);
+
+  for (int i = 0; i < 13; i++) {
+    float depth = 0.1f + (i % 4) * 0.08f;
+    float s = 22.0f + (i % 4) * 12.0f;
+    float x = wrapf(i * 181.0f + (float)GetTime() * (9.0f + depth * 16.0f),
+                    SCREEN_WIDTH + 440.0f) -
+              220.0f;
     float y =
-        wrapf(i * 97.0f - cameraY * depth, SCREEN_HEIGHT + 200.0f) - 100.0f;
-    drawCloud(x, y, s, CLOUD, (0.85f - depth * 0.3f) * alpha);
+        wrapf(45.0f + i * 127.0f - cameraY * depth, SCREEN_HEIGHT + 360.0f) -
+        180.0f;
+    drawCloud(x, y, s, CLOUD, (0.76f - depth * 0.45f) * alpha);
+  }
+
+  for (int i = 0; i < 3; i++) {
+    float y = wrapf(170.0f + i * 260.0f - cameraY * (0.16f + i * 0.05f),
+                    SCREEN_HEIGHT + 180.0f) -
+              90.0f;
+    Vector2 gust[] = {{-70.0f, y + 14.0f},
+                      {180.0f, y - 18.0f},
+                      {510.0f, y + 20.0f},
+                      {870.0f, y - 8.0f}};
+    DrawSplineCatmullRom(gust, 4, 3.0f,
+                         Fade(SUN_CORE, (0.16f + i * 0.04f) * alpha));
+  }
+
+  for (int i = 0; i < 9; i++) {
+    float depth = 0.18f + (i % 3) * 0.09f;
+    float s = 10.0f + (i % 3) * 5.0f;
+    float x = wrapf((float)GetTime() * (28.0f + i * 2.0f) + i * 137.0f,
+                    SCREEN_WIDTH + 180.0f) -
+              90.0f;
+    float y =
+        wrapf(70.0f + i * 89.0f - cameraY * depth, SCREEN_HEIGHT + 160.0f) -
+        80.0f;
+    drawSkyBird(x, y, s, i * 0.8f, (0.48f + depth) * alpha);
   }
 }
 
@@ -275,7 +413,7 @@ static void drawStarfield(float cameraY, float alpha) {
   }
 }
 
-// L2 backdrop: moon + craters, twinkling stars (some sparkling), a periodic
+// L3 backdrop: moon + craters, twinkling stars (some sparkling), a periodic
 // shooting star, and floating voxel islands.
 static void drawStarsBackdrop(float cameraY, float alpha) {
   drawNebula(cameraY, alpha);
@@ -333,7 +471,7 @@ static int hash2(int i, int j) {
   return h & 0x7fffffff;
 }
 
-// L3 backdrop: a scrolling neon maze (broken corridors, not a full grid) with
+// L4 backdrop: a scrolling neon maze (broken corridors, not a full grid) with
 // pellets + pulsing power-pellets, drifting ghosts, and a chomping hero.
 static void drawMazeBackdrop(float cameraY, float alpha) {
   drawNebula(cameraY, alpha);
@@ -401,7 +539,7 @@ static void drawMazeBackdrop(float cameraY, float alpha) {
   }
 }
 
-// L4 backdrop: a faint playfield "well" grid with real tetrominoes raining in
+// L5 backdrop: a faint playfield "well" grid with real tetrominoes raining in
 // the theme's tetromino colors (parallax fall, same idiom as the clouds).
 static void drawBlocksBackdrop(float cameraY, float alpha) {
   drawNebula(cameraY, alpha);
@@ -429,6 +567,9 @@ static void drawBackdrop(BackdropStyle style, float cameraY, float alpha) {
     return;
   }
   switch (style) {
+  case BACKDROP_SKIES:
+    drawSkiesBackdrop(cameraY, alpha);
+    break;
   case BACKDROP_STARS:
     drawStarsBackdrop(cameraY, alpha);
     break;
@@ -486,9 +627,10 @@ void drawGameBackground(float cameraY) {
 }
 
 #ifdef BG_SELFTEST
-// Contact strip of all four backdrops, so L2/L3/L4 can be eyeballed without
-// climbing 60,000 units. Same reason the `post` selftest exists. Needs a real
-// GL context (unlike the svg/tex ones) because it renders the actual draw path.
+// Contact strip of all five backdrops, so the later eras can be eyeballed
+// without climbing 80,000 units. Same reason the `post` selftest exists. Needs
+// a real GL context (unlike the svg/tex ones) because it renders the actual
+// draw path.
 //   cc -DBG_SELFTEST src/background.c src/theme.c src/tex.c \
 //      -Iinclude -Ilib/raylib/src build/lib/raylib/raylib/libraylib.a -lm \
 //      -framework Cocoa -framework IOKit -framework CoreVideo -framework OpenGL

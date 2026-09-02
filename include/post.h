@@ -12,8 +12,8 @@
 // The target is deliberately *supersampled*: a RenderTexture is not
 // multisampled, so routing the frame through one would drop the window's
 // FLAG_MSAA_4X_HINT antialiasing. Rendering at 2x and downsampling on the
-// resolve replaces it (and beats it — it smooths gradient interiors and the
-// point-filtered bitmap font too, which MSAA never touched).
+// resolve replaces it (and also smooths gradient interiors and the generated
+// font atlas, which MSAA never touched).
 //
 // Everything degrades quietly: if the framebuffer or the shader fails, the
 // subsystem switches itself off and the game draws straight to the backbuffer

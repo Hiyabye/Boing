@@ -98,7 +98,8 @@ void drawSvg(SvgId id, float cx, float cy, float size, float rotDeg,
              Color tint);
 
 // Rasterizes one pending glyph per call; true once every glyph is resident.
-// Called from the splash loop so the bake never stalls a gameplay frame.
+// The splash drains this cheap queue in one update so per-frame stepping does
+// not add idle wall time before the menu.
 bool svgPreloadStep(void);
 
 void unloadSvgCache(void);

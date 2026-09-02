@@ -30,9 +30,8 @@
 // font as zero-width, which would collapse every centered string to x = 0.
 Font gameFont(void);
 
-// Bakes the whole atlas on its first call — ~50ms, one splash frame, rather
-// than one glyph per frame across 49 of them. Driven by the splash beside
-// audioPreloadStep/svgPreloadStep/texPreloadStep.
+// Bakes the whole atlas on its first call, rather than one glyph per frame
+// across 49 of them. Driven by the splash beside the SVG and texture queues.
 bool fontPreloadStep(void);
 
 void unloadGameFont(void);

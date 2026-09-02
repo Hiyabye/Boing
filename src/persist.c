@@ -1,5 +1,7 @@
 #include "persist.h"
 
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,9 +74,10 @@ void configLoad(const char *path) {
     }
     p = skipWs(p + 1);
     char *end;
+    errno = 0;
     long v = strtol(p, &end, 10);
-    if (end == p) {
-      return; // no integer
+    if (end == p || errno == ERANGE || v < INT_MIN || v > INT_MAX) {
+      return; // missing integer, or one the store cannot represent
     }
     p = end;
     strcpy(gMap[gCount].key, key);
@@ -136,9 +139,17 @@ int main(void) {
   assert(configGetInt("missing", 7) == 7); // default fallback
 
   FILE *g = fopen(path, "w");
+  assert(g != NULL);
   fputs("{ garbage not json", g);
   fclose(g);
   configLoad(path); // must not crash; map ends empty/partial
+  assert(configGetInt("highScore", 55) == 55);
+
+  g = fopen(path, "w");
+  assert(g != NULL);
+  fputs("{\"highScore\": 999999999999999999999}", g);
+  fclose(g);
+  configLoad(path); // out-of-range int is malformed, not a narrowing cast
   assert(configGetInt("highScore", 55) == 55);
 
   configLoad("/no/such/file.json"); // missing file

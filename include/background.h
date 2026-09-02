@@ -10,7 +10,7 @@ void drawGameBackground(float cameraY);
 // `origin + d*cell` is both where a cell is drawn and where it collides. The
 // Falling Blocks backdrop rains them and world.c's platforms *are* them — the
 // shared table is what keeps the pad you land on the shape you can see.
-// Declared unsized deliberately (see the robustness convention in CLAUDE.md):
+// Declared unsized deliberately (see the robustness convention in AGENTS.md):
 // spelling the length here would make background.c's completeness assert
 // measure this declaration instead of the table.
 #define TETRO_COUNT 7

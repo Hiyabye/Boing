@@ -1,15 +1,12 @@
 // SPLASH — one-time startup logo (gold serif "H" on white + spinning loader).
 // Not cosmetic: everything in this game is generated rather than loaded from
-// disk, and this screen is where that generation happens. Four queues drain
-// behind the logo — a music track, a vector glyph and a procedural texture per
-// frame, plus the font atlas in one go — and the splash lasts exactly as long
-// as the slowest of them takes to finish.
+// disk. The cheap art queues drain immediately; the main loop bakes menu music
+// first and hides the remaining tracks behind the black dip.
 #include "game.h"
 
 #include "core.h"
 #include "font.h"
 #include "raylib.h"
-#include "sound.h"
 #include "svg.h"
 #include "tex.h"
 #include "ui.h"
@@ -21,20 +18,15 @@
 #define LOGO_CY 378.5f
 
 void updateSplash(Game *g) {
-  // The splash lasts exactly as long as the load: bake one music track, one
-  // vector glyph and one procedural texture per frame, and leave the moment all
-  // the queues report drained. There is no minimum hold — anything added to a
-  // preload queue extends the splash by its own cost and nothing else. Every
-  // stepper runs every frame (no short-circuit) so no queue waits on another.
-  // The font is the one that is not a queue: it bakes its whole atlas on the
-  // first call (~50ms, one frame) rather than adding 49 frames of wall clock,
-  // and this screen's own "LOADING" is what draws in it a frame later.
-  bool audioReady = audioPreloadStep();
-  bool artReady = svgPreloadStep();
-  bool texReady = texPreloadStep();
-  bool fontReady = fontPreloadStep();
-  if (audioReady && artReady && texReady && fontReady)
-    startTransition(g, GAMESTATE_MENU); // dip to black, then reveal the menu
+  // SVG and generated textures cost about 30ms each in total, but stepping one
+  // per rendered frame added 38 frames of idle wall time. Drain both cheap
+  // queues now; audio remains one heavy track per frame in main.c.
+  while (!svgPreloadStep()) {
+  }
+  while (!texPreloadStep()) {
+  }
+  fontPreloadStep();
+  startTransition(g, GAMESTATE_MENU); // dip to black, then reveal the menu
 }
 
 void drawSplash(Game *g) {

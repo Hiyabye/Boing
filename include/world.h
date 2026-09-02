@@ -24,6 +24,7 @@ typedef struct Platform {
   // Per-era behaviour, stamped at spawn from the era gate (see worldEra):
   bool fragile; // Night Blocks: crumbles a beat after it is landed on
   float fuse; // frames left before a landed-on fragile pad breaks (0 = intact)
+  float vx;   // Birdsong Skies: horizontal cloud drift, reflected at the edges
   float vy;   // Falling Blocks: downward drift; > 0 also makes the pad crush
   int shape;  // Falling Blocks: index into TETRO[] — the pad *is* that piece,
               // so it is both the collision boxes and the color. Ignored while
@@ -71,7 +72,7 @@ typedef struct PowerUpDef {
 // Declared unsized deliberately. Spelling the length here would give the
 // definition in world.c a composite type of exactly that length, so its
 // completeness STATIC_ASSERT would measure the declaration rather than the
-// table and could never fail. Callers only ever index it by PowerUpType.
+// positional table and could never fail. Callers index it by PowerUpType.
 extern const PowerUpDef POWERUP_DEFS[];
 
 typedef struct PowerUp {

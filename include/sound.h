@@ -7,26 +7,28 @@ void initAudio(AudioStream *stream);
 void updateAudio(AudioStream *stream);
 void deinitAudio(AudioStream *stream);
 
-// Prerender one not-yet-baked music track per call (each is heavy — millions of
-// samples). Returns true once every track is baked. The startup splash drives
-// this so the load streams in behind the logo instead of freezing the window;
-// until a track is baked it plays as silence (updateAudio guards it).
+// Prerender one not-yet-baked music track per call (each is millions of
+// samples), with menu music first. main.c drives this every frame so remaining
+// tracks bake behind the splash-to-menu dip instead of delaying the menu. A
+// track not baked yet plays as silence (updateAudio guards it).
 bool audioPreloadStep(void);
 
-// Music track ids (indices into TRACKS[] in sound.c). 0..3 are the four level
+// Music track ids (indices into TRACKS[] in sound.c). 0..4 are the five level
 // tracks (theme.c's THEMES[].track uses those bare literals, one per climb
 // band); menu and game over are FSM-driven (main.c), not themes.
 typedef enum {
-  TRACK_L1,       // 0 — Sunny Hills (day)
-  TRACK_L2,       // 1 — Night Blocks
-  TRACK_L3,       // 2 — Neon Maze
-  TRACK_L4,       // 3 — Falling Blocks
-  TRACK_MENU,     // 4 — title + credits screens
-  TRACK_GAMEOVER, // 5 — game-over screen
+  TRACK_L1,       // 0 - Sunny Hills (day)
+  TRACK_L2,       // 1 - Birdsong Skies
+  TRACK_L3,       // 2 - Night Blocks
+  TRACK_L4,       // 3 - Neon Maze
+  TRACK_L5,       // 4 - Falling Blocks
+  TRACK_MENU,     // 5 - title + credits screens
+  TRACK_GAMEOVER, // 6 - game-over screen
+  TRACK_COUNT
 } MusicTrack;
 
-// Select the music/SFX track; starts a crossfade from the current one. Themes
-// drive this via themeTrack() (see theme.h); no-op if already on `track`.
+// Select the music track and its SFX variant. Level switches crossfade; menu
+// and game-over switches cut immediately. No-op if already set.
 void setTrack(int track);
 
 // Independent music / SFX levels (0..1), applied in the mix (settings.c drives

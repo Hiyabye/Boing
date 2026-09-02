@@ -39,8 +39,8 @@ Texture2D texGet(TexId id);
 void drawTex(TexId id, float cx, float cy, float w, float h, float rotDeg,
              Color tint);
 
-// Generates one texture per call; true once the queue has drained. Driven by
-// the splash beside audioPreloadStep/svgPreloadStep.
+// Generates one texture per call; true once the queue has drained. The splash
+// drains this cheap queue in one update beside the SVG and font bakes.
 bool texPreloadStep(void);
 
 void unloadTexCache(void);

@@ -183,15 +183,11 @@ void drawCenteredText(const char *text, int y, int fontSize, Color color) {
 // IconKind -> vector glyph. ICON_NONE has no row: it is the enum's first value,
 // so the table is indexed by `kind - 1` and drawing it is a no-op.
 static const SvgId ICON_SVG[] = {
-    [ICON_PLAY - 1] = SVG_PLAY, [ICON_PAUSE - 1] = SVG_PAUSE,
-    [ICON_GEAR - 1] = SVG_GEAR, [ICON_RETRY - 1] = SVG_RETRY,
-    [ICON_BACK - 1] = SVG_BACK, [ICON_HOME - 1] = SVG_HOME,
-    [ICON_EXIT - 1] = SVG_EXIT, [ICON_HEART - 1] = SVG_HEART,
-    [ICON_SHOP - 1] = SVG_SHOP, [ICON_MISSIONS - 1] = SVG_MISSIONS,
+    SVG_PLAY, SVG_PAUSE, SVG_GEAR,  SVG_RETRY, SVG_BACK,
+    SVG_HOME, SVG_EXIT,  SVG_HEART, SVG_SHOP,  SVG_MISSIONS,
 };
-// A missing row would silently draw SVG_PLAY (a zero-initialized slot) for the
-// icon that lost it, so tie the table to the enum.
-STATIC_ASSERT(sizeof(ICON_SVG) / sizeof(ICON_SVG[0]) == ICON_MISSIONS,
+// Positional rows make a missing icon shorten the table and fail the build.
+STATIC_ASSERT(sizeof(ICON_SVG) / sizeof(ICON_SVG[0]) == ICON_COUNT - 1,
               icon_svg_table_complete);
 
 void drawIcon(IconKind kind, float cx, float cy, float s, Color c) {
@@ -204,7 +200,7 @@ void drawIcon(IconKind kind, float cx, float cy, float s, Color c) {
   drawSvg(ICON_SVG[kind - 1], cx, cy, s * ICON_SCALE, 0.0f, c);
 }
 
-// Renders the button; clicks are detected by the caller via clicked(r).
+// Renders the button; activation is detected by the caller via uiItem(r).
 void uiButton(Rectangle r, const char *label, IconKind icon) {
   bool hover = mouseInRect(r);
   Color base = hover ? CANDY_PINK : CANDY_PINK_DK;
@@ -239,8 +235,8 @@ void uiButton(Rectangle r, const char *label, IconKind icon) {
 // column and the shop's swatch row over its upgrade grid. nearestIn is pure
 // geometry over the item list, so this needs no window and no input — it fills
 // gItems directly. Build:
-//   cc -DUI_SELFTEST src/ui.c src/svg.c src/theme.c lib/nanosvg_impl.c \
-//      -Iinclude -Ilib/nanosvg/src -Ilib/raylib/src \
+//   cc -DUI_SELFTEST src/ui.c src/svg.c src/theme.c src/font.c \
+//      lib/nanosvg_impl.c -Iinclude -Ilib/nanosvg/src -Ilib/raylib/src \
 //      build/lib/raylib/raylib/libraylib.a -lm \
 //      -framework Cocoa -framework IOKit -framework CoreVideo -framework OpenGL
 //      \ -o /tmp/uitest && /tmp/uitest
@@ -266,28 +262,35 @@ int main(void) {
   assert(moveFrom(4, 0, 1) == 4);  // no wrap past the bottom
   assert(moveFrom(2, 1, 0) == 2);  // nothing sideways in a column
 
-  // The shop: 4 skin swatches (centeredRow(175,120,110,i,4)) over a 5x3 grid of
-  // upgrade axes (rShopUpgAxis: x = 30 + card*154, y = 420 + axis*74).
+  // The shop: 4 skin swatches over the ragged 3/3/3/2/1 upgrade axes, then
+  // BACK. These counts mirror SHOP_PU in screen_shop.c.
   gCount = 0;
   for (int i = 0; i < 4; i++) {
     gItems[gCount++] = (Rectangle){124 + i * 144, 175, 120, 110};
   }
-  int grid = gCount; // first axis cell; card c axis a is grid + c*3 + a
+  const int axes[] = {3, 3, 3, 2, 1};
+  int card[5];
   for (int c = 0; c < 5; c++) {
-    for (int a = 0; a < 3; a++) {
+    card[c] = gCount;
+    for (int a = 0; a < axes[c]; a++) {
       gItems[gCount++] = (Rectangle){30 + c * 154, 420 + a * 74, 122, 52};
     }
   }
-  assert(moveFrom(0, 1, 0) == 1);         // along the swatch row
-  assert(moveFrom(3, -1, 0) == 2);        // and back
-  assert(moveFrom(1, 0, 1) == grid + 6);  // down into the card nearest below
-  assert(moveFrom(grid + 6, 0, -1) == 1); // and back up to that swatch
-  assert(moveFrom(grid + 6, 0, 1) == grid + 7);   // next axis down the card
-  assert(moveFrom(grid + 6, 1, 0) == grid + 9);   // same axis, next card over
-  assert(moveFrom(grid + 9, -1, 0) == grid + 6);  // and back
-  assert(moveFrom(grid + 12, 1, 0) == grid + 12); // nothing right of the last
+  int back = gCount;
+  gItems[gCount++] = (Rectangle){300, 712, 200, 48};
 
-  printf("ok — focus moves correctly over %d items\n", gCount);
+  assert(moveFrom(0, 1, 0) == 1);        // along the swatch row
+  assert(moveFrom(3, -1, 0) == 2);       // and back
+  assert(moveFrom(1, 0, 1) == card[2]);  // down into the card nearest below
+  assert(moveFrom(card[2], 0, -1) == 1); // and back up to that swatch
+  assert(moveFrom(card[2], 0, 1) == card[2] + 1); // next axis down the card
+  assert(moveFrom(card[2], 1, 0) == card[3]);     // same axis, next card over
+  assert(moveFrom(card[3], -1, 0) == card[2]);    // and back
+  assert(moveFrom(card[4], 1, 0) == card[4]);     // nothing right of the last
+  assert(moveFrom(card[2] + 2, 0, 1) == back);    // bottom axis reaches BACK
+  assert(moveFrom(back, 0, -1) == card[2] + 2);   // and BACK returns to it
+
+  printf("ok - focus moves correctly over %d items\n", gCount);
   return 0;
 }
 #endif

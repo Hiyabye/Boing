@@ -32,8 +32,8 @@ typedef struct {
   const char *label;
   int base; // level cost = base * (level + 1), so prices rise per level
 } PuUpgradeDef;
-// Unsized on purpose — see POWERUP_DEFS in world.h: a sized declaration would
-// make progress.c's completeness assert measure this line instead of the table.
+// Unsized on purpose: a sized declaration would make progress.c's
+// completeness assert measure this line instead of the positional table.
 extern const PuUpgradeDef PU_UPGRADES[];
 // Cost to buy the next level from `level` (level is the count already owned).
 int upgCost(int track, int level);

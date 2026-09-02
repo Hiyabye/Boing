@@ -10,8 +10,9 @@
 
 // The theme table. A new level is one more row here (and, for a distinct
 // backdrop shape, a case in background.c). Row order = climb order — the scene
-// morphs day->night->neon->digital over the climb, each an homage to a
-// classic-gaming *era* (never a specific product; no proprietary names ship).
+// morphs meadow->open sky->night->neon->digital over the climb, each an homage
+// to a classic-gaming *era* (never a specific product; no proprietary names
+// ship).
 const Theme THEMES[] = {
     // 0 — Sunny Hills: bright day, clouds + rolling hills, candy blob. A
     // classic sidescroller morning. (the original Nature palette)
@@ -49,7 +50,43 @@ const Theme THEMES[] = {
         .backdrop = BACKDROP_HILLS,
         .track = 0,
     },
-    // 1 — Night Blocks: moonlit deep-blue sky, pixel stars, blocky terrain. A
+    // 1 - Birdsong Skies: clear azure air, sunlit cloud banks and migrating
+    // birds. Platforms drift sideways on the wind.
+    {
+        .skyTop = {0x28, 0x94, 0xE8, 0xFF},
+        .skyBot = {0xB8, 0xEB, 0xFF, 0xFF},
+        .skyTopHigh = {0x17, 0x69, 0xB8, 0xFF},
+        .skyBotHigh = {0x72, 0xC9, 0xED, 0xFF},
+        .sun = {0xFF, 0xE7, 0x92, 0xFF},
+        .sunCore = {0xFF, 0xFB, 0xDF, 0xFF},
+        .cloud = {0xFF, 0xFF, 0xFF, 0xFF},
+        .cloudShade = {0xA9, 0xD7, 0xEA, 0xFF},
+        .candyPink = {0xFF, 0x7F, 0xB0, 0xFF},
+        .candyPinkDk = {0xE4, 0x46, 0x8B, 0xFF},
+        .mouth = {0x45, 0x36, 0x58, 0xFF},
+        .coinHi = {0xFF, 0xE7, 0x73, 0xFF},
+        .coinLo = {0xF4, 0xA8, 0x25, 0xFF},
+        .grass = {0x70, 0xC9, 0xE8, 0xFF},
+        .grassDk = {0x2F, 0x86, 0xB8, 0xFF},
+        .grape = {0xF0, 0x72, 0xA8, 0xFF},
+        .grapeDk = {0xB8, 0x3F, 0x78, 0xFF},
+        .magnetRed = {0xE8, 0x45, 0x45, 0xFF},
+        .rocketBody = {0xF8, 0xFC, 0xFF, 0xFF},
+        .rocketFin = {0x36, 0x9E, 0xD8, 0xFF},
+        .flame = {0xFF, 0xC9, 0x42, 0xFF},
+        .confetti =
+            {
+                {0x28, 0x94, 0xE8, 0xFF},
+                {0xFF, 0xFF, 0xFF, 0xFF},
+                {0xFF, 0xE7, 0x73, 0xFF},
+                {0x70, 0xC9, 0xE8, 0xFF},
+                {0xF0, 0x72, 0xA8, 0xFF},
+                {0x9D, 0xDE, 0xF5, 0xFF},
+            },
+        .backdrop = BACKDROP_SKIES,
+        .track = 1,
+    },
+    // 2 - Night Blocks: moonlit deep-blue sky, pixel stars, blocky terrain. A
     // voxel-survival dusk (homage to blocky night-survival games).
     {
         .skyTop = {0x14, 0x1E, 0x44, 0xFF},
@@ -83,9 +120,9 @@ const Theme THEMES[] = {
                 {0xFF, 0xE3, 0x6B, 0xFF},
             },
         .backdrop = BACKDROP_STARS,
-        .track = 1,
+        .track = 2,
     },
-    // 2 — Neon Maze: purple-black void, neon maze walls + pellet dots, ghost
+    // 3 - Neon Maze: purple-black void, neon maze walls + pellet dots, ghost
     // creatures (homage to the golden-age dot-muncher maze arcades).
     {
         .skyTop = {0x2A, 0x10, 0x48, 0xFF},
@@ -119,9 +156,9 @@ const Theme THEMES[] = {
                 {0xFF, 0x9E, 0x3D, 0xFF},
             },
         .backdrop = BACKDROP_MAZE,
-        .track = 2,
+        .track = 3,
     },
-    // 3 — Falling Blocks: green digital sky, falling neon tetromino backdrop.
+    // 4 - Falling Blocks: green digital sky, falling neon tetromino backdrop.
     // The endgame (homage to the falling-block puzzle era).
     {
         .skyTop = {0x0A, 0x22, 0x14, 0xFF},
@@ -155,7 +192,7 @@ const Theme THEMES[] = {
             {0xE6, 0x8A, 0x2D, 0xFF},
         },
         .backdrop = BACKDROP_BLOCKS,
-        .track = 3,
+        .track = 4,
     },
 };
 // THEME_COUNT is a macro (theme.h) so tables keyed off the theme list can be
@@ -184,8 +221,8 @@ static Theme lerpTheme(const Theme *a, const Theme *b, float f) {
   for (int i = 0; i < n; i++) {
     cr[i] = ColorLerp(ca[i], cb[i], f);
   }
-  // Discrete fields switch at the midpoint; the background reads themeBlend()
-  // directly for a crossfade, so this only feeds themeTrack().
+  // Keep a discrete fallback backdrop value, though background.c reads
+  // themeBlend() directly to crossfade the two shapes.
   r.backdrop = f < 0.5f ? a->backdrop : b->backdrop;
   // Hold the current-level (low) track for the whole band so the song only
   // crossfades at the level boundary, in step with the LEVEL indicator.
@@ -201,8 +238,8 @@ void themeUpdate(float ascent) {
   int level = (int)t; // 0-based band, unbounded
   bandF = clampf(t - (float)level, 0.0f, 1.0f);
   // Levels are infinite; themes loop, so once the last theme's band fills it
-  // wraps back to the first (Sunny Hills→Night Blocks→Neon Maze→Falling
-  // Blocks→Sunny Hills→…).
+  // wraps back to the first (Sunny Hills -> Birdsong Skies -> Night Blocks ->
+  // Neon Maze -> Falling Blocks -> Sunny Hills -> ...).
   bandLo = level % THEME_COUNT;
   bandHi = (level + 1) % THEME_COUNT;
   gTheme = lerpTheme(&THEMES[bandLo], &THEMES[bandHi], bandF);
@@ -225,7 +262,7 @@ int themeTrack(void) { return gTheme.track; }
 // the one knob for how hard the arcade eras blaze. Sunny Hills is no longer a
 // flat 0: real daylight blooms too, and the value that used to mean "no bloom"
 // now also meant "no light on the coins".
-static const float GLOW[THEME_COUNT] = {0.12f, 0.35f, 1.0f, 0.7f};
+static const float GLOW[] = {0.12f, 0.16f, 0.35f, 1.0f, 0.7f};
 STATIC_ASSERT(sizeof(GLOW) / sizeof(GLOW[0]) == THEME_COUNT,
               theme_glow_table_complete);
 

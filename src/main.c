@@ -22,9 +22,9 @@
 #define FADE_SPEED 3.0f // black-dip transition rate (~0.33s each direction)
 
 // Music follows the FSM state: menu/credits/settings/shop share the menu track,
-// game over has its own, and gameplay follows the theme the draw pass resolved.
+// game over has its own, and gameplay follows the current theme band.
 // setTrack cuts instantly across these UI boundaries and only crossfades
-// between the two gameplay tracks as the theme morphs mid-climb.
+// between gameplay tracks at a level boundary.
 static int trackForState(GameState state) {
   switch (state) {
   case GAMESTATE_SPLASH:
@@ -47,14 +47,14 @@ static const struct {
   void (*update)(Game *);
   void (*draw)(Game *);
 } STATES[] = {
-    [GAMESTATE_SPLASH] = {updateSplash, drawSplash},
-    [GAMESTATE_MENU] = {updateMenu, drawMenu},
-    [GAMESTATE_SETTINGS] = {updateSettingsState, drawSettingsState},
-    [GAMESTATE_PLAYING] = {updatePlaying, drawPlay},
-    [GAMESTATE_PAUSED] = {updatePaused, drawPlay},
-    [GAMESTATE_GAMEOVER] = {updateGameover, drawPlay},
-    [GAMESTATE_CREDITS] = {updateCredits, drawCredits},
-    [GAMESTATE_SHOP] = {updateShop, drawShop},
+    {updateSplash, drawSplash},
+    {updateMenu, drawMenu},
+    {updateSettingsState, drawSettingsState},
+    {updatePlaying, drawPlay},
+    {updatePaused, drawPlay},
+    {updateGameover, drawPlay},
+    {updateCredits, drawCredits},
+    {updateShop, drawShop},
 };
 // Every state must have a handler — a NULL slot would crash the dispatch below.
 STATIC_ASSERT(sizeof(STATES) / sizeof(STATES[0]) == GAMESTATE_COUNT,
@@ -103,8 +103,11 @@ int main(void) {
   SetTextureFilter(gMenuSnap.texture, TEXTURE_FILTER_BILINEAR);
 
   while (!WindowShouldClose() && !game.quit) {
-    // Splash is a silent loading screen: don't feed the stream (no music/SFX)
-    // until the menu, so audio begins with the first real screen.
+    // Menu music goes first, then one remaining track per frame. Keeping this
+    // outside SPLASH lets the black dip hide the rest of the audio bake instead
+    // of holding the menu behind tracks it does not use.
+    audioPreloadStep();
+    // Splash stays silent; audio begins with the first real screen.
     if (game.state != GAMESTATE_SPLASH) {
       updateAudio(&stream);
     }

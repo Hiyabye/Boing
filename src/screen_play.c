@@ -134,7 +134,8 @@ void updateGameover(Game *g) {
 // Era names in climb order — one per THEMES[] row (theme.c), same order. Themes
 // loop, so callers index worldEra(). Homage to a genre/era each, never a named
 // product.
-static const char *ERA_NAMES[] = {"SUNNY HILLS", "NIGHT BLOCKS", "NEON MAZE",
+static const char *ERA_NAMES[] = {"SUNNY HILLS", "BIRDSONG SKIES",
+                                  "NIGHT BLOCKS", "NEON MAZE",
                                   "FALLING BLOCKS"};
 // A theme without a name here would show the wrong era (or read past the end).
 STATIC_ASSERT(sizeof(ERA_NAMES) / sizeof(ERA_NAMES[0]) == THEME_COUNT,

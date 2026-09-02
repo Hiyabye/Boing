@@ -148,16 +148,9 @@ void updateAttract(Player *player) {
 
 // Accessory slot -> glyph. HAT_NONE/GLS_NONE are the enums' first values and
 // have no row, so both tables are indexed by `id - 1` (the ICON_SVG idiom).
-static const SvgId HAT_SVG[] = {
-    [HAT_CAP - 1] = SVG_ACC_CAP,
-    [HAT_CROWN - 1] = SVG_ACC_CROWN,
-    [HAT_BOW - 1] = SVG_ACC_BOW,
-};
-static const SvgId GLS_SVG[] = {
-    [GLS_ROUND - 1] = SVG_ACC_GLASSES,
-    [GLS_SHADES - 1] = SVG_ACC_SHADES,
-};
-// A missing row would silently draw glyph 0 (SVG_CURSOR) on the blob's head.
+static const SvgId HAT_SVG[] = {SVG_ACC_CAP, SVG_ACC_CROWN, SVG_ACC_BOW};
+static const SvgId GLS_SVG[] = {SVG_ACC_GLASSES, SVG_ACC_SHADES};
+// Positional rows make a missing accessory shorten its table and fail below.
 STATIC_ASSERT(sizeof(HAT_SVG) / sizeof(HAT_SVG[0]) == HAT_COUNT - 1,
               hat_svg_table_complete);
 STATIC_ASSERT(sizeof(GLS_SVG) / sizeof(GLS_SVG[0]) == GLS_COUNT - 1,

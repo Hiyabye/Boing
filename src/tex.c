@@ -149,18 +149,12 @@ typedef struct {
   bool repeat; // GL_REPEAT, for the ones drawn with an oversized source rect
 } TexDef;
 
-// Deliberately unsized: with designated initializers a `[TEX_COUNT]` array is
-// always TEX_COUNT long whatever you put in it, which makes the usual count
-// assert vacuous. Letting the initializer set the length gives the assert
-// something real to catch. A hole in the middle still slips through — hence the
-// NULL-gen guard in bake().
+// Deliberately unsized and positional in exact TexId order: dropping any row
+// shortens the table and makes the count check fail.
 static const TexDef TEX_DEFS[] = {
-    [TEX_PUFF] = {genPuff, PUFF_PX, false},
-    [TEX_CLOUD] = {genCloud, NOISE_PX, false},
-    [TEX_STARFIELD] = {genStarfield, FIELD_PX, true},
-    [TEX_NEBULA] = {genNebula, NOISE_PX, false},
-    [TEX_ROCK] = {genRock, NOISE_PX, true},
-    [TEX_STATIC] = {genStatic, NOISE_PX, true},
+    {genPuff, PUFF_PX, false},      {genCloud, NOISE_PX, false},
+    {genStarfield, FIELD_PX, true}, {genNebula, NOISE_PX, false},
+    {genRock, NOISE_PX, true},      {genStatic, NOISE_PX, true},
 };
 STATIC_ASSERT(sizeof(TEX_DEFS) / sizeof(TEX_DEFS[0]) == TEX_COUNT,
               tex_defs_table_complete);
@@ -248,9 +242,7 @@ int main(int argc, char **argv) {
   Image sheet = GenImageColor(CELL * TEX_COUNT, CELL, (Color){24, 24, 32, 255});
 
   for (int i = 0; i < TEX_COUNT; i++) {
-    // The middle-hole case the designated table's count assert cannot see (see
-    // TEX_DEFS above). bake() degrades quietly on it; here it must be loud, and
-    // asserting beats dereferencing a NULL gen pointer.
+    // Keep bake's quiet failure loud in the self-test before dereferencing it.
     assert(TEX_DEFS[i].gen != NULL && "TEX_DEFS row missing a generator");
     Image im = TEX_DEFS[i].gen(TEX_DEFS[i].px);
     assert(im.data != NULL && "generator returned no pixels");

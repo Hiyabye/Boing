@@ -3,7 +3,7 @@ name: refine
 description: >-
   Whole-codebase refinement pass before starting new features — improve
   maintainability, readability, future expandability, and robustness (error-prone
-  code, missing guards), then bring CLAUDE.md/README.md and inline comments back
+  code, missing guards), then bring AGENTS.md/README.md and inline comments back
   in sync with the code. Use when the user says "refine the codebase", "clean up
   before the next feature", "refactor pass", "tidy everything up", "polish the
   code", "level up the codebase", or similar broad quality passes. NOT for a
@@ -34,7 +34,7 @@ clean code for its own sake. Resist it. The best refinement is often small.
 ## Process
 
 ### 1. Read the whole thing
-Read all of `src/*.c` + `include/*.h`, plus `CLAUDE.md`, `README.md`,
+Read all of `src/*.c` + `include/*.h`, plus `AGENTS.md`, `README.md`,
 `CMakeLists.txt`. Trace the real control flow. Note the current shipped size
 (`ls -l build/Boing`) as the baseline.
 
@@ -48,12 +48,12 @@ Read all of `src/*.c` + `include/*.h`, plus `CLAUDE.md`, `README.md`,
 - **Real duplication** — the *same* idiom/expression repeated 3+ times → one
   small file-local helper (e.g. `noise()`, `difficulty()`). Do NOT over-extract
   one-off patterns or near-but-not-identical code.
-- **Doc/comment drift** — comments and `CLAUDE.md`/`README.md` that no longer
+- **Doc/comment drift** — comments and `AGENTS.md`/`README.md` that no longer
   match the code: stale counts (theme count, band height), examples that name
   things that don't exist, explanations of the wrong mechanism.
 
 ### 3. Ask the user for scope (this decision is theirs)
-Use AskUserQuestion — the aggressiveness genuinely changes what you do:
+Ask the user - the aggressiveness genuinely changes what you do:
 - **Conservative** — robustness guards + tiny genuine DRY + comment/doc fixes.
 - **Moderate** — the above + low-risk readability refactors (extract repeated
   inline patterns, add all missing table guards). *(Good default.)*
@@ -71,7 +71,7 @@ style. Keep behavior identical.
    clang-tidy regressions. A firing new `STATIC_ASSERT` means a table really is
    incomplete — fix the table, don't delete the guard.
 2. **Size:** `ls -l build/Boing` — under 1,474,560 bytes and ~unchanged from
-   baseline. Update the size numbers in `CLAUDE.md`/`README.md` to whatever the
+   baseline. Update the size numbers in `AGENTS.md`/`README.md` to whatever the
    fresh build reports.
 3. **Run:** launch briefly (`./build/Boing` for a few seconds, then kill) —
    confirm clean init, audio stream builds all loops (the startup
@@ -79,13 +79,12 @@ style. Keep behavior identical.
    deeper changes, sanity-play the affected path.
 
 ### 6. Sync docs
-Bring `CLAUDE.md`, `README.md`, and any drifted inline comments in line with the
+Bring `AGENTS.md`, `README.md`, and any drifted inline comments in line with the
 final code. On any code/doc conflict, the code and `CMakeLists.txt` win. Fix
 inaccuracies; don't rewrite prose that's already correct (unless full-rewrite
 scope was chosen).
 
 ### 7. Commit + push
-Per repo convention (see the `commit-straight-to-main` memory): commit directly
-to `main`, no branch/PR, and push. Conventional-commits subject
+Commit directly to `main`, no branch/PR, and push. Conventional-commits subject
 (`refactor: ...`), body listing the buckets touched, and the "No behavior
 change, size unchanged (N bytes)" line.
