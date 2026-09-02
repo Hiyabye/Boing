@@ -263,8 +263,8 @@ void drawPlay(Game *g) {
   rlPushMatrix();
   rlTranslatef(-sx, -(cameraY + sy), 0.0f);
   drawWorld(&g->world);
+  drawPowerAura(&g->world, &g->player); // living glow behind the blob
   drawPlayer(&g->player);
-  drawPowerAura(&g->world, &g->player); // rotating rings for active power-ups
   rlPopMatrix();
 
   // Post-processing for this frame. Bloom follows the altitude's theme, from

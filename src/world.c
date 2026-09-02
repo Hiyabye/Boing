@@ -1339,25 +1339,40 @@ static void drawFlash(const World *world) {
   }
 }
 
-// Rotating power-up rings around the player, one per active power-up, stacked
-// at increasing radii so multiple boosts read as concentric orbits. Drawn in
-// world space (after drawPlayer, inside the camera matrix).
+// A living light field behind the player. Each active effect keeps its HUD
+// color in one slow wisp and mote, while broad offset puffs blend into a soft
+// breathing halo. The bright wisp cores feed the existing post bloom, so this
+// needs no second shader or render target. Draw before the blob for clean
+// silhouette and face readability.
 void drawPowerAura(const World *world, const Player *player) {
-  float t = (float)GetTime();
+  float t = (float)GetTime(), r = player->radius;
   int slot = 0;
-  BeginBlendMode(BLEND_ADDITIVE); // the aura is light the blob is giving off
+  BeginBlendMode(BLEND_ADDITIVE);
   for (PowerUpType type = 0; type < POWERUP_COUNT; type++) {
-    if (world->powerTimer[type] <= 0.0f) {
+    float timer = world->powerTimer[type];
+    if (timer <= 0.0f) {
       continue;
     }
-    Color col = POWERUP_DEFS[type].color;
-    float r = player->radius * 1.35f + slot * 9.0f;
-    float dir = (slot % 2 == 0) ? 1.0f : -1.0f; // alternate spin direction
-    float ang = fmodf(t * (90.0f + slot * 40.0f) * dir, 360.0f);
-    DrawRing(player->position, r - 3.0f, r, ang, ang + 300.0f, 32,
-             Fade(col, 0.85f)); // arc with a gap so the spin is visible
-    DrawRing(player->position, r - 3.0f, r, ang, ang + 300.0f, 32,
-             Fade(col, 0.25f)); // faint glow doubling
+    PowerUpDef def = POWERUP_DEFS[type];
+    float life = def.duration <= 1.0f ? 1.0f : fminf(timer / 30.0f, 1.0f);
+    float dir = (slot & 1) ? -1.0f : 1.0f;
+    float phase = type * 2.39996f + t * (0.55f + slot * 0.08f) * dir;
+    float breathe = 1.0f + 0.09f * sinf(t * 2.2f + type);
+    Vector2 axis = {cosf(phase), sinf(phase)};
+    Vector2 glow = {player->position.x + axis.x * r * 0.18f,
+                    player->position.y + axis.y * r * 0.18f};
+    Vector2 wisp = {player->position.x + axis.x * r * 1.45f,
+                    player->position.y + axis.y * r * 1.45f};
+    Vector2 mote = {player->position.x + axis.x * r * 2.0f,
+                    player->position.y + axis.y * r * 2.0f};
+
+    drawTex(TEX_PUFF, glow.x, glow.y, r * 5.4f * breathe, r * 4.8f * breathe,
+            0.0f, Fade(def.color, 0.20f * life));
+    drawTex(TEX_PUFF, wisp.x, wisp.y, r * 1.9f, r * 0.65f,
+            phase * RAD2DEG + 90.0f, Fade(def.color, 0.72f * life));
+    float spark = 1.5f + 1.2f * (0.5f + 0.5f * sinf(t * 5.0f + type));
+    DrawCircleV(mote, spark * 2.4f, Fade(def.color, 0.35f * life));
+    DrawCircleV(mote, spark, Fade(RAYWHITE, 0.78f * life));
     slot++;
   }
   EndBlendMode();
@@ -1635,7 +1650,7 @@ int main(int argc, char **argv) {
   }
   w.flashPos = (Vector2){400.0f, 300.0f};
   w.flash = 0.7f;
-  w.powerTimer[POWERUP_MAGNET] = 100.0f; // two aura rings around the blob
+  w.powerTimer[POWERUP_MAGNET] = 100.0f; // layered aura colors around the blob
   w.powerTimer[POWERUP_ROCKET] = 100.0f;
 
   for (int i = 0; i < THEME_COUNT; i++) {
@@ -1692,8 +1707,8 @@ int main(int argc, char **argv) {
     ClearBackground(BLACK);
     drawGameBackground(cameraY); // also runs themeUpdate for this band
     drawWorld(&w);
-    drawPlayer(&p);
     drawPowerAura(&w, &p);
+    drawPlayer(&p);
     EndTextureMode();
 
     Image im = LoadImageFromTexture(rt.texture);

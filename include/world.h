@@ -124,6 +124,8 @@ World createWorld(void);
 void updateWorld(World *world, Player *player);
 void drawGround(void);
 void drawWorld(const World *world);
+// Additive living glow for active effects. Draw before the player so the aura
+// lights its silhouette without washing out the face.
 void drawPowerAura(const World *world, const Player *player);
 // Glyph-only power-up icon (no halo/bob) — reused by the SHOP upgrade cards.
 void drawPowerupGlyph(PowerUpType type, Vector2 c, float R, float t);
