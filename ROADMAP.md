@@ -2,7 +2,7 @@
 
 ## Status
 
-- Execution tracker; Phase 1 completed on 2026-09-03.
+- Execution tracker; Phase 2 completed on 2026-09-03.
 - Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
 - Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> a rebuilt Sunny Hills.
@@ -336,13 +336,13 @@ Files:
 
 Steps:
 
-- [ ] Add `ThemeSample` and `themeSampleAt()`.
-- [ ] Clamp negative ascent to zero.
-- [ ] Compute unbounded level, cycle, era, next era, and raw phase.
-- [ ] Initially set `blend = phase` so visual behavior remains unchanged.
-- [ ] Reimplement `themeLevelAt()` and `themeBandProgressAt()` through the pure sampler.
-- [ ] Keep compatibility wrappers temporarily if they reduce migration risk.
-- [ ] Add self-test assertions immediately before and after ordinary boundaries and the cycle boundary.
+- [x] Add `ThemeSample` and `themeSampleAt()`.
+- [x] Clamp negative ascent to zero.
+- [x] Compute unbounded level, cycle, era, next era, and raw phase.
+- [x] Initially set `blend = phase` so visual behavior remains unchanged.
+- [x] Reimplement `themeLevelAt()` and `themeBandProgressAt()` through the pure sampler.
+- [x] Keep compatibility wrappers temporarily if they reduce migration risk.
+- [x] Add self-test assertions immediately before and after ordinary boundaries and the cycle boundary.
 
 Acceptance:
 
@@ -360,11 +360,11 @@ Files:
 
 Steps:
 
-- [ ] Add the smallest helper needed to sample an era from world Y.
-- [ ] Base it on `SCREEN_HEIGHT / 2 - worldY` so it matches the current peak and camera-center math.
-- [ ] Add or clarify world accessors for peak ascent and view ascent if callers otherwise duplicate formulas.
-- [ ] Keep peak progression monotonic.
-- [ ] Keep the visual view sample camera-relative so falling can reveal lower scenery again.
+- [x] Add the smallest helper needed to sample an era from world Y.
+- [x] Base it on `SCREEN_HEIGHT / 2 - worldY` so it matches the current peak and camera-center math.
+- [x] Add or clarify world accessors for peak ascent and view ascent if callers otherwise duplicate formulas.
+- [x] Keep peak progression monotonic.
+- [x] Keep the visual view sample camera-relative so falling can reveal lower scenery again.
 
 Acceptance:
 
@@ -382,12 +382,12 @@ Files:
 
 Steps:
 
-- [ ] Pass or locally compute the appropriate `ThemeSample` at each consumer.
-- [ ] Make HUD phase read raw phase, not palette blend.
-- [ ] Make post glow derive from the sampled era pair and blend.
-- [ ] Remove reliance on `drawGameBackground()` having called `themeUpdate()` before HUD or post code.
-- [ ] Remove `bandLo`, `bandHi`, and `bandF` once no caller needs them.
-- [ ] Keep `gTheme` only as a temporary rendered palette if replacing every scene-color macro in one step would create unnecessary churn.
+- [x] Pass or locally compute the appropriate `ThemeSample` at each consumer.
+- [x] Make HUD phase read raw phase, not palette blend.
+- [x] Make post glow derive from the sampled era pair and blend.
+- [x] Remove reliance on `drawGameBackground()` having called `themeUpdate()` before HUD or post code.
+- [x] Remove `bandLo`, `bandHi`, and `bandF` once no caller needs them.
+- [x] Keep `gTheme` only as a temporary rendered palette if replacing every scene-color macro in one step would create unnecessary churn.
 
 Acceptance:
 
@@ -396,9 +396,14 @@ Acceptance:
 
 Phase 2 gate:
 
-- [ ] Mathematical boundary assertions pass.
-- [ ] Existing visual and audio output remain unchanged.
-- [ ] Clean build and size check pass.
+- [x] Mathematical boundary assertions pass.
+- [x] Existing visual and audio output remain unchanged.
+- [x] Clean build and size check pass.
+
+`ThemeSample` now owns all runtime modulo and cycle math. Peak samples drive
+progression, HUD, and music; view samples drive palette and glow. The existing
+BG, WORLD, and SOUND self-tests pass, both contact sheets match the Phase 1
+appearance by eye, and the clean bundle remains 1,389,043 bytes.
 
 Suggested future commit boundary if explicitly requested:
 

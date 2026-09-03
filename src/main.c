@@ -25,6 +25,7 @@
 // underlying score, MENU/SHOP preserve one shared playhead, and pause filters
 // the live era instead of resetting it.
 static int trackForState(const Game *g) {
+  ThemeSample journey = themeSampleAt(worldPeakAscent(&g->world));
   switch (g->state) {
   case GAMESTATE_SPLASH:
     return TRACK_NONE;
@@ -37,11 +38,11 @@ static int trackForState(const Game *g) {
   case GAMESTATE_GAMEOVER:
     return TRACK_RESULTS;
   case GAMESTATE_SETTINGS:
-    return g->prevState == GAMESTATE_PAUSED ? THEMES[worldEra(&g->world)].track
+    return g->prevState == GAMESTATE_PAUSED ? THEMES[journey.era].track
                                             : TRACK_MENU;
   case GAMESTATE_PLAYING:
   case GAMESTATE_PAUSED:
-    return THEMES[worldEra(&g->world)].track;
+    return THEMES[journey.era].track;
   case GAMESTATE_COUNT:
     return TRACK_NONE;
   }
@@ -58,13 +59,9 @@ static void updateMusicLayers(const Game *g) {
   float fallSpeed = clampf((g->player.velocity.y - 2.0f) / 18.0f, 0.0f, 1.0f);
   float depth = clampf(
       (screenY - SCREEN_HEIGHT * 0.5f) / (SCREEN_HEIGHT * 0.35f), 0.0f, 1.0f);
-  // Match updateWorld's peak reference: the camera starts climbing once the
-  // player's best point rises above screen center.
-  float ascent = SCREEN_HEIGHT / 2.0f - g->world.bestY;
-  float finale = worldEra(&g->world) == THEME_COUNT - 1 &&
-                         themeBandProgressAt(ascent) >= 0.75f
-                     ? 1.0f
-                     : 0.0f;
+  ThemeSample journey = themeSampleAt(worldPeakAscent(&g->world));
+  float finale =
+      journey.era == THEME_COUNT - 1 && journey.phase >= 0.75f ? 1.0f : 0.0f;
   setMusicDynamics(g->world.combo, fallSpeed * depth, finale);
 }
 

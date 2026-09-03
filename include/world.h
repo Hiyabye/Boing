@@ -22,7 +22,7 @@ typedef struct Coin {
 typedef struct Platform {
   Vector2 position; // top-left cell's corner
   bool active;
-  // Per-era behaviour, stamped at spawn from the era gate (see worldEra):
+  // Per-era behaviour, stamped at spawn from the peak journey sample:
   bool fragile; // Night Blocks: crumbles a beat after it is landed on
   float fuse; // frames left before a landed-on fragile pad breaks (0 = intact)
   float vx;   // Birdsong Skies: horizontal cloud drift, reflected at the edges
@@ -110,7 +110,7 @@ typedef struct World {
   Vector2 flashPos; // where the last collect "pop" ring is centered
   float flash;      // pop-ring life, 1 at collect -> 0
   int coinsCollected;
-  int level; // 0-based theme band entered; a level-up fanfare fires on increase
+  int level; // last announced peak-sample level; gates one-shot arrival events
   int combo; // coins chained without falling to the floor / taking a hit
   float comboTimer;  // frames left before an idle chain auto-resets
   int bestCombo;     // longest chain this run (game-over summary)
@@ -136,11 +136,13 @@ int getScore(const World *world);
 // struct stays public because making it opaque would require heap ownership;
 // callers still read a few plain fields when composing HUD or audio state.
 float worldCameraY(const World *world);
+// Monotonic highest ascent reached, and the camera-relative ascent currently
+// in view. Both use the same center-world-Y convention as themeSampleAtWorldY.
+float worldPeakAscent(const World *world);
+float worldViewAscent(const World *world);
 float worldShake(const World *world);
-int worldLevel(const World *world); // 0-based theme band the climb has entered
-// Which era's *mechanics* are live: worldLevel() wrapped into THEMES[] (levels
-// are infinite, themes loop), so gameplay cycles in step with the art. Every
-// per-era rule in world.c gates on this one query.
+int worldLevel(const World *world); // 0-based monotonic peak-sample level
+// Which era's mechanics are live, sampled from monotonic peak ascent.
 EraId worldEra(const World *world);
 float worldPowerTimer(const World *world, PowerUpType type);
 bool worldInvincible(const World *world); // active immunity-granting power-up

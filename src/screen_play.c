@@ -159,16 +159,14 @@ static void drawHud(const World *world) {
   drawCoinGlyph(gcx, gcy);
   drawTextShadow(coinStr, (int)gcx + 16, (int)cby + 5, 30, RAYWHITE);
 
-  // Level progress bar (top-center): how far into the current theme band the
-  // climb has reached (f = blend toward the next theme).
-  EraId lo, hi;
-  float f;
-  themeBlend(&lo, &hi, &f);
-  const char *lvlStr = TextFormat("LEVEL %d", worldLevel(world) + 1);
+  // Level progress bar (top-center): raw progress through the monotonic peak
+  // sample, independent of the camera-relative palette blend.
+  ThemeSample journey = themeSampleAt(worldPeakAscent(world));
+  const char *lvlStr = TextFormat("LEVEL %d", journey.level + 1);
   drawTextShadow(lvlStr, (int)(SCREEN_WIDTH - uiTextWidth(lvlStr, 18)) / 2, 8,
                  18, RAYWHITE);
   DrawRectangleRounded((Rectangle){px, py, pw, ph}, 0.9f, 8, Fade(BLACK, 0.3f));
-  DrawRectangleRounded((Rectangle){px, py, pw * f, ph}, 0.9f, 8,
+  DrawRectangleRounded((Rectangle){px, py, pw * journey.phase, ph}, 0.9f, 8,
                        Fade(COIN_HI, 0.9f));
 
   // Combo multiplier: shown centered under the level bar while a chain is
@@ -183,7 +181,7 @@ static void drawHud(const World *world) {
   // ~0.7s; sits clear of the combo readout above it.
   if (world->levelBanner > 0.0f) {
     float a = fminf(world->levelBanner / 40.0f, 1.0f);
-    drawCenteredText(THEMES[worldEra(world)].name, 112, 34, Fade(GOLD, a));
+    drawCenteredText(THEMES[journey.era].name, 112, 34, Fade(GOLD, a));
   }
 
   // One timer bar per active power-up, stacked (magnet + rocket can overlap).
@@ -210,6 +208,7 @@ static void drawHud(const World *world) {
 // era reached — closure + a screenshot-worthy moment.
 static void drawSummaryCard(Game *g) {
   const World *w = &g->world;
+  ThemeSample journey = themeSampleAt(worldPeakAscent(w));
   DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.55f));
   if (g->newBest) {
     drawCenteredText("NEW BEST!", 150, 60, GOLD);
@@ -227,7 +226,7 @@ static void drawSummaryCard(Game *g) {
       {"HEIGHT", TextFormat("%d m", (int)((FLOOR_Y - w->bestY) / 10.0f))},
       {"COINS", TextFormat("%d", w->coinsCollected)},
       {"BEST COMBO", TextFormat("x%d", w->bestCombo)},
-      {"ERA", THEMES[worldEra(w)].name},
+      {"ERA", THEMES[journey.era].name},
   };
   int ry = 268;
   for (int i = 0; i < (int)(sizeof(rows) / sizeof(rows[0])); i++) {
@@ -247,6 +246,7 @@ static void drawSummaryCard(Game *g) {
 // ---------------------------------------------------------------------------
 void drawPlay(Game *g) {
   float cameraY = worldCameraY(&g->world), shake = worldShake(&g->world);
+  ThemeSample view = themeSampleAt(worldViewAscent(&g->world));
   drawGameBackground(cameraY);
   float sx = 0.0f, sy = 0.0f;
   if (shake > 0.0f) {
@@ -273,8 +273,7 @@ void drawPlay(Game *g) {
   // drifting haze in the same pass — which means it fogs the HUD too, unlike
   // the flat dim rect it replaced; that's the point, it's a hazard. Fades out
   // over the last ~30 frames so it lifts smoothly instead of popping.
-  // drawGameBackground already ran themeUpdate above, so the glow is current.
-  g->post.bloom = themeGlow();
+  g->post.bloom = themeGlow(view);
   g->post.fog = fminf(worldFog(&g->world), 30.0f) / 30.0f;
 
   drawHud(&g->world);

@@ -691,7 +691,7 @@ static void drawBackdrop(BackdropStyle style, float cameraY, float alpha) {
 }
 
 void drawMenuBackground(void) {
-  themeUpdate(0.0f); // menu is always the first (nature) theme
+  themeUpdate(themeSampleAt(0.0f)); // menu is always the first theme
   DrawRectangleGradientV(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SKY_TOP, SKY_BOT);
   drawSun(1.0f);
   // Big lazy drifting clouds.
@@ -721,26 +721,22 @@ static float backdropCrossfade(float f) {
 // neighbor themes' backdrop *shapes* crossfade only in the last ~15% of the
 // band (BACKDROP_XFADE_START) so the next level's decor appears near the end.
 void drawGameBackground(float cameraY) {
-  float ascent = -cameraY; // camera starts at 0 and decreases going up
-  themeUpdate(ascent);
+  ThemeSample sample = themeSampleAtWorldY(cameraY + SCREEN_HEIGHT / 2.0f);
+  themeUpdate(sample);
 
   DrawRectangleGradientV(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SKY_TOP, SKY_BOT);
 
-  EraId lo, hi;
-  float f;
-  themeBlend(&lo, &hi, &f);
-  float fx = backdropCrossfade(f);
-  drawBackdrop(THEMES[lo].backdrop, cameraY, 1.0f - fx);
-  drawBackdrop(THEMES[hi].backdrop, cameraY, fx);
+  float fx = backdropCrossfade(sample.blend);
+  drawBackdrop(THEMES[sample.era].backdrop, cameraY, 1.0f - fx);
+  drawBackdrop(THEMES[sample.next].backdrop, cameraY, fx);
 }
 
 void drawGameForeground(float cameraY) {
-  EraId lo, hi;
-  float f;
-  themeBlend(&lo, &hi, &f);
-  float fx = backdropCrossfade(f);
-  drawForeground(THEMES[lo].backdrop, cameraY, 1.0f - fx);
-  drawForeground(THEMES[hi].backdrop, cameraY, fx);
+  ThemeSample sample = themeSampleAtWorldY(cameraY + SCREEN_HEIGHT / 2.0f);
+  themeUpdate(sample);
+  float fx = backdropCrossfade(sample.blend);
+  drawForeground(THEMES[sample.era].backdrop, cameraY, 1.0f - fx);
+  drawForeground(THEMES[sample.next].backdrop, cameraY, fx);
 }
 
 #ifdef BG_SELFTEST
@@ -812,6 +808,7 @@ static Image renderSample(RenderTexture rt, float cameraY) {
 }
 
 int main(int argc, char **argv) {
+  themeSampleSelfTest();
   SetTraceLogLevel(LOG_WARNING);
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "bgtest");
   while (!texPreloadStep()) {
@@ -822,7 +819,7 @@ int main(int argc, char **argv) {
   printf("columns: start .000 | .700 | .780 | .840 | .900 | .960 | "
          ".995 | next .005\n");
   for (int edge = 0; edge < THEME_COUNT; edge++) {
-    int next = (edge + 1) % THEME_COUNT;
+    int next = themeSampleAt(edge * BAND).next;
     for (int col = 0; col < SAMPLE_COUNT; col++) {
       float phase = SAMPLE_PHASES[col];
       float cameraY = -(edge + phase) * BAND;

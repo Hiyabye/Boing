@@ -4,6 +4,11 @@
 
 #include <stddef.h> // offsetof
 
+#ifdef BG_SELFTEST
+#include <assert.h>
+#include <math.h>
+#endif
+
 // Ascent (world-units of climb) that one theme spans before it has fully
 // morphed into the next — a full level band.
 #define BAND_HEIGHT 20000.0f
@@ -207,15 +212,32 @@ Theme gTheme;
 Color gUiAccent = {255, 127, 176, 255};
 Color gUiAccentDark = {228, 70, 139, 255};
 
-// Neighbor eras + blend factor from the last themeUpdate.
-static EraId bandLo = ERA_HILLS, bandHi = ERA_SKIES;
-static float bandF = 0.0f;
-
 // lerpTheme walks the leading Color run as a raw Color[] up to `backdrop`, so
-// that offset must land on a whole number of Colors — i.e. no non-Color field
-// may sneak in before `backdrop`. A reordered struct trips this at compile
-// time.
+// that offset must land on a whole number of Colors - no non-Color field may
+// sneak in before `backdrop`. A reordered struct trips this at compile time.
 STATIC_ASSERT(offsetof(Theme, backdrop) % sizeof(Color) == 0, theme_color_run);
+
+ThemeSample themeSampleAt(float ascent) {
+  if (ascent < 0.0f) {
+    ascent = 0.0f;
+  }
+  float t = ascent / BAND_HEIGHT;
+  int level = (int)t;
+  EraId era = (EraId)(level % ERA_COUNT);
+  float phase = clampf(t - (float)level, 0.0f, 1.0f);
+  return (ThemeSample){
+      .level = level,
+      .cycle = level / ERA_COUNT,
+      .era = era,
+      .next = (EraId)((era + 1) % ERA_COUNT),
+      .phase = phase,
+      .blend = phase,
+  };
+}
+
+ThemeSample themeSampleAtWorldY(float worldY) {
+  return themeSampleAt(SCREEN_HEIGHT / 2.0f - worldY);
+}
 
 // Blend every Color field (the whole leading run of the struct) from a->b by f.
 static Theme lerpTheme(const Theme *a, const Theme *b, float f) {
@@ -230,46 +252,53 @@ static Theme lerpTheme(const Theme *a, const Theme *b, float f) {
   return r;
 }
 
-void themeUpdate(float ascent) {
-  if (ascent < 0.0f) {
-    ascent = 0.0f;
-  }
-  float t = ascent / BAND_HEIGHT;
-  int level = (int)t; // 0-based band, unbounded
-  bandF = clampf(t - (float)level, 0.0f, 1.0f);
-  // Levels are infinite; themes loop, so once the last theme's band fills it
-  // wraps back to the first (Sunny Hills -> Birdsong Skies -> Night Blocks ->
-  // Neon Maze -> Falling Blocks -> Sunny Hills -> ...).
-  bandLo = (EraId)(level % ERA_COUNT);
-  bandHi = (EraId)((level + 1) % ERA_COUNT);
-  gTheme = lerpTheme(&THEMES[bandLo], &THEMES[bandHi], bandF);
-}
-
-void themeBlend(EraId *lo, EraId *hi, float *f) {
-  *lo = bandLo;
-  *hi = bandHi;
-  *f = bandF;
+void themeUpdate(ThemeSample sample) {
+  gTheme = lerpTheme(&THEMES[sample.era], &THEMES[sample.next], sample.blend);
 }
 
 // How much post-processing bloom this altitude wants. It also weights every
 // additive stamp in world.c, so each authoritative theme row owns one glow
 // knob. Sunny Hills keeps a small base because daylight coins still need light.
-float themeGlow(void) {
-  float lo = THEMES[bandLo].glow, hi = THEMES[bandHi].glow;
-  return lo + (hi - lo) * bandF;
+float themeGlow(ThemeSample sample) {
+  float lo = THEMES[sample.era].glow, hi = THEMES[sample.next].glow;
+  return lo + (hi - lo) * sample.blend;
 }
 
-// 0-based level (theme band) fully entered at this ascent — increments once
-// per whole BAND_HEIGHT climbed, unbounded (levels are infinite; themes loop).
-// Pure (no global state) so gameplay can poll it.
-int themeLevelAt(float ascent) {
-  if (ascent < 0.0f) {
-    ascent = 0.0f;
-  }
-  return (int)(ascent / BAND_HEIGHT);
-}
+int themeLevelAt(float ascent) { return themeSampleAt(ascent).level; }
 
-float themeBandProgressAt(float ascent) {
-  int level = themeLevelAt(ascent);
-  return clampf(ascent / BAND_HEIGHT - (float)level, 0.0f, 1.0f);
+float themeBandProgressAt(float ascent) { return themeSampleAt(ascent).phase; }
+
+#ifdef BG_SELFTEST
+void themeSampleSelfTest(void) {
+  ThemeSample s = themeSampleAt(-1.0f);
+  assert(s.level == 0 && s.cycle == 0 && s.era == ERA_HILLS &&
+         s.next == ERA_SKIES && s.phase == 0.0f && s.blend == 0.0f);
+
+  float edge = BAND_HEIGHT;
+  s = themeSampleAt(nextafterf(edge, 0.0f));
+  assert(s.level == 0 && s.cycle == 0 && s.era == ERA_HILLS &&
+         s.next == ERA_SKIES && s.phase > 0.0f && s.phase < 1.0f &&
+         s.blend == s.phase);
+  s = themeSampleAt(edge);
+  assert(s.level == 1 && s.cycle == 0 && s.era == ERA_SKIES &&
+         s.next == ERA_NIGHT && s.phase == 0.0f);
+  s = themeSampleAt(nextafterf(edge, INFINITY));
+  assert(s.level == 1 && s.era == ERA_SKIES && s.phase > 0.0f);
+
+  float wrap = BAND_HEIGHT * ERA_COUNT;
+  s = themeSampleAt(nextafterf(wrap, 0.0f));
+  assert(s.level == ERA_COUNT - 1 && s.cycle == 0 && s.era == ERA_BLOCKS &&
+         s.next == ERA_HILLS && s.phase > 0.0f && s.phase < 1.0f);
+  s = themeSampleAt(wrap);
+  assert(s.level == ERA_COUNT && s.cycle == 1 && s.era == ERA_HILLS &&
+         s.next == ERA_SKIES && s.phase == 0.0f);
+  s = themeSampleAt(nextafterf(wrap, INFINITY));
+  assert(s.level == ERA_COUNT && s.cycle == 1 && s.era == ERA_HILLS &&
+         s.phase > 0.0f);
+
+  s = themeSampleAtWorldY(SCREEN_HEIGHT / 2.0f - edge);
+  assert(s.level == 1 && s.era == ERA_SKIES && s.phase == 0.0f);
+  assert(themeLevelAt(wrap) == ERA_COUNT);
+  assert(themeBandProgressAt(edge) == 0.0f);
 }
+#endif

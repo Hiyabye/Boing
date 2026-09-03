@@ -76,7 +76,7 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
                            // so a ghost crowds you but can never follow forever
 #define GHOST_FLEE 0.55f   // speed multiplier while frightened by a pellet
 #define GHOST_EAT_BONUS 25 // points for the first ghost eaten, doubling after
-// Altitude difficulty ramp (keyed on world->level; hand-tune for feel).
+// Altitude difficulty ramp (keyed on the monotonic peak level; tune for feel).
 #define DIFFICULTY_CAP 3           // level past which the ramp plateaus
 #define DIFFICULTY_SPEED 0.25f     // +25% monster drift per level, capped
 #define DIFFICULTY_TIGHTEN 150.0f  // px closer monster bands per level
@@ -161,14 +161,25 @@ static float audioPan(float worldX) {
 }
 
 float worldCameraY(const World *world) { return world->cameraY; }
-float worldShake(const World *world) { return world->shake; }
-int worldLevel(const World *world) { return world->level; } // 0-based band
 
-// The gameplay counterpart of the palette's band index: levels are infinite and
-// themes loop, so the mechanics loop with them. Every per-era rule below reads
-// this — spawn gates stamp it onto the entity, so an entity keeps the behaviour
-// of the era it was born in even as the boundary passes under it.
-EraId worldEra(const World *world) { return (EraId)(world->level % ERA_COUNT); }
+float worldPeakAscent(const World *world) {
+  return fmaxf(0.0f, SCREEN_HEIGHT / 2.0f - world->bestY);
+}
+
+float worldViewAscent(const World *world) {
+  return fmaxf(0.0f, -world->cameraY);
+}
+
+float worldShake(const World *world) { return world->shake; }
+int worldLevel(const World *world) {
+  return themeSampleAt(worldPeakAscent(world)).level;
+}
+
+// Mechanics follow the monotonic peak sample. Entity-local ownership comes in
+// Phase 3; until then this preserves the existing global era gate.
+EraId worldEra(const World *world) {
+  return themeSampleAt(worldPeakAscent(world)).era;
+}
 
 float worldPowerTimer(const World *world, PowerUpType type) {
   return world->powerTimer[type];
@@ -268,7 +279,7 @@ static void spawnCoins(World *world) {
       world->lastSpawnX = x;
       // Low levels are richer: drop a bonus coin beside the trail coin on the
       // same row. lastSpawnX stays the trail coin so the followable line holds.
-      if (world->level < COIN_DOUBLE_CAP) {
+      if (worldLevel(world) < COIN_DOUBLE_CAP) {
         FIND_FREE(s2, coins, MAX_COINS);
         if (s2 >= 0) {
           float x2 = clampf(
@@ -310,7 +321,8 @@ static void spawnPlatforms(World *world) {
 // DIFFICULTY_CAP (0..CAP). Drives monster density/speed/spacing and the debuff
 // spawn odds.
 static int difficulty(const World *world) {
-  return world->level < DIFFICULTY_CAP ? world->level : DIFFICULTY_CAP;
+  int level = worldLevel(world);
+  return level < DIFFICULTY_CAP ? level : DIFFICULTY_CAP;
 }
 
 static void spawnMonsters(World *world) {
@@ -830,7 +842,8 @@ void updateWorld(World *world, Player *player) {
   // view it chases their feet downward, but only DEATH_DROP past that peak — a
   // fall beyond it leaves the player off-screen and isPlayerFallen ends the
   // run.
-  float peakY = fminf(0.0f, world->bestY - SCREEN_HEIGHT / 2.0f);
+  float peakAscent = worldPeakAscent(world);
+  float peakY = -peakAscent;
   float need =
       player->position.y + player->radius - SCREEN_HEIGHT + BOTTOM_MARGIN;
   float floorY = peakY + DEATH_DROP;
@@ -838,12 +851,12 @@ void updateWorld(World *world, Player *player) {
 
   // Level-up fanfare on first arrival in a new theme band. Keyed off the peak
   // (monotonic), so a fall-and-reclimb never re-triggers it.
-  int lvl = themeLevelAt(-peakY);
-  if (lvl > world->level) {
-    world->level = lvl;
+  ThemeSample journey = themeSampleAt(peakAscent);
+  if (journey.level > world->level) {
+    world->level = journey.level;
     world->levelBanner = LEVEL_BANNER_FRAMES; // the era's rules just changed;
                                               // the HUD says which era it is
-    musicEraTransition(THEMES[worldEra(world)].track);
+    musicEraTransition(THEMES[journey.era].track);
   }
 
   // Idle combo reset: no coin grabbed within COMBO_TIMEOUT drops the chain.
@@ -877,18 +890,19 @@ void updateWorld(World *world, Player *player) {
 // day era's weight is deliberately small, and using it alone would leave the
 // daylight coins flatter than they were before any of this. So Sunny Hills
 // keeps the light it always had and the neon eras blaze on top of it.
-static void glowStamp(Vector2 c, float w, Color tint, float base, float lit) {
+static void glowStamp(Vector2 c, float w, Color tint, float base, float lit,
+                      float glow) {
   BeginBlendMode(BLEND_ADDITIVE);
-  drawTex(TEX_PUFF, c.x, c.y, w, w, 0.0f, Fade(tint, base + lit * themeGlow()));
+  drawTex(TEX_PUFF, c.x, c.y, w, w, 0.0f, Fade(tint, base + lit * glow));
   EndBlendMode();
 }
 
-static void drawCoin(Vector2 c, float t, bool pellet) {
+static void drawCoin(Vector2 c, float t, bool pellet, float glow) {
   if (pellet) {
     // Neon Maze: the coin trail is a pellet lane. A pellet is a dot — the
     // minted-coin art below would fight the backdrop's own pellets.
     float r = COIN_RADIUS * 0.55f;
-    glowStamp(c, COIN_RADIUS * 3.5f, COIN_HI, 0.25f, 0.45f);
+    glowStamp(c, COIN_RADIUS * 3.5f, COIN_HI, 0.25f, 0.45f, glow);
     DrawCircle(c.x, c.y, r, COIN_HI);
     DrawCircle(c.x - r * 0.3f, c.y - r * 0.3f, r * 0.34f, RAYWHITE);
     return;
@@ -897,7 +911,7 @@ static void drawCoin(Vector2 c, float t, bool pellet) {
   float phase = (seed & 255) / 255.0f * TWO_PI; // out-of-sync twinkle offset
   float spin = fabsf(cosf(t * 4.0f + c.y * 0.05f)); // 0 (edge-on) .. 1 (face)
   float w = COIN_RADIUS * (0.22f + 0.78f * spin);
-  glowStamp(c, COIN_RADIUS * 4.5f, COIN_HI, 0.22f, 0.3f);
+  glowStamp(c, COIN_RADIUS * 4.5f, COIN_HI, 0.22f, 0.3f, glow);
   DrawEllipse(c.x, c.y, w * 1.12f, COIN_RADIUS * 1.12f,
               ColorBrightness(COIN_LO, -0.35f));                  // minted rim
   DrawEllipse(c.x, c.y, w, COIN_RADIUS, COIN_LO);                 // edge
@@ -949,13 +963,14 @@ static bool tetroCellAt(int shape, int x, int y) {
 // a dark silhouette pulls them forward, white rails mark safe landing tops,
 // and warm exposed sides mark the crush zone. Short trails make their descent
 // readable even when the player and camera are both moving.
-static void drawFallingPiece(const Platform *pl, Vector2 p, float a) {
+static void drawFallingPiece(const Platform *pl, Vector2 p, float a,
+                             float glow) {
   Color c = gTheme.confetti[pl->shape % CONFETTI_COUNT];
   Color outline = {0x04, 0x0A, 0x0D, 0xFF};
   Color danger = {0xFF, 0x55, 0x66, 0xFF};
   float w = tetroWidth(pl->shape);
   glowStamp((Vector2){p.x + w * 0.5f, p.y + TETRO_CELL}, w * 1.4f, c, 0.10f * a,
-            0.30f * a);
+            0.30f * a, glow);
 
   for (int k = 0; k < PAD_BOXES; k++) {
     int gx = TETRO[pl->shape][k][0], gy = TETRO[pl->shape][k][1];
@@ -994,7 +1009,7 @@ static void drawFallingPiece(const Platform *pl, Vector2 p, float a) {
   }
 }
 
-static void drawCloudPad(const Platform *pl) {
+static void drawCloudPad(const Platform *pl, float glow) {
   Vector2 p = pl->position;
   float a = 1.0f;
   if (pl->fuse > 0.0f) {
@@ -1005,7 +1020,7 @@ static void drawCloudPad(const Platform *pl) {
     p.y += GetRandomValue(-100, 100) / 100.0f * CRUMBLE_JITTER;
   }
   if (pl->vy > 0.0f) {
-    drawFallingPiece(pl, p, a);
+    drawFallingPiece(pl, p, a, glow);
     return;
   }
   if (pl->vx != 0.0f) {
@@ -1056,7 +1071,8 @@ static void drawCloudPad(const Platform *pl) {
 // `pellet` is the frightened timer (0 = hunting): on Neon Maze a lit pellet
 // turns the monsters blue and running, flashing white as it wears off — the
 // player's cue that the window is closing.
-static void drawMonster(Vector2 m, float t, float pellet, unsigned seed) {
+static void drawMonster(Vector2 m, float t, float pellet, unsigned seed,
+                        float glow) {
   float R = MONSTER_RADIUS;
   float wob = 1.0f + 0.08f * sinf(t * 6.0f + m.x * 0.1f);
   Color body = GRAPE, bodyDk = GRAPE_DK;
@@ -1069,7 +1085,7 @@ static void drawMonster(Vector2 m, float t, float pellet, unsigned seed) {
 
   drawTex(TEX_PUFF, m.x, m.y + R * 1.05f, R * 2.6f, R * 0.9f, 0.0f,
           Fade(BLACK, 0.3f)); // drop shadow
-  glowStamp(m, R * 3.5f, body, 0.2f, 0.45f);
+  glowStamp(m, R * 3.5f, body, 0.2f, 0.45f, glow);
 
   // Wobbling stubby legs (2 or 3, seed-picked).
   int legs = (seed & 1) ? 3 : 2;
@@ -1144,13 +1160,13 @@ static void drawMonster(Vector2 m, float t, float pellet, unsigned seed) {
   }
 }
 
-static void drawPowerUp(const PowerUp *pu, float t) {
+static void drawPowerUp(const PowerUp *pu, float t, float glow) {
   Vector2 c = {pu->position.x,
                pu->position.y + sinf(t * 3.0f + pu->position.x * 0.1f) * 4.0f};
   float R = POWERUP_RADIUS;
   float pulse = 0.25f + 0.12f * sinf(t * 4.0f + pu->position.y * 0.05f);
-  glowStamp(c, R * (4.0f + 0.4f * sinf(t * 4.0f)), RAYWHITE, pulse,
-            0.25f); // pulsing halo
+  glowStamp(c, R * (4.0f + 0.4f * sinf(t * 4.0f)), RAYWHITE, pulse, 0.25f,
+            glow); // pulsing halo
   drawPowerupGlyph(pu->type, c, R, t);
 }
 
@@ -1304,7 +1320,7 @@ void drawGround(void) {
 // per-particle switching would cost 128 flushes a frame instead of two. The
 // solid fleck stays — additive alone vanishes against the daylight sky, which
 // saturates to white, and confetti is what a coin burst is supposed to be.
-static void drawParticles(const World *world) {
+static void drawParticles(const World *world, float glow) {
   BeginBlendMode(BLEND_ADDITIVE);
   for (int i = 0; i < MAX_PARTICLES; i++) {
     if (world->particles[i].life <= 0.0f) {
@@ -1314,7 +1330,7 @@ static void drawParticles(const World *world) {
     float sz = 26.0f * pt.life;
     float ang = atan2f(pt.velocity.y, pt.velocity.x) * RAD2DEG;
     drawTex(TEX_PUFF, pt.position.x, pt.position.y, sz, sz * 0.5f, ang,
-            Fade(pt.color, pt.life * (0.4f + 0.6f * themeGlow())));
+            Fade(pt.color, pt.life * (0.4f + 0.6f * glow)));
   }
   EndBlendMode();
   for (int i = 0; i < MAX_PARTICLES; i++) {
@@ -1332,10 +1348,11 @@ static void drawParticles(const World *world) {
 
 // The expanding "pop" ring flashed at the last coin/power-up collect, over an
 // additive bloom so the pop throws light instead of just outlining itself.
-static void drawFlash(const World *world) {
+static void drawFlash(const World *world, float glow) {
   if (world->flash > 0.0f) {
     float r = COIN_RADIUS + (1.0f - world->flash) * 42.0f;
-    glowStamp(world->flashPos, r * 2.4f, RAYWHITE, world->flash * 0.5f, 0.3f);
+    glowStamp(world->flashPos, r * 2.4f, RAYWHITE, world->flash * 0.5f, 0.3f,
+              glow);
     DrawRing(world->flashPos, r * 0.72f, r, 0, 360, 24,
              Fade(RAYWHITE, world->flash));
   }
@@ -1381,6 +1398,9 @@ void drawPowerAura(const World *world, const Player *player) {
 }
 
 void drawWorld(const World *world) {
+  ThemeSample sample = themeSampleAt(worldViewAscent(world));
+  themeUpdate(sample);
+  float glow = themeGlow(sample);
   float t = (float)GetTime();
 
   drawGround();
@@ -1392,16 +1412,17 @@ void drawWorld(const World *world) {
   float fright = world->powerTimer[POWERUP_PELLET];
 
   FOREACH_ACTIVE(platforms, MAX_PLATFORMS, i)
-  drawCloudPad(&world->platforms[i]);
+  drawCloudPad(&world->platforms[i], glow);
   FOREACH_ACTIVE(coins, MAX_COINS, i)
-  drawCoin(world->coins[i].position, t, pelletLane);
+  drawCoin(world->coins[i].position, t, pelletLane, glow);
   FOREACH_ACTIVE(powerups, MAX_POWERUPS, i)
-  drawPowerUp(&world->powerups[i], t);
+  drawPowerUp(&world->powerups[i], t, glow);
   FOREACH_ACTIVE(monsters, MAX_MONSTERS, i)
-  drawMonster(world->monsters[i].position, t, fright, world->monsters[i].seed);
+  drawMonster(world->monsters[i].position, t, fright, world->monsters[i].seed,
+              glow);
 
-  drawParticles(world);
-  drawFlash(world);
+  drawParticles(world, glow);
+  drawFlash(world, glow);
 }
 
 bool isPlayerFallen(const World *world, const Player *player) {
@@ -1432,12 +1453,24 @@ int getScore(const World *world) {
 #define BAND 20000.0f // see BG_SELFTEST: only has to land inside a band
 #define CELL 400
 
+static World worldAtLevel(int level) {
+  World w = createWorld();
+  float ascent = (level + 0.05f) * BAND;
+  w.level = level;
+  w.bestY = SCREEN_HEIGHT / 2.0f - ascent;
+  w.cameraY = -ascent;
+  w.spawnY -= ascent;
+  w.platformSpawnY -= ascent;
+  w.monsterSpawnY -= ascent;
+  w.powerupSpawnY -= ascent;
+  return w;
+}
+
 // A world with the spawners silenced (their cursors parked below every
 // reachable camera position), so a scene is exactly what the check places in
 // it.
 static World bareWorld(int level) {
-  World w = createWorld();
-  w.level = level;
+  World w = worldAtLevel(level);
   w.spawnY = w.platformSpawnY = w.monsterSpawnY = w.powerupSpawnY = -1.0e6f;
   return w;
 }
@@ -1470,6 +1503,20 @@ static void checkEras(void) {
     assert(p.coinBank == INT_MAX && "coin bank overflowed");
   }
 
+  // Peak progression stays monotonic while the camera can reveal an earlier
+  // view sample again during a fall.
+  {
+    World w = worldAtLevel(1);
+    w.cameraY = -BAND * 0.75f;
+    ThemeSample peak = themeSampleAt(worldPeakAscent(&w));
+    ThemeSample view = themeSampleAt(worldViewAscent(&w));
+    assert(peak.level == 1 && peak.era == ERA_SKIES);
+    assert(view.level == 0 && view.era == ERA_HILLS && view.phase == 0.75f);
+    w.cameraY = -BAND * 0.25f;
+    assert(themeSampleAt(worldPeakAscent(&w)).level == peak.level);
+    assert(themeSampleAt(worldViewAscent(&w)).phase == 0.25f);
+  }
+
   // Table values the completeness assert cannot prove. Every timer must be
   // drawable, and every era needs at least one weighted choice per category.
   for (int t = 0; t < POWERUP_COUNT; t++) {
@@ -1495,8 +1542,7 @@ static void checkEras(void) {
     }
     assert(goodWeight > 0 && badWeight > 0 && "empty power-up category");
 
-    World w = createWorld();
-    w.level = e;
+    World w = worldAtLevel(e);
     Player p = createPlayer();
     updateWorld(&w, &p); // one call generates a screen's worth of pads
     int drifting = 0, fragile = 0, falling = 0, total = 0;
@@ -1547,10 +1593,10 @@ static void checkEras(void) {
   {
     World w = bareWorld(ERA_NIGHT);
     Player p = createPlayer();
-    p.position = (Vector2){400.0f, -1000.0f};
+    p.position = (Vector2){400.0f, w.bestY};
     p.velocity = (Vector2){0.0f, 10.0f};
     w.platforms[0] =
-        (Platform){{350.0f, -960.0f}, true, true, 0.0f, 0.0f, 0.0f, 0};
+        (Platform){{350.0f, w.bestY + 40.0f}, true, true, 0.0f, 0.0f, 0.0f, 0};
     for (int i = 0; i < 20 && w.platforms[0].fuse <= 0.0f; i++) {
       updatePlayer(&p);
       updateWorld(&w, &p);
@@ -1566,10 +1612,10 @@ static void checkEras(void) {
   {
     World w = bareWorld(ERA_HILLS);
     Player p = createPlayer();
-    p.position = (Vector2){400.0f, -1000.0f};
+    p.position = (Vector2){400.0f, w.bestY};
     p.velocity = (Vector2){0.0f, 10.0f};
     w.platforms[0] =
-        (Platform){{350.0f, -960.0f}, true, false, 0.0f, 0.0f, 0.0f, 0};
+        (Platform){{350.0f, w.bestY + 40.0f}, true, false, 0.0f, 0.0f, 0.0f, 0};
     for (int i = 0; i < 20; i++) {
       updatePlayer(&p);
       updateWorld(&w, &p);
@@ -1582,9 +1628,9 @@ static void checkEras(void) {
   {
     World w = bareWorld(ERA_SKIES);
     Player p = createPlayer();
-    p.position = (Vector2){400.0f, -1000.0f};
-    w.platforms[0] =
-        (Platform){{100.0f, -1500.0f}, true, false, 0.0f, CLOUD_DRIFT, 0.0f, 0};
+    p.position = (Vector2){400.0f, w.bestY};
+    w.platforms[0] = (Platform){
+        {100.0f, w.bestY - 500.0f}, true, false, 0.0f, CLOUD_DRIFT, 0.0f, 0};
     updateWorld(&w, &p);
     assert(w.platforms[0].position.x > 100.0f && "sky platform did not drift");
     w.platforms[0].position.x = SCREEN_WIDTH - PLATFORM_WIDTH;
@@ -1599,8 +1645,8 @@ static void checkEras(void) {
   {
     World w = bareWorld(ERA_MAZE);
     Player p = createPlayer();
-    p.position = (Vector2){700.0f, -1000.0f};
-    w.monsters[0] = (Monster){{100.0f, -1000.0f}, 0.0f, true, 0.0f, 1};
+    p.position = (Vector2){700.0f, w.bestY};
+    w.monsters[0] = (Monster){{100.0f, w.bestY}, 0.0f, true, 0.0f, 1};
     float gap0 = p.position.x - w.monsters[0].position.x;
     for (int i = 0; i < 10; i++) {
       updateWorld(&w, &p);
@@ -1627,12 +1673,12 @@ static void checkEras(void) {
   {
     World w = bareWorld(ERA_BLOCKS);
     Player p = createPlayer();
-    p.position = (Vector2){400.0f, -1000.0f};
+    p.position = (Vector2){400.0f, w.bestY};
     w.coinsCollected = 5;
-    w.platforms[0] =
-        (Platform){{350.0f, -1010.0f}, true, false, 0.0f, 0.0f, BLOCK_FALL, 0};
-    w.platforms[1] =
-        (Platform){{50.0f, -2000.0f}, true, false, 0.0f, 0.0f, BLOCK_FALL, 0};
+    w.platforms[0] = (Platform){
+        {350.0f, w.bestY - 10.0f}, true, false, 0.0f, 0.0f, BLOCK_FALL, 0};
+    w.platforms[1] = (Platform){
+        {50.0f, w.bestY - 1000.0f}, true, false, 0.0f, 0.0f, BLOCK_FALL, 0};
     float y0 = w.platforms[1].position.y;
     updateWorld(&w, &p);
     assert(w.platforms[1].position.y > y0 && "the blocks are not falling");
@@ -1655,7 +1701,9 @@ int main(int argc, char **argv) {
 
   // The scene is built by assignment rather than by running the spawner, so
   // the strip shows the same picture every run and a change to the spawn
-  // tables can't quietly empty it. cameraY stays 0, so world y == screen y.
+  // tables can't quietly empty it. Draw coordinates stay in screen space; the
+  // camera field only selects the era sample because this harness does not
+  // apply the gameplay camera transform.
   World w = {0};
   for (int i = 0; i < 8; i++) {
     w.coins[i].position =
@@ -1683,6 +1731,8 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < THEME_COUNT; i++) {
     float cameraY = -(i * BAND + BAND * 0.05f);
+    w.cameraY = cameraY;
+    w.bestY = SCREEN_HEIGHT / 2.0f + cameraY;
     // Each cell shows its era's *mechanic*, not just its palette: wind trails
     // on Birdsong Skies, a cracked pad on Night Blocks, frightened ghosts and a
     // pellet on Neon Maze, and all seven pieces on Falling Blocks.
@@ -1719,7 +1769,7 @@ int main(int argc, char **argv) {
     // Ahead of the draw, and not once at setup: gTheme is zero-initialized
     // until the first themeUpdate, so confetti picked before this point is
     // pure transparent black and the whole burst renders invisible.
-    themeUpdate(-cameraY);
+    themeUpdate(themeSampleAt(-cameraY));
     for (int k = 0; k < MAX_PARTICLES; k++) {
       w.particles[k].color = gTheme.confetti[k % CONFETTI_COUNT];
     }

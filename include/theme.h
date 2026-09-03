@@ -4,11 +4,10 @@
 #include "raylib.h"
 #include "sound.h"
 
-// The palette is runtime state now: a game can hold several themes and morph
+// The palette is runtime state: a game can hold several themes and morph
 // between them as the player climbs (see theme.c / THEMES[]). `gTheme` is the
-// blended palette for the *current frame*; themeUpdate() recomputes it from the
-// ascent. Scene-color macros read `gTheme`; the UI accent macros read the
-// selected outfit colors instead.
+// blended palette for the current draw sample; scene-color macros read it while
+// the UI accent macros read the selected outfit colors instead.
 
 // Stable gameplay eras in climb order. Level is unbounded, while EraId wraps
 // through this closed loop.
@@ -20,6 +19,18 @@ typedef enum {
   ERA_BLOCKS,
   ERA_COUNT
 } EraId;
+
+// One pure reading of the closed-loop journey at an ascent. `level` is
+// monotonic and unbounded; only `era` and `next` wrap. `phase` is raw progress
+// through the current era, while `blend` is the visual transition weight.
+typedef struct {
+  int level;
+  int cycle;
+  EraId era;
+  EraId next;
+  float phase;
+  float blend;
+} ThemeSample;
 
 // Authored outgoing relationship for each era. Rendering is added later; this
 // metadata makes the closed-loop Blocks -> Hills edge explicit now.
@@ -44,7 +55,7 @@ typedef enum {
 #define THEME_COUNT ERA_COUNT
 #define CONFETTI_COUNT 6
 
-// One theme. Every Color must come before `backdrop` — themeUpdate() blends the
+// One theme. Every Color must come before `backdrop` - themeUpdate() blends the
 // whole leading run of Colors generically (offsetof(Theme, backdrop)), so a new
 // color field needs no change to the lerp.
 typedef struct {
@@ -78,20 +89,24 @@ extern Color gUiAccent, gUiAccentDark;
 // The theme table (defined in theme.c; THEME_COUNT rows).
 extern const Theme THEMES[];
 
-// Recompute `gTheme` for the given ascent (-cameraY; 0 at the ground).
-void themeUpdate(float ascent);
-// The two neighbor eras and blend factor f (0..1) from the last themeUpdate,
-// used by the background to crossfade backdrop shapes.
-void themeBlend(EraId *lo, EraId *hi, float *f);
-// Post-processing bloom weight (0..1) for the current blend - subtle in
-// daylight, full in the neon level, blended across the band like the palette.
-float themeGlow(void);
-// 0-based level fully entered at `ascent` (see theme.c); unbounded - themes
-// loop once past the last band (nature->arcade->nature->...).
+// Pure journey samplers. World Y follows the shared convention:
+// ascent = max(0, SCREEN_HEIGHT/2 - worldY).
+ThemeSample themeSampleAt(float ascent);
+ThemeSample themeSampleAtWorldY(float worldY);
+
+// Recompute the temporary rendered palette from an explicit sample.
+void themeUpdate(ThemeSample sample);
+// Post-processing/additive glow weight for the sample's era pair and blend.
+float themeGlow(ThemeSample sample);
+
+// Compatibility wrappers for callers that only need one scalar.
 int themeLevelAt(float ascent);
-// Progress through that level's band (0..1). Kept here so gameplay/audio does
-// not duplicate the private band-height tuning constant.
 float themeBandProgressAt(float ascent);
+
+#ifdef BG_SELFTEST
+// Boundary checks run as part of the existing background self-test.
+void themeSampleSelfTest(void);
+#endif
 
 // Scene colors read the blended palette; UI accents follow the selected outfit.
 #define SKY_TOP (gTheme.skyTop)
