@@ -1360,7 +1360,15 @@ static float renderHandoffCue(const Voice *v, unsigned seedOffset) {
       styleWave(from->style, fromHz * t, fromHz, v->pos, v->seed + seedOffset);
   float destination =
       styleWave(to->style, toHz * t, toHz, v->pos, v->seed + seedOffset + 17u);
+  bool reboot = handoff->color == HANDOFF_REBOOT;
   float pivot = source + (destination - source) * blend;
+  if (reboot) {
+    // A is common to E harmonic minor and D major. Hold it in a plain voice
+    // while the busy digital arrangement falls away and the new mode settles.
+    float common = midiHz(69);
+    pivot =
+        0.8f * sinf(TAU * common * t) + 0.2f * sinf(TAU * common * 2.0f * t);
+  }
 
   // Revoice the opening rise of the shared Boing motif: the source plays the
   // first half and the destination answers, avoiding an early harmonic clash.
@@ -1382,8 +1390,18 @@ static float renderHandoffCue(const Voice *v, unsigned seedOffset) {
   int midi = degreeMidi(GAMEPLAY_SCALES[motifTrack], motifVoice->rootMidi + 12,
                         degree);
   float hz = midiHz(midi);
-  float motif = noteEnv * styleWave(motifVoice->style, hz * local / SAMPLE_RATE,
-                                    hz, local, v->seed + seedOffset + 31u);
+  float motifWave = styleWave(motifVoice->style, hz * local / SAMPLE_RATE, hz,
+                              local, v->seed + seedOffset + 31u);
+  if (reboot) {
+    float localT = (float)local / SAMPLE_RATE;
+    float gate = (float)(end - start) / SAMPLE_RATE * 0.72f;
+    float digital = styleWave(STYLE_BLOCKS, hz * localT, hz, local,
+                              v->seed + seedOffset + 31u);
+    float mallet = instrumentSample(INST_MALLET, hz, localT, gate, local,
+                                    v->seed + seedOffset + 47u);
+    motifWave = digital + (mallet - digital) * blend;
+  }
+  float motif = noteEnv * motifWave;
 
   float arch = sinf(PI * x);
   float color = 0.0f;
@@ -1410,10 +1428,12 @@ static float renderHandoffCue(const Voice *v, unsigned seedOffset) {
     color = 0.1f * burst * noise;
     break;
   }
-  case HANDOFF_REBOOT:
-    color = 0.1f * ((1.0f - blend) * floorf(source * 8.0f + 0.5f) / 8.0f +
-                    blend * triangleWave(toHz * t));
+  case HANDOFF_REBOOT: {
+    float digital = floorf(source * 8.0f + 0.5f) / 8.0f;
+    float soft = 0.72f * sinf(TAU * toHz * t) + 0.28f * triangleWave(toHz * t);
+    color = 0.1f * (digital + (soft - digital) * blend);
     break;
+  }
   case HANDOFF_COUNT:
     break;
   }
@@ -1811,26 +1831,44 @@ static void beginPendingTrack(void) {
   clearPendingTrack();
 }
 
-static float pendingStrip(void) {
+static float eased01(float x) {
+  x = clampf(x, 0.0f, 1.0f);
+  return x * x * (3.0f - 2.0f * x);
+}
+
+static void handoffMixShape(int handoff, float progress, float *filter,
+                            float *fade) {
+  *filter = *fade = eased01(progress);
+  if (handoff >= 0 && handoff < ARRAY_LEN(HANDOFFS) &&
+      HANDOFFS[handoff].color == HANDOFF_REBOOT) {
+    // Two source beats: remove hats/snare into the low-passed center first,
+    // then take out the remaining kick/bass under the neutral motif bridge.
+    *filter = eased01(progress * 2.0f);
+    *fade = eased01(progress * 2.0f - 1.0f);
+  }
+}
+
+static void pendingMix(float *filter, float *fade) {
+  *filter = *fade = 0.0f;
   if (pendingTrack == TRACK_NONE) {
-    return 0.0f;
+    return;
   }
   if (!pendingCueStarted && pendingFrames <= pendingFadeFrames) {
     musicEraTransition(pendingHandoff, pendingFadeFrames);
     pendingCueStarted = true;
   }
-  if (pendingFrames >= pendingFadeFrames) {
-    return 0.0f;
+  if (pendingFrames < pendingFadeFrames) {
+    float progress = 1.0f - (float)pendingFrames / pendingFadeFrames;
+    handoffMixShape(pendingHandoff, progress, filter, fade);
   }
-  float x = 1.0f - (float)pendingFrames / pendingFadeFrames;
-  return x * x * (3.0f - 2.0f * x);
 }
 
 static Stereo renderAudioFrame(void) {
   if (pendingTrack != TRACK_NONE && pendingFrames <= 0) {
     beginPendingTrack();
   }
-  float strip = pendingStrip();
+  float filter, fade;
+  pendingMix(&filter, &fade);
   Stereo incoming = trackSample(curTrack);
   Stereo outgoing = trackSample(prevTrack);
   float inGain = sinf(crossfade * PI * 0.5f);
@@ -1874,9 +1912,9 @@ static Stereo renderAudioFrame(void) {
 
   // Remove the outgoing rhythm section before the new downbeat. Its filtered
   // center fades first, while the short motif bridge carries across the seam.
-  float stripGain = cosf(strip * PI * 0.5f);
-  music.l = (music.l + (simpleMusic.l * 0.55f - music.l) * strip) * stripGain;
-  music.r = (music.r + (simpleMusic.r * 0.55f - music.r) * strip) * stripGain;
+  float stripGain = cosf(fade * PI * 0.5f);
+  music.l = (music.l + (simpleMusic.l * 0.55f - music.l) * filter) * stripGain;
+  music.r = (music.r + (simpleMusic.r * 0.55f - music.r) * filter) * stripGain;
 
   Stereo musicCue = {0.0f, 0.0f};
   Stereo effects = {0.0f, 0.0f};
@@ -2165,6 +2203,17 @@ static int prepareHandoffTest(int handoff) {
 }
 
 static void checkHandoffs(void) {
+  int reboot = handoffFor(TRACK_BLOCKS, TRACK_HILLS);
+  float filter, fade;
+  handoffMixShape(reboot, 0.25f, &filter, &fade);
+  assert(filter > 0.0f && fade == 0.0f);
+  handoffMixShape(reboot, 0.5f, &filter, &fade);
+  assert(filter == 1.0f && fade == 0.0f);
+  handoffMixShape(reboot, 0.75f, &filter, &fade);
+  assert(filter == 1.0f && fabsf(fade - 0.5f) < 0.0001f);
+  handoffMixShape(0, 0.25f, &filter, &fade);
+  assert(filter == fade && filter > 0.0f);
+
   for (int handoff = 0; handoff < ARRAY_LEN(HANDOFFS); handoff++) {
     const Handoff *def = &HANDOFFS[handoff];
     int seam = prepareHandoffTest(handoff);

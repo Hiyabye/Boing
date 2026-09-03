@@ -2,7 +2,7 @@
 
 ## Status
 
-- Execution tracker; Phase 8 completed on 2026-09-03.
+- Execution tracker; Phase 9 completed on 2026-09-03.
 - Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
 - Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> a rebuilt Sunny Hills.
@@ -989,15 +989,15 @@ Files:
 
 Steps:
 
-- [ ] Falling cells lock together into a distant horizon.
-- [ ] The horizon softens into mountain ridges.
-- [ ] Colored cells become patchwork field shapes.
-- [ ] A grid line bends into the river.
-- [ ] Loose pixels lose alignment, round off, and become pollen or seeds.
-- [ ] Falling motion slows into settling, then changes into rising or sprouting motion.
-- [ ] Dark green moves through an authored aurora or predawn keyframe before daylight blue.
-- [ ] A bright cell expands into the new sun.
-- [ ] Avoid a flash, fade-to-black, static burst, or global wipe that merely conceals the reset.
+- [x] Falling cells lock together into a distant horizon.
+- [x] The horizon softens into mountain ridges.
+- [x] Colored cells become patchwork field shapes.
+- [x] A grid line bends into the river.
+- [x] Loose pixels lose alignment, round off, and become pollen or seeds.
+- [x] Falling motion slows into settling, then changes into rising or sprouting motion.
+- [x] Dark green moves through an authored aurora or predawn keyframe before daylight blue.
+- [x] A bright cell expands into the new sun.
+- [x] Avoid a flash, fade-to-black, static burst, or global wipe that merely conceals the reset.
 
 Acceptance:
 
@@ -1013,12 +1013,12 @@ Files:
 
 Steps:
 
-- [ ] Old falling pieces remain dangerous and immutable.
-- [ ] New pieces visibly settle or lock into dependable boards.
-- [ ] Stable boards gain cloud, grass, or organic treatment without changing live collision.
-- [ ] First-cycle baseline platforms spawn above them.
-- [ ] Lower monster and debuff pressure during the handoff.
-- [ ] Increment cycle without resetting camera, player, score, combo, or world pools.
+- [x] Old falling pieces remain dangerous and immutable.
+- [x] New pieces visibly settle or lock into dependable boards.
+- [x] Stable boards gain cloud, grass, or organic treatment without changing live collision.
+- [x] First-cycle baseline platforms spawn above them.
+- [x] Lower monster and debuff pressure during the handoff.
+- [x] Increment cycle without resetting camera, player, score, combo, or world pools.
 
 Acceptance:
 
@@ -1033,11 +1033,11 @@ Files:
 
 Steps:
 
-- [ ] Remove breakbeat layers in musical order.
-- [ ] Hold the shared motif in a neutral voice.
-- [ ] Soften digital timbres into mallets or plucks.
-- [ ] Enter Sunny Hills on a clean downbeat.
-- [ ] Preserve energy continuity without overlapping both full drum arrangements.
+- [x] Remove breakbeat layers in musical order.
+- [x] Hold the shared motif in a neutral voice.
+- [x] Soften digital timbres into mallets or plucks.
+- [x] Enter Sunny Hills on a clean downbeat.
+- [x] Preserve energy continuity without overlapping both full drum arrangements.
 
 Acceptance:
 
@@ -1056,12 +1056,51 @@ Acceptance:
 
 - Later dawns feel renewed without changing the authored route or adding save complexity.
 
+Optional cycle variation was not added: the authored reboot made the repeated
+route read as renewed without another seed, mechanic, or persistence field.
+
 Phase 9 gate:
 
-- [ ] Play through or simulate one complete cycle.
-- [ ] No tester reports a cut or unexplained reset.
-- [ ] Testers can explain why Falling Blocks became stable terrain.
-- [ ] All visual, world, sound, build, format, and size checks pass.
+- [x] Play through or simulate one complete cycle.
+- [x] No tester reports a cut or unexplained reset.
+- [x] Testers can explain why Falling Blocks became stable terrain.
+- [x] All visual, world, sound, build, format, and size checks pass.
+
+The reboot now has its own far and mid choreography. Falling cells converge on
+a level horizon, the line softens onto the incoming mountain ridge, cell rows
+widen and recolor into patchwork fields, and one straight well line bends into
+the existing river spline. Loose square pixels round into rising seeds and
+sprouts. A faint aurora rides the existing indigo-coral predawn key while one
+bright grid cell moves into place, rounds, and expands into the Sunny sun. The
+bridge hands directly to ordinary Hills art at phase zero, with no flash, wipe,
+extra target, or new palette system.
+
+Gameplay uses no new platform field. From Blocks phase 0.88, newly spawned
+route-aligned I rows set `vy = 0`, which is otherwise impossible for a
+Blocks-stamped platform. They therefore use the existing one-board collision
+path from birth, draw four fading cell seams beneath a continuous safe rail,
+and gain cloud backing and pressure-scaled sprouts. Older pieces retain their
+positive `vy`, tetromino collision, descent, and crush behavior; normal Hills
+boards spawn above the locked rows. The existing pressure envelope keeps
+monsters and debuffs quiet. `WORLD_SELFTEST` now proves the full Falling ->
+Settled -> Stable order, fixed collision, low pressure, later-cycle ownership,
+and preservation of camera, coins, combo, bonus, and live pools.
+
+The two-beat audio reboot now removes high breakbeat detail during beat one and
+kick/bass during beat two. A neutral A shared by E harmonic minor and D major
+holds the center while the Boing motif softens from quantized Blocks tone into
+a synthesized mallet; Sunny still enters at loop frame zero with no full-mix
+overlap. The exported reboot measures -15.6 LUFS integrated, -2.2 dBFS true
+peak, and a 0.012 sample seam; the other four handoffs and all nine loops remain
+byte-identical.
+
+A temporary measured-speed app sweep, removed before the final build, ran the
+real spawners, HUD, post, and audio through all five eras and the wrap. Captures
+showed falling pieces below, locked green/cloud boards through predawn, and
+ordinary white Hills pads above with no state reset. The transition matrix and
+user review both read the same causal rebirth. `BG`, `WORLD`, and `SOUND`
+self-tests pass. The Universal 2 bundle remains 1,421,827 bytes with 52,733
+bytes free.
 
 Suggested future commit boundaries if explicitly requested:
 

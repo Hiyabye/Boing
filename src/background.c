@@ -200,12 +200,22 @@ static void drawPatchwork(float alpha) {
                     0.72f * alpha, 3.0f, 0.0f);
 }
 
+#define RIVER_POINTS 7
+static const Vector2 RIVER[] = {{450, 474}, {425, 520}, {475, 575}, {430, 640},
+                                {505, 710}, {450, 770}, {520, 850}};
+static const Vector2 RIVER_GRID[] = {{440, 430}, {440, 500}, {440, 570},
+                                     {440, 640}, {440, 710}, {440, 780},
+                                     {440, 850}};
+STATIC_ASSERT(sizeof(RIVER) / sizeof(RIVER[0]) == RIVER_POINTS,
+              river_points_full);
+STATIC_ASSERT(sizeof(RIVER_GRID) / sizeof(RIVER_GRID[0]) == RIVER_POINTS,
+              river_grid_full);
+
 static void drawRiver(float alpha) {
-  Vector2 river[] = {{450, 474}, {425, 520}, {475, 575}, {430, 640},
-                     {505, 710}, {450, 770}, {520, 850}};
   Color water = ColorLerp(SKY_TOP, SKY_BOT, 0.5f);
-  DrawSplineCatmullRom(river, 7, 24.0f, Fade(water, 0.62f * alpha));
-  DrawSplineCatmullRom(river, 7, 4.0f, Fade(SUN_CORE, 0.58f * alpha));
+  DrawSplineCatmullRom(RIVER, RIVER_POINTS, 24.0f, Fade(water, 0.62f * alpha));
+  DrawSplineCatmullRom(RIVER, RIVER_POINTS, 4.0f,
+                       Fade(SUN_CORE, 0.58f * alpha));
 }
 
 static void drawMeadowSprig(float x, float y, float side, float s,
@@ -245,11 +255,13 @@ static void drawPollen(float cameraY, float alpha) {
 }
 
 // L1 far layer: day atmosphere, cloud depth, and the valley silhouette.
-static void drawHillsFar(float cameraY, float alpha, float sink) {
+static void drawHillsFar(float cameraY, float alpha, float sink, int omitDisc) {
   drawTex(TEX_NEBULA, SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT * 0.32f,
           SCREEN_WIDTH * 1.35f, SCREEN_HEIGHT * 0.75f, 0.0f,
           Fade(SUN_CORE, 0.09f * alpha));
-  drawSun(alpha);
+  if (!omitDisc) {
+    drawSun(alpha);
+  }
 
   for (int i = 0; i < 7; i++) {
     float depth = 0.1f + (i % 3) * 0.08f;
@@ -607,6 +619,136 @@ static void drawBlocksMid(float cameraY, float alpha) {
   }
 }
 
+// Blocks -> Hills: falling cells first lock into a flat horizon, then soften
+// onto the incoming mountain ridge. One bright grid cell rounds and grows into
+// the new sun, while a faint predawn ribbon preserves light across the change.
+static void drawRebootFar(float cameraY, float t) {
+  if (t <= 0.0f) {
+    return;
+  }
+  float round = easedWindow(t, 0.18f, 0.92f);
+  float gridX = floorf(SUN_X / 44.0f) * 44.0f + 22.0f;
+  float gridY = floorf(SUN_Y / 44.0f) * 44.0f + 22.0f;
+  float cellX = gridX + (SUN_X - gridX) * round;
+  float cellY = gridY + (SUN_Y - gridY) * round;
+  float cell = 22.0f - 6.0f * round;
+  float cellIn = easedWindow(t, 0.0f, 0.12f);
+  if (round < 0.999f) {
+    drawBlockC(cellX - cell * 0.5f, cellY - cell * 0.5f, cell,
+               ColorLerp(CLOUD, SUN_CORE, round), cellIn * (1.0f - round));
+  }
+  drawCelestial(11.0f + (SUN_R - 11.0f) * round, 0.0f, round);
+
+  float alpha = bridgeBell(t);
+  if (alpha <= 0.01f) {
+    return;
+  }
+  float lock = easedWindow(t, 0.08f, 0.56f);
+  float soften = easedWindow(t, 0.42f, 0.94f);
+  Vector2 ridge[11];
+  for (int i = 0; i < 11; i++) {
+    float x = -20.0f + i * 84.0f;
+    float depth = 0.18f + (i % 3) * 0.04f;
+    float falling =
+        wrapf(70.0f + i * 107.0f + (float)GetTime() * 18.0f - cameraY * depth,
+              SCREEN_HEIGHT + 180.0f) -
+        90.0f;
+    float horizon = 440.0f + (i % 2) * 3.0f;
+    float mountain = ridgeY(x, 465.0f, 92.0f, 90.0f, 0.88f);
+    float target = horizon + (mountain - horizon) * soften;
+    float y = falling + (target - falling) * lock;
+    Color c = ColorLerp(gTheme.confetti[i % CONFETTI_COUNT], GRASS_DK, soften);
+    drawBlockC(x - 8.0f, y - 8.0f, 16.0f, c, alpha * (0.72f - 0.34f * soften));
+    ridge[i] = (Vector2){x, target};
+  }
+  DrawSplineCatmullRom(ridge, 11, 4.0f - 1.5f * soften,
+                       Fade(ColorLerp(CLOUD, GRASS_DK, soften), 0.5f * alpha));
+
+  Vector2 aurora[] = {{-40.0f, 270.0f},
+                      {190.0f, 210.0f},
+                      {430.0f, 255.0f},
+                      {670.0f, 190.0f},
+                      {840.0f, 235.0f}};
+  DrawSplineCatmullRom(aurora, 5, 18.0f - 10.0f * t,
+                       Fade(ColorLerp(CLOUD, SUN, 0.45f), 0.12f * alpha));
+  DrawSplineCatmullRom(aurora, 5, 3.0f, Fade(SUN_CORE, 0.2f * alpha));
+}
+
+// Settled cell rows flatten and widen into patchwork fields. A straight well
+// line bends into the river while loose pixels round into rising seeds and
+// tiny sprouts, changing motion only after the blocks have come to rest.
+static void drawRebootMid(float cameraY, float t) {
+  float alpha = bridgeBell(t);
+  if (alpha <= 0.01f) {
+    return;
+  }
+  float settle = easedWindow(t, 0.05f, 0.64f);
+  float organic = easedWindow(t, 0.40f, 0.94f);
+  static const float BAND_Y[] = {560.0f, 635.0f, 705.0f};
+  for (int i = 0; i < 12; i++) {
+    float depth = 0.28f + (i % 3) * 0.05f;
+    float falling =
+        wrapf(i * 127.0f + (float)GetTime() * (18.0f * depth) - cameraY * depth,
+              SCREEN_HEIGHT + 180.0f) -
+        90.0f;
+    float targetX = 45.0f + (i % 4) * 235.0f + (i / 4) * 24.0f;
+    float targetY = BAND_Y[i / 4] + sinf(i * 1.7f) * 12.0f;
+    float startX = wrapf(i * 151.0f, SCREEN_WIDTH + 80.0f) - 40.0f;
+    float x = startX + (targetX - startX) * settle;
+    float y = falling + (targetY - falling) * settle;
+    float w = 18.0f + (62.0f + (i % 3) * 14.0f) * organic;
+    float h = 18.0f + 14.0f * organic;
+    Color field = (i / 4 == 1) ? ColorLerp(GRASS, COIN_HI, 0.16f)
+                               : (i / 4 == 0 ? GRASS : GRASS_DK);
+    Color c = ColorLerp(gTheme.confetti[i % CONFETTI_COUNT], field, organic);
+    DrawRectangleRounded((Rectangle){x - w * 0.5f, y - h * 0.5f, w, h},
+                         0.08f + 0.72f * organic, 6, Fade(c, 0.5f * alpha));
+    DrawRectangle(x - w * 0.42f, y - h * 0.34f, w * 0.84f,
+                  fmaxf(1.0f, h * 0.12f),
+                  Fade(ColorBrightness(c, 0.28f), 0.28f * alpha));
+  }
+
+  float bend = easedWindow(t, 0.22f, 0.9f);
+  Vector2 water[RIVER_POINTS];
+  for (int i = 0; i < RIVER_POINTS; i++) {
+    water[i] =
+        (Vector2){RIVER_GRID[i].x + (RIVER[i].x - RIVER_GRID[i].x) * bend,
+                  RIVER_GRID[i].y + (RIVER[i].y - RIVER_GRID[i].y) * bend};
+  }
+  DrawSplineCatmullRom(water, RIVER_POINTS, 9.0f + 8.0f * bend,
+                       Fade(ColorLerp(CLOUD, SKY_BOT, bend), 0.38f * alpha));
+  DrawSplineCatmullRom(water, RIVER_POINTS, 2.5f,
+                       Fade(SUN_CORE, 0.48f * alpha));
+
+  float sprout = easedWindow(t, 0.54f, 0.96f);
+  for (int i = 0; i < 14; i++) {
+    float startX = wrapf(34.0f + i * 91.0f, SCREEN_WIDTH + 50.0f) - 25.0f;
+    float startY = wrapf(i * 73.0f + (float)GetTime() * 14.0f -
+                             cameraY * (0.2f + (i % 2) * 0.04f),
+                         SCREEN_HEIGHT + 100.0f) -
+                   50.0f;
+    float seedX = wrapf(i * 97.0f + (float)GetTime() * (3.0f + i % 3),
+                        SCREEN_WIDTH + 40.0f) -
+                  20.0f;
+    float seedY =
+        wrapf(700.0f - i * 61.0f - (float)GetTime() * (28.0f + (i % 3) * 3.0f) -
+                  cameraY * 0.02f,
+              SCREEN_HEIGHT + 100.0f) -
+        50.0f;
+    float x = startX + (seedX - startX) * sprout;
+    float y = startY + (seedY - startY) * sprout;
+    Color c = ColorLerp(gTheme.confetti[i % CONFETTI_COUNT], SUN_CORE, sprout);
+    DrawRectangle(x - 2.5f, y - 2.5f, 5.0f * (1.0f - sprout),
+                  5.0f * (1.0f - sprout), Fade(c, 0.5f * alpha));
+    DrawCircle(x, y, 1.2f + 1.0f * sprout, Fade(c, 0.55f * alpha * sprout));
+    if (sprout > 0.55f) {
+      float grow = (sprout - 0.55f) / 0.45f;
+      DrawLineEx((Vector2){x, y + 8.0f * grow}, (Vector2){x, y}, 1.2f,
+                 Fade(GRASS_DK, 0.42f * alpha * grow));
+    }
+  }
+}
+
 // Hills -> Skies: the valley drops away while one river stroke straightens
 // into a wind ribbon. Pollen gains span and motion until it reads as tiny
 // birds.
@@ -864,7 +1006,7 @@ static void drawBackdropFar(BackdropStyle style, float cameraY, float alpha,
   }
   switch (style) {
   case BACKDROP_HILLS:
-    drawHillsFar(cameraY, alpha, sink);
+    drawHillsFar(cameraY, alpha, sink, omitDisc);
     break;
   case BACKDROP_SKIES:
     drawSkiesFar(alpha, omitDisc);
@@ -937,6 +1079,8 @@ static void drawBridgeFar(BridgeStyle bridge, float cameraY, float t) {
     drawTwilightDisc(t);
   } else if (bridge == BRIDGE_SIGNAL) {
     drawSignalFar(cameraY, t);
+  } else if (bridge == BRIDGE_REBOOT) {
+    drawRebootFar(cameraY, t);
   }
 }
 
@@ -949,6 +1093,8 @@ static void drawBridgeMid(BridgeStyle bridge, float cameraY, float t) {
     drawSignalMid(cameraY, t);
   } else if (bridge == BRIDGE_FRAGMENTATION) {
     drawFragmentBridge(cameraY, t);
+  } else if (bridge == BRIDGE_REBOOT) {
+    drawRebootMid(cameraY, t);
   }
 }
 
@@ -985,7 +1131,8 @@ void drawGameBackground(float cameraY) {
   float far = easedWindow(sample.phase, FAR_START, FAR_END);
   float mid = easedWindow(sample.phase, MID_START, MID_END);
   BridgeStyle bridge = THEMES[sample.era].bridge;
-  int omitDisc = bridge == BRIDGE_TWILIGHT || bridge == BRIDGE_SIGNAL;
+  int omitDisc = bridge == BRIDGE_TWILIGHT || bridge == BRIDGE_SIGNAL ||
+                 bridge == BRIDGE_REBOOT;
   float farSink = bridge == BRIDGE_CLOUDLINE ? far * 170.0f : 0.0f;
   float midSink = bridge == BRIDGE_CLOUDLINE ? mid * 230.0f : 0.0f;
 

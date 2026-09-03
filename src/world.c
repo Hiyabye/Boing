@@ -1,8 +1,8 @@
 #include "world.h"
 
-#include "background.h" // TETRO[] + drawTetromino: a Falling Blocks pad *is* a
-                        // tetromino, and shares the backdrop's shape table so
-                        // the piece you land on is the piece you can see
+#include "background.h" // TETRO[] + drawTetromino: a moving Falling Blocks
+                        // pad shares the backdrop's cells, keeping art and
+                        // collision identical until a new row spawns locked
 #include "core.h"
 #include "progress.h" // PuTrack + MAX_UPG_LEVEL for the upgrade hooks
 #include "sound.h"
@@ -65,6 +65,7 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define INTRO_DRIFT_MUL 0.35f
 #define INTRO_CRUMBLE_BONUS 36.0f
 #define INTRO_BLOCK_MUL 0.35f
+#define REBOOT_LOCK_START 0.88f
 #define GHOST_PREVIEW_END 0.03f
 #define PELLET_PREVIEW_END 0.09f
 #define INTRO_GHOST_MUL 0.28f
@@ -348,9 +349,11 @@ static void spawnPlatforms(World *world) {
     float pressure = encounterPressure(sample.phase);
     FIND_FREE(s, platforms, MAX_PLATFORMS);
     if (s >= 0) {
-      // Intro Blocks use a wide, one-row I piece. Later pieces keep the full
-      // shape table, and collision still comes from those exact cells.
-      int shape = e == ERA_BLOCKS && pressure < 1.0f
+      // Intro Blocks use a wide, one-row I piece. In the reboot's final stretch
+      // newly spawned I rows lock into stable boards; older live pieces keep
+      // falling with their original collision and danger.
+      bool locked = e == ERA_BLOCKS && sample.phase >= REBOOT_LOCK_START;
+      int shape = e == ERA_BLOCKS && (pressure < 1.0f || locked)
                       ? 0
                       : GetRandomValue(0, TETRO_COUNT - 1);
       float w = e == ERA_BLOCKS
@@ -377,7 +380,7 @@ static void spawnPlatforms(World *world) {
                      e,
                      0.0f,
                      vx,
-                     e == ERA_BLOCKS ? BLOCK_FALL * fall : 0.0f,
+                     e == ERA_BLOCKS && !locked ? BLOCK_FALL * fall : 0.0f,
                      shape,
                      pressure};
     }
@@ -1094,6 +1097,51 @@ static void drawFallingPiece(const Platform *pl, Vector2 p, float a,
   }
 }
 
+// A late-reboot Blocks row is born motionless with one rectangular collision
+// surface. Four cell faces preserve where it came from; the continuous white
+// rail, soft cloud backing, and growing sprouts say that it is now dependable.
+static void drawLockedBoard(const Platform *pl, Vector2 p, float a,
+                            float glow) {
+  float width = platformWidth(pl);
+  float organic = clampf(1.0f - pl->pressure, 0.0f, 1.0f);
+  float cx = p.x + width * 0.5f;
+  Color cell = gTheme.confetti[pl->shape % CONFETTI_COUNT];
+  glowStamp((Vector2){cx, p.y + PLATFORM_HEIGHT * 0.5f}, width * 1.25f, cell,
+            0.05f * a, 0.12f * a, glow);
+  drawTex(TEX_PUFF, cx, p.y + PLATFORM_HEIGHT + 6.0f, width * 1.45f, 38.0f,
+          0.0f, Fade(SKY_BOT_HIGH, 0.42f * a));
+  drawTex(TEX_CLOUD, p.x + 24.0f, p.y + 3.0f, 62.0f, 46.0f, 0.0f,
+          Fade(CLOUD, a * (0.28f + 0.5f * organic)));
+  drawTex(TEX_CLOUD, p.x + width - 24.0f, p.y + 3.0f, 62.0f, 46.0f, 0.0f,
+          Fade(CLOUD, a * (0.28f + 0.5f * organic)));
+
+  Rectangle board = {p.x, p.y, width, PLATFORM_HEIGHT};
+  DrawRectangleRounded(board, 0.18f + 0.42f * organic, 8,
+                       Fade(ColorLerp(cell, GRASS_DK, organic), a));
+  for (int k = 0; k < 4; k++) {
+    float x = p.x + k * TETRO_CELL;
+    Color c = ColorLerp(gTheme.confetti[k % CONFETTI_COUNT], GRASS, organic);
+    DrawRectangle(x + 2.0f, p.y + 3.0f, TETRO_CELL - 4.0f,
+                  PLATFORM_HEIGHT - 5.0f, Fade(c, 0.62f * a));
+    if (k > 0) {
+      DrawRectangle(x - 1.0f, p.y + 4.0f, 2.0f, PLATFORM_HEIGHT - 6.0f,
+                    Fade(CLOUD_SHADE, 0.45f * a * (1.0f - organic)));
+    }
+  }
+  DrawLineEx((Vector2){p.x + 4.0f, p.y + 2.0f},
+             (Vector2){p.x + width - 4.0f, p.y + 2.0f}, 4.0f,
+             Fade(RAYWHITE, a));
+  DrawRectangleRoundedLines(board, 0.18f + 0.42f * organic, 8,
+                            Fade(GRASS_DK, a));
+  for (int k = 0; k < 5; k++) {
+    float x = p.x + 12.0f + k * 19.0f;
+    float h = organic * (4.0f + (k % 3) * 2.0f);
+    DrawLineEx((Vector2){x, p.y + 1.0f},
+               (Vector2){x + (k & 1 ? 2.0f : -2.0f), p.y + 1.0f - h}, 1.5f,
+               Fade(GRASS, 0.75f * a * organic));
+  }
+}
+
 static void drawCloudPad(const Platform *pl, float glow) {
   Vector2 p = pl->position;
   float width = platformWidth(pl);
@@ -1107,6 +1155,10 @@ static void drawCloudPad(const Platform *pl, float glow) {
   }
   if (pl->vy > 0.0f) {
     drawFallingPiece(pl, p, a, glow);
+    return;
+  }
+  if (pl->era == ERA_BLOCKS) {
+    drawLockedBoard(pl, p, a, glow);
     return;
   }
   if (pl->vx != 0.0f) {
@@ -1625,6 +1677,7 @@ static void checkEras(void) {
   assert(difficulty(&(World){.bestY = -1.0e9f}) == DIFFICULTY_CAP);
   assert(GHOST_PREVIEW_END * BAND > MONSTER_SPACING_MIN);
   assert(PELLET_PREVIEW_END * BAND > POWERUP_SPACING);
+  assert(REBOOT_LOCK_START > PRESSURE_FALL_START && REBOOT_LOCK_START < 1.0f);
 
   // The first platform of each mechanical era is stamped as a safe example:
   // broad/slow Skies drift, a long Night fuse, and a slow one-row block. Their
@@ -1776,20 +1829,43 @@ static void checkEras(void) {
            "core monster lost its local era or mature tuning");
   }
 
-  // The closed-loop edge obeys the same rule: a Blocks piece below the reboot
-  // remains falling while a new Hills board above it is stable.
+  // Reboot ownership is Falling -> Settled -> Stable. An older Blocks piece
+  // keeps falling; a newly spawned late Blocks row is a locked safe board; the
+  // first Hills row above it is the ordinary baseline. Nothing resets the run.
   {
     World w = worldAtLevel(ERA_COUNT);
     float edgeY = SCREEN_HEIGHT / 2.0f - ERA_COUNT * BAND;
+    w.platforms[0] = (Platform){{120.0f, edgeY + PLATFORM_SPACING},
+                                true,
+                                false,
+                                ERA_BLOCKS,
+                                0.0f,
+                                0.0f,
+                                BLOCK_FALL,
+                                3,
+                                1.0f};
+    float oldY = w.platforms[0].position.y;
+    w.coinsCollected = 17;
+    w.combo = 6;
+    w.comboBonus = 42;
     w.platformSpawnY = edgeY + PLATFORM_SPACING / 2.0f;
     w.cameraY = edgeY + SCREEN_HEIGHT - PLATFORM_SPACING;
+    float cameraY = w.cameraY;
     spawnPlatforms(&w);
-    assert(w.platforms[0].active && w.platforms[1].active &&
-           w.platforms[0].position.y > edgeY &&
-           w.platforms[1].position.y < edgeY &&
-           w.platforms[0].era == ERA_BLOCKS &&
-           w.platforms[1].era == ERA_HILLS && w.platforms[0].vy > 0.0f &&
-           w.platforms[1].vy == 0.0f && "wrap platforms used one global era");
+    Platform *locked = &w.platforms[1], *hills = &w.platforms[2];
+    assert(locked->active && hills->active && locked->position.y > edgeY &&
+           hills->position.y < edgeY && locked->era == ERA_BLOCKS &&
+           hills->era == ERA_HILLS && locked->vy == 0.0f &&
+           locked->shape == 0 && locked->pressure < 0.1f && hills->vy == 0.0f &&
+           hills->pressure < 0.1f);
+    Rectangle box[PAD_BOXES];
+    assert(padBoxes(locked, box) == 1 && box[0].width == tetroWidth(0));
+    updatePlatforms(&w);
+    assert(w.platforms[0].position.y > oldY && w.platforms[0].vy > 0.0f &&
+           locked->position.y == box[0].y && "live reboot piece retuned");
+    assert(themeSampleAtWorldY(hills->position.y).cycle == 1 &&
+           w.cameraY == cameraY && w.coinsCollected == 17 && w.combo == 6 &&
+           w.comboBonus == 42 && "reboot reset the live run");
   }
 
   // A Hills monster stays ordinary after the peak enters Maze, even while a
@@ -2135,7 +2211,8 @@ int main(int argc, char **argv) {
     w.bestY = SCREEN_HEIGHT / 2.0f + cameraY;
     // Each cell shows its era's *mechanic*, not just its palette: wind trails
     // on Birdsong Skies, a cracked pad on Night Blocks, frightened ghosts and a
-    // pellet on Neon Maze, and all seven pieces on Falling Blocks.
+    // pellet on Neon Maze, and all seven pieces plus one reboot-locked board on
+    // Falling Blocks.
     w.level = i;
     for (int k = 0; k < MAX_COINS; k++) {
       w.coins[k].era = i;
@@ -2162,6 +2239,8 @@ int main(int argc, char **argv) {
                        k,
                        1.0f};
       }
+      w.platforms[TETRO_COUNT] = (Platform){
+          {350.0f, 600.0f}, true, false, ERA_BLOCKS, 0.0f, 0.0f, 0.0f, 0, 0.0f};
     } else {
       float vx = i == ERA_SKIES ? CLOUD_DRIFT * INTRO_DRIFT_MUL : 0.0f;
       w.platforms[0] = (Platform){{80.0f, 470.0f},

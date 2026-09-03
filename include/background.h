@@ -11,8 +11,9 @@ void drawGameForeground(float cameraY);
 
 // The seven tetromino footprints as (dx,dy) cells, all non-negative, so
 // `origin + d*cell` is both where a cell is drawn and where it collides. The
-// Falling Blocks backdrop rains them and world.c's platforms *are* them — the
-// shared table is what keeps the pad you land on the shape you can see.
+// Falling Blocks backdrop rains them and its moving platforms use the same
+// cells. The reboot's locked I row becomes one plain collision board only when
+// stamped at spawn; no live piece changes geometry.
 // Declared unsized deliberately (see the robustness convention in AGENTS.md):
 // spelling the length here would make background.c's completeness assert
 // measure this declaration instead of the table.

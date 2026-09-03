@@ -30,10 +30,9 @@ typedef struct Platform {
   float fuse; // frames left before a landed-on fragile pad breaks (0 = intact)
   float vx;   // Birdsong Skies: horizontal cloud drift, reflected at the edges
   float vy;   // Falling Blocks: downward drift; > 0 also makes the pad crush
-  int shape;  // Falling Blocks: index into TETRO[] — the pad *is* that piece,
-              // so it is both the collision boxes and the color. Ignored while
-              // vy == 0 (a plain board).
-  float pressure; // immutable 0..1 arrival/relief tuning sampled at spawn
+  int shape; // Moving Blocks index into TETRO[] for art + collision. Ignored by
+             // collision at vy == 0, including a reboot-locked one-row board.
+  float pressure; // immutable 0..1 arrival/relief tuning; also organic growth
 } Platform;
 
 typedef struct Monster {
