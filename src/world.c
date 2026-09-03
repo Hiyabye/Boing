@@ -59,6 +59,15 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define CRUMBLE_JITTER 2.0f  // px of death-rattle shake while it crumbles
 #define BLOCK_FALL 1.4f      // Falling Blocks: px/frame a pad descends
 #define TETRO_CELL 25.0f     // one tetromino cell (a piece is 2-4 cells wide)
+#define PRESSURE_RISE_END 0.18f
+#define PRESSURE_FALL_START 0.78f
+#define INTRO_PLATFORM_EXTRA 60.0f
+#define INTRO_DRIFT_MUL 0.35f
+#define INTRO_CRUMBLE_BONUS 36.0f
+#define INTRO_BLOCK_MUL 0.35f
+#define GHOST_PREVIEW_END 0.03f
+#define PELLET_PREVIEW_END 0.09f
+#define INTRO_GHOST_MUL 0.28f
 #define HEIGHT_PER_POINT 10.0f
 #define POINTS_PER_COIN 5
 
@@ -106,6 +115,21 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define TWO_PI (2.0f * PI) // raylib defines PI
 
 STATIC_ASSERT(ERA_COUNT <= 256, entity_era_fits_byte);
+
+// One spawn-local envelope: safe arrival, full-strength development/mastery,
+// then relief before the next boundary. Entities stamp this value once, so a
+// live object never retunes under the player.
+static float smooth01(float t) {
+  t = clampf(t, 0.0f, 1.0f);
+  return t * t * (3.0f - 2.0f * t);
+}
+
+static float encounterPressure(float phase) {
+  float arrival = smooth01(phase / PRESSURE_RISE_END);
+  float relief = 1.0f - smooth01((phase - PRESSURE_FALL_START) /
+                                 (1.0f - PRESSURE_FALL_START));
+  return arrival * relief;
+}
 
 // Power-up table (indexed by PowerUpType). Ordered exactly as the enum.
 //              duration color       label     weight shake        invincible
@@ -221,13 +245,23 @@ static unsigned entSeed(Vector2 p) {
   return h;
 }
 
+static float platformWidth(const Platform *pl) {
+  return PLATFORM_WIDTH + (pl->era == ERA_SKIES
+                               ? INTRO_PLATFORM_EXTRA * (1.0f - pl->pressure)
+                               : 0.0f);
+}
+
+static float crumbleDuration(const Platform *pl) {
+  return CRUMBLE_FRAMES + INTRO_CRUMBLE_BONUS * (1.0f - pl->pressure);
+}
+
 // A pad's collision boxes: one board for a plain platform, one per cell for a
 // Falling Blocks tetromino. Built from the same offsets drawTetromino draws
 // with, so the art and the collision cannot drift apart.
 #define PAD_BOXES 4
 static int padBoxes(const Platform *pl, Rectangle *out) {
   if (pl->vy <= 0.0f) {
-    out[0] = (Rectangle){pl->position.x, pl->position.y, PLATFORM_WIDTH,
+    out[0] = (Rectangle){pl->position.x, pl->position.y, platformWidth(pl),
                          PLATFORM_HEIGHT};
     return 1;
   }
@@ -249,6 +283,22 @@ static float tetroWidth(int shape) {
     }
   }
   return (float)w * TETRO_CELL;
+}
+
+// Follow the nearest generated coin row when introducing a mechanic. The
+// fallback covers isolated self-tests and a pool temporarily emptied by play.
+static float routeXAt(const World *world, float y) {
+  float x = world->lastSpawnX, nearest = 1.0e9f;
+  for (int i = 0; i < MAX_COINS; i++) {
+    if (world->coins[i].active) {
+      float dy = fabsf(world->coins[i].position.y - y);
+      if (dy < nearest) {
+        nearest = dy;
+        x = world->coins[i].position.x;
+      }
+    }
+  }
+  return x;
 }
 
 World createWorld(void) {
@@ -294,25 +344,43 @@ static void spawnPlatforms(World *world) {
   // A pad samples its own Y once at birth, so a fill crossing a boundary may
   // contain both mechanics and no live pad changes rules underfoot.
   while (world->platformSpawnY > world->cameraY - SCREEN_HEIGHT) {
-    EraId e = themeSampleAtWorldY(world->platformSpawnY).era;
+    ThemeSample sample = themeSampleAtWorldY(world->platformSpawnY);
+    EraId e = sample.era;
+    float pressure = encounterPressure(sample.phase);
     FIND_FREE(s, platforms, MAX_PLATFORMS);
     if (s >= 0) {
-      // Every piece is drawn, so the clamp has to use *its* width — an I spans
-      // four cells and an O two.
-      int shape = GetRandomValue(0, TETRO_COUNT - 1);
-      float w = (e == ERA_BLOCKS) ? tetroWidth(shape) : PLATFORM_WIDTH;
+      // Intro Blocks use a wide, one-row I piece. Later pieces keep the full
+      // shape table, and collision still comes from those exact cells.
+      int shape = e == ERA_BLOCKS && pressure < 1.0f
+                      ? 0
+                      : GetRandomValue(0, TETRO_COUNT - 1);
+      float w = e == ERA_BLOCKS
+                    ? tetroWidth(shape)
+                    : PLATFORM_WIDTH + (e == ERA_SKIES ? INTRO_PLATFORM_EXTRA *
+                                                             (1.0f - pressure)
+                                                       : 0.0f);
       float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN - w);
-      float vx = e == ERA_SKIES
-                     ? (GetRandomValue(0, 1) ? CLOUD_DRIFT : -CLOUD_DRIFT)
-                     : 0.0f;
-      world->platforms[s] = (Platform){{x, world->platformSpawnY},
-                                       true,
-                                       e == ERA_NIGHT,
-                                       e,
-                                       0.0f,
-                                       vx,
-                                       e == ERA_BLOCKS ? BLOCK_FALL : 0.0f,
-                                       shape};
+      if (pressure < 1.0f &&
+          (e == ERA_SKIES || e == ERA_NIGHT || e == ERA_BLOCKS)) {
+        x = clampf(routeXAt(world, world->platformSpawnY) - w * 0.5f,
+                   SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN - w);
+      }
+      float motion = INTRO_DRIFT_MUL + (1.0f - INTRO_DRIFT_MUL) * pressure;
+      float vx =
+          e == ERA_SKIES
+              ? (GetRandomValue(0, 1) ? CLOUD_DRIFT : -CLOUD_DRIFT) * motion
+              : 0.0f;
+      float fall = INTRO_BLOCK_MUL + (1.0f - INTRO_BLOCK_MUL) * pressure;
+      world->platforms[s] =
+          (Platform){{x, world->platformSpawnY},
+                     true,
+                     e == ERA_NIGHT,
+                     e,
+                     0.0f,
+                     vx,
+                     e == ERA_BLOCKS ? BLOCK_FALL * fall : 0.0f,
+                     shape,
+                     pressure};
     }
     world->platformSpawnY -= PLATFORM_SPACING;
   }
@@ -329,18 +397,31 @@ static int difficulty(const World *world) {
 static void spawnMonsters(World *world) {
   int d = difficulty(world);
   while (world->monsterSpawnY > world->cameraY - SCREEN_HEIGHT) {
-    EraId e = themeSampleAtWorldY(world->monsterSpawnY).era;
-    // Higher levels: more bands carry a monster (L0:1/5 .. L3+:4/5).
-    if (GetRandomValue(0, 4) <= d) {
+    ThemeSample sample = themeSampleAtWorldY(world->monsterSpawnY);
+    EraId e = sample.era;
+    float pressure = encounterPressure(sample.phase);
+    int chance = (int)(pressure * (d + 1) * 100.0f);
+    bool preview = e == ERA_MAZE && sample.phase < GHOST_PREVIEW_END;
+    // At full pressure this is the old L0:1/5 .. L3+:4/5 density. Arrival and
+    // relief scale that same capped difficulty down; one docile Maze preview
+    // band is guaranteed before the ordinary roll takes over.
+    if (preview || GetRandomValue(0, 499) < chance) {
       FIND_FREE(s, monsters, MAX_MONSTERS);
       if (s >= 0) {
         float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
-        float speed = MONSTER_DRIFT * (1.0f + DIFFICULTY_SPEED * d);
+        if (e == ERA_MAZE && pressure < 1.0f) {
+          x = routeXAt(world, world->monsterSpawnY) < SCREEN_WIDTH / 2.0f
+                  ? SCREEN_WIDTH - SPAWN_MARGIN
+                  : SPAWN_MARGIN;
+        }
+        float motion = INTRO_GHOST_MUL + (1.0f - INTRO_GHOST_MUL) * pressure;
+        float speed = MONSTER_DRIFT * (1.0f + DIFFICULTY_SPEED * d) * motion;
         float vx = GetRandomValue(0, 1) ? speed : -speed;
         // vy stays 0: only a Neon Maze ghost ever leaves its spawn row, and
         // steerGhost is what gives it one.
         Vector2 at = {x, world->monsterSpawnY};
-        world->monsters[s] = (Monster){at, vx, true, e, 0.0f, entSeed(at)};
+        world->monsters[s] =
+            (Monster){at, vx, true, e, 0.0f, entSeed(at), pressure};
       }
     }
     float step = MONSTER_SPACING - DIFFICULTY_TIGHTEN * d;
@@ -401,19 +482,25 @@ static PowerUpType pickPowerup(bool debuff, EraId era) {
 }
 
 static void spawnPowerups(World *world) {
-  // Debuff chance ramps with altitude: GetRandomValue(0,4) < d gives L0:0/5 bad
-  // .. L3+:3/5 bad (strictly-less, so level 0 is all good pickups — unlike
-  // spawnMonsters' <= d, which puts a monster on 1/5 of bands even at L0).
-  // "Fewer Debuffs" upgrade subtracts levels from the effective altitude, so
-  // higher levels make bad pickups rarer (and clear them entirely once the
-  // level reaches d).
+  // At full pressure the debuff chance remains L0:0/5 .. L3+:3/5. Arrival and
+  // relief scale it toward zero, while Fewer Debuffs still subtracts from the
+  // same capped global difficulty.
   int d = difficulty(world) - gPuUpg[PU_DEBUFF_SUPPRESS];
   while (world->powerupSpawnY > world->cameraY - SCREEN_HEIGHT) {
-    EraId e = themeSampleAtWorldY(world->powerupSpawnY).era;
+    ThemeSample sample = themeSampleAtWorldY(world->powerupSpawnY);
+    EraId e = sample.era;
+    float pressure = encounterPressure(sample.phase);
     FIND_FREE(s, powerups, MAX_POWERUPS);
     if (s >= 0) {
+      int badChance = d > 0 ? (int)(pressure * d * 100.0f) : 0;
+      bool preview = e == ERA_MAZE && sample.phase < PELLET_PREVIEW_END;
+      bool debuff = !preview && GetRandomValue(0, 499) < badChance;
+      PowerUpType t = preview ? POWERUP_PELLET : pickPowerup(debuff, e);
       float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
-      PowerUpType t = pickPowerup(GetRandomValue(0, 4) < d, e);
+      if (preview) {
+        x = clampf(routeXAt(world, world->powerupSpawnY), SPAWN_MARGIN,
+                   SCREEN_WIDTH - SPAWN_MARGIN);
+      }
       world->powerups[s] = (PowerUp){{x, world->powerupSpawnY}, t, true, e};
     }
     world->powerupSpawnY -= POWERUP_SPACING;
@@ -628,10 +715,12 @@ static void splatMonster(World *world, Monster *m) {
 static void steerGhost(Monster *m, const Player *player, bool frightened) {
   float dir = frightened ? -1.0f : 1.0f;
   float top = frightened ? GHOST_FLEE : 1.0f;
-  m->vx += copysignf(GHOST_ACCEL, (player->position.x - m->position.x) * dir);
-  m->vy += copysignf(GHOST_ACCEL, (player->position.y - m->position.y) * dir);
-  m->vx = clampf(m->vx, -GHOST_VX * top, GHOST_VX * top);
-  m->vy = clampf(m->vy, -GHOST_VY * top, GHOST_VY * top);
+  float pressure = INTRO_GHOST_MUL + (1.0f - INTRO_GHOST_MUL) * m->pressure;
+  float accel = GHOST_ACCEL * pressure;
+  m->vx += copysignf(accel, (player->position.x - m->position.x) * dir);
+  m->vy += copysignf(accel, (player->position.y - m->position.y) * dir);
+  m->vx = clampf(m->vx, -GHOST_VX * top * pressure, GHOST_VX * top * pressure);
+  m->vy = clampf(m->vy, -GHOST_VY * top * pressure, GHOST_VY * top * pressure);
 }
 
 static void updateMonsters(World *world, Player *player) {
@@ -711,8 +800,7 @@ static void bounceOnPlatforms(World *world, Player *player) {
                      false);
       sfxAt(SFX_BOUNCE, 1.0f, audioPan(player->position.x));
       if (pl->fragile && pl->fuse <= 0.0f) {
-        pl->fuse =
-            CRUMBLE_FRAMES; // Night Blocks: it holds for a beat, then goes
+        pl->fuse = crumbleDuration(pl);
       }
       return;
     }
@@ -727,22 +815,23 @@ static void updatePlatforms(World *world) {
     pl->position.x += pl->vx;
     pl->position.y += pl->vy;
     if (pl->vx != 0.0f) {
+      float width = platformWidth(pl);
       if (pl->position.x <= 0.0f) {
         pl->position.x = 0.0f;
         pl->vx = fabsf(pl->vx);
-      } else if (pl->position.x + PLATFORM_WIDTH >= SCREEN_WIDTH) {
-        pl->position.x = SCREEN_WIDTH - PLATFORM_WIDTH;
+      } else if (pl->position.x + width >= SCREEN_WIDTH) {
+        pl->position.x = SCREEN_WIDTH - width;
         pl->vx = -fabsf(pl->vx);
       }
     }
 
     if (pl->fuse > 0.0f && (pl->fuse -= 1.0f) <= 0.0f) {
+      float width = platformWidth(pl);
       spawnParticles(world,
-                     (Vector2){pl->position.x + PLATFORM_WIDTH / 2.0f,
+                     (Vector2){pl->position.x + width / 2.0f,
                                pl->position.y + PLATFORM_HEIGHT / 2.0f},
                      CLOUD, 10, false);
-      sfxAt(SFX_CRUMBLE, 1.0f,
-            audioPan(pl->position.x + PLATFORM_WIDTH / 2.0f));
+      sfxAt(SFX_CRUMBLE, 1.0f, audioPan(pl->position.x + width / 2.0f));
       pl->active = false;
       continue;
     }
@@ -1017,11 +1106,12 @@ static void drawFallingPiece(const Platform *pl, Vector2 p, float a,
 
 static void drawCloudPad(const Platform *pl, float glow) {
   Vector2 p = pl->position;
+  float width = platformWidth(pl);
   float a = 1.0f;
   if (pl->fuse > 0.0f) {
-    // Death rattle: the pad shakes and thins out over its fuse, so the break is
-    // telegraphed for the whole beat it takes rather than just happening.
-    a = pl->fuse / CRUMBLE_FRAMES;
+    // Death rattle: the pad shakes and thins out over its stamped fuse, so the
+    // introductory crack stays readable longer without changing underfoot.
+    a = pl->fuse / crumbleDuration(pl);
     p.x += GetRandomValue(-100, 100) / 100.0f * CRUMBLE_JITTER;
     p.y += GetRandomValue(-100, 100) / 100.0f * CRUMBLE_JITTER;
   }
@@ -1030,7 +1120,7 @@ static void drawCloudPad(const Platform *pl, float glow) {
     return;
   }
   if (pl->vx != 0.0f) {
-    float edge = pl->vx > 0.0f ? p.x : p.x + PLATFORM_WIDTH;
+    float edge = pl->vx > 0.0f ? p.x : p.x + width;
     float dir = pl->vx > 0.0f ? -1.0f : 1.0f;
     for (int k = 0; k < 3; k++) {
       float y = p.y + 3.0f + k * 5.0f;
@@ -1039,27 +1129,27 @@ static void drawCloudPad(const Platform *pl, float glow) {
                  Fade(SUN_CORE, 0.55f * a));
     }
   }
-  float cx = p.x + PLATFORM_WIDTH / 2.0f;
-  drawTex(TEX_PUFF, cx, p.y + PLATFORM_HEIGHT + 6.0f, PLATFORM_WIDTH * 1.5f,
-          40.0f, 0.0f, Fade(SKY_BOT_HIGH, 0.5f * a)); // soft shadow
+  float cx = p.x + width / 2.0f;
+  drawTex(TEX_PUFF, cx, p.y + PLATFORM_HEIGHT + 6.0f, width * 1.5f, 40.0f, 0.0f,
+          Fade(SKY_BOT_HIGH, 0.5f * a)); // soft shadow
   // Cloud-puff silhouette behind the board, as a soft backing accent. Same
   // TEX_CLOUD the backdrop's clouds are made of, so a pad reads as the same
   // weather as the sky it hangs in.
   drawTex(TEX_CLOUD, p.x + 24.0f, p.y, 62.0f, 50.0f, 0.0f, Fade(CLOUD, a));
-  drawTex(TEX_CLOUD, p.x + PLATFORM_WIDTH - 24.0f, p.y, 62.0f, 50.0f, 0.0f,
+  drawTex(TEX_CLOUD, p.x + width - 24.0f, p.y, 62.0f, 50.0f, 0.0f,
           Fade(CLOUD, a));
   drawTex(TEX_CLOUD, cx, p.y - 5.0f, 78.0f, 62.0f, 0.0f, Fade(CLOUD, a));
 
   // The landing board: a defined solid surface so the jump-off edge reads
   // clearly against the sky. Dark outline + body + a bright top face strip.
-  Rectangle board = {p.x, p.y, PLATFORM_WIDTH, PLATFORM_HEIGHT};
+  Rectangle board = {p.x, p.y, width, PLATFORM_HEIGHT};
   DrawRectangleRounded(board, 0.6f, 8,
                        Fade(pl->fragile ? CLOUD_SHADE : CLOUD, a));
-  DrawRectangleRounded(
-      (Rectangle){p.x, p.y, PLATFORM_WIDTH, PLATFORM_HEIGHT * 0.4f}, 0.9f, 8,
-      Fade(RAYWHITE, a)); // lit top face (where feet land)
-  DrawRectangleRounded((Rectangle){p.x, p.y + PLATFORM_HEIGHT * 0.55f,
-                                   PLATFORM_WIDTH, PLATFORM_HEIGHT * 0.45f},
+  DrawRectangleRounded((Rectangle){p.x, p.y, width, PLATFORM_HEIGHT * 0.4f},
+                       0.9f, 8,
+                       Fade(RAYWHITE, a)); // lit top face (where feet land)
+  DrawRectangleRounded((Rectangle){p.x, p.y + PLATFORM_HEIGHT * 0.55f, width,
+                                   PLATFORM_HEIGHT * 0.45f},
                        0.9f, 8, Fade(CLOUD_SHADE, 0.85f * a));  // shaded under
   DrawRectangleRoundedLines(board, 0.6f, 8, Fade(GRASS_DK, a)); // crisp rim
   if (pl->fragile) {
@@ -1074,15 +1164,17 @@ static void drawCloudPad(const Platform *pl, float glow) {
   }
 }
 
-// `pellet` is the frightened timer (0 = hunting): on Neon Maze a lit pellet
-// turns the monsters blue and running, flashing white as it wears off — the
-// player's cue that the window is closing.
+// `pellet` is the frightened timer (0 = hunting): on Neon Maze its pickup cue
+// sends monsters running, gives them a fast quiver and scared face, and turns
+// them blue. They flash white as it wears off, so the cue is not color-only.
 static void drawMonster(Vector2 m, float t, float pellet, unsigned seed,
                         float glow) {
   float R = MONSTER_RADIUS;
-  float wob = 1.0f + 0.08f * sinf(t * 6.0f + m.x * 0.1f);
+  bool frightened = pellet > 0.0f;
+  float wob = frightened ? 0.94f + 0.06f * sinf(t * 12.0f + m.x * 0.1f)
+                         : 1.0f + 0.08f * sinf(t * 6.0f + m.x * 0.1f);
   Color body = GRAPE, bodyDk = GRAPE_DK;
-  if (pellet > 0.0f) {
+  if (frightened) {
     bool blink = pellet < 60.0f && fmodf(pellet, 16.0f) < 8.0f;
     body = blink ? RAYWHITE : (Color){0x3A, 0x4C, 0xF0, 0xFF};
     bodyDk = blink ? LIGHTGRAY : (Color){0x1B, 0x22, 0x99, 0xFF};
@@ -1126,43 +1218,55 @@ static void drawMonster(Vector2 m, float t, float pellet, unsigned seed,
               ColorBrightness(body, 0.3f));
   DrawEllipse(m.x, m.y - R * 0.1f, R * 0.78f * wob, R * 0.78f / wob, body);
 
-  // Eyes, seed-picked: even / one wonky-bigger / cyclops.
-  int eyeStyle = seed % 3;
-  if (eyeStyle == 2) {
-    DrawCircle(m.x, m.y - 4, 8, RAYWHITE);
-    DrawCircle(m.x, m.y - 3, 4, BLACK);
-  } else {
-    float rr = (eyeStyle == 1) ? 8.0f : 6.0f; // wonky: right eye bigger
-    DrawCircle(m.x - 8, m.y - 5, 6, RAYWHITE);
-    DrawCircle(m.x + 8, m.y - 5, rr, RAYWHITE);
-    DrawCircle(m.x - 8, m.y - 4, 3, BLACK);
-    DrawCircle(m.x + 8, m.y - 4, 3, BLACK);
-  }
-  // Angry brows.
-  DrawLineEx((Vector2){m.x - 13, m.y - 12}, (Vector2){m.x - 4, m.y - 8}, 2.5f,
-             BLACK);
-  DrawLineEx((Vector2){m.x + 13, m.y - 12}, (Vector2){m.x + 4, m.y - 8}, 2.5f,
-             BLACK);
-
-  // Mouth, seed-picked: zig-zag / open maw with fangs / grin.
-  switch (seed % 3) {
-  case 0:
-    for (int k = 0; k < 4; k++) {
-      float x0 = m.x - 9 + k * 5;
-      float y0 = m.y + (k % 2 ? 12 : 9);
-      float y1 = m.y + (k % 2 ? 9 : 12);
-      DrawLineEx((Vector2){x0, y0}, (Vector2){x0 + 5, y1}, 2.0f, BLACK);
+  if (frightened) {
+    // Wide eyes, raised brows, and an O mouth survive grayscale and flashing.
+    for (int e = -1; e <= 1; e += 2) {
+      DrawCircle(m.x + e * 8.0f, m.y - 5.0f, 8.0f, BLACK);
+      DrawCircle(m.x + e * 8.0f, m.y - 5.0f, 6.0f, RAYWHITE);
+      DrawCircle(m.x + e * 9.0f, m.y - 4.0f, 2.5f, BLACK);
+      DrawLineEx((Vector2){m.x + e * 3.0f, m.y - 14.0f},
+                 (Vector2){m.x + e * 13.0f, m.y - 18.0f}, 2.5f, BLACK);
     }
-    break;
-  case 1:
-    DrawCircle(m.x, m.y + 11, 5, BLACK);
-    DrawPoly((Vector2){m.x - 3, m.y + 9}, 3, 3.0f, 90, RAYWHITE);
-    DrawPoly((Vector2){m.x + 3, m.y + 9}, 3, 3.0f, 90, RAYWHITE);
-    break;
-  default:
-    DrawLineEx((Vector2){m.x - 8, m.y + 10}, (Vector2){m.x + 8, m.y + 10}, 2.0f,
+    DrawCircle(m.x, m.y + 11.0f, 5.0f, BLACK);
+  } else {
+    // Eyes, seed-picked: even / one wonky-bigger / cyclops.
+    int eyeStyle = seed % 3;
+    if (eyeStyle == 2) {
+      DrawCircle(m.x, m.y - 4, 8, RAYWHITE);
+      DrawCircle(m.x, m.y - 3, 4, BLACK);
+    } else {
+      float rr = (eyeStyle == 1) ? 8.0f : 6.0f; // wonky: right eye bigger
+      DrawCircle(m.x - 8, m.y - 5, 6, RAYWHITE);
+      DrawCircle(m.x + 8, m.y - 5, rr, RAYWHITE);
+      DrawCircle(m.x - 8, m.y - 4, 3, BLACK);
+      DrawCircle(m.x + 8, m.y - 4, 3, BLACK);
+    }
+    // Angry brows.
+    DrawLineEx((Vector2){m.x - 13, m.y - 12}, (Vector2){m.x - 4, m.y - 8}, 2.5f,
                BLACK);
-    break;
+    DrawLineEx((Vector2){m.x + 13, m.y - 12}, (Vector2){m.x + 4, m.y - 8}, 2.5f,
+               BLACK);
+
+    // Mouth, seed-picked: zig-zag / open maw with fangs / grin.
+    switch (seed % 3) {
+    case 0:
+      for (int k = 0; k < 4; k++) {
+        float x0 = m.x - 9 + k * 5;
+        float y0 = m.y + (k % 2 ? 12 : 9);
+        float y1 = m.y + (k % 2 ? 9 : 12);
+        DrawLineEx((Vector2){x0, y0}, (Vector2){x0 + 5, y1}, 2.0f, BLACK);
+      }
+      break;
+    case 1:
+      DrawCircle(m.x, m.y + 11, 5, BLACK);
+      DrawPoly((Vector2){m.x - 3, m.y + 9}, 3, 3.0f, 90, RAYWHITE);
+      DrawPoly((Vector2){m.x + 3, m.y + 9}, 3, 3.0f, 90, RAYWHITE);
+      break;
+    default:
+      DrawLineEx((Vector2){m.x - 8, m.y + 10}, (Vector2){m.x + 8, m.y + 10},
+                 2.0f, BLACK);
+      break;
+    }
   }
 }
 
@@ -1520,6 +1624,119 @@ static void checkEras(void) {
     assert(themeSampleAt(worldViewAscent(&w)).phase == 0.25f);
   }
 
+  // One formula supplies safe arrival, full mastery, and outgoing relief.
+  assert(encounterPressure(0.0f) == 0.0f);
+  assert(fabsf(encounterPressure(PRESSURE_RISE_END * 0.5f) - 0.5f) < 0.001f);
+  assert(encounterPressure(PRESSURE_RISE_END) == 1.0f);
+  assert(encounterPressure(0.5f) == 1.0f);
+  assert(fabsf(encounterPressure((PRESSURE_FALL_START + 1.0f) * 0.5f) - 0.5f) <
+         0.001f);
+  assert(encounterPressure(1.0f) == 0.0f);
+  assert(difficulty(&(World){.bestY = -1.0e9f}) == DIFFICULTY_CAP);
+  assert(GHOST_PREVIEW_END * BAND > MONSTER_SPACING_MIN);
+  assert(PELLET_PREVIEW_END * BAND > POWERUP_SPACING);
+
+  // The first platform of each mechanical era is stamped as a safe example:
+  // broad/slow Skies drift, a long Night fuse, and a slow one-row block. Their
+  // collision geometry reads those same immutable values.
+  {
+    const float phase = 0.02f;
+    World skies = worldAtLevel(ERA_SKIES);
+    skies.platformSpawnY = SCREEN_HEIGHT / 2.0f - (ERA_SKIES + phase) * BAND;
+    skies.coins[0] =
+        (Coin){{520.0f, skies.platformSpawnY + 10.0f}, true, ERA_SKIES, {0, 0}};
+    skies.cameraY = skies.platformSpawnY + SCREEN_HEIGHT - 1.0f;
+    spawnPlatforms(&skies);
+    Platform *drift = &skies.platforms[0];
+    float driftWidth = platformWidth(drift);
+    Rectangle box[PAD_BOXES];
+    assert(drift->active && drift->pressure > 0.0f && drift->pressure < 0.1f);
+    assert(driftWidth > PLATFORM_WIDTH && fabsf(drift->vx) < CLOUD_DRIFT);
+    assert(fabsf(drift->position.x + driftWidth * 0.5f - 520.0f) < 0.01f);
+    assert(padBoxes(drift, box) == 1 && box[0].width == driftWidth);
+    float stamped = drift->pressure;
+    updatePlatforms(&skies);
+    assert(drift->pressure == stamped && "live drift platform retuned");
+
+    World night = worldAtLevel(ERA_NIGHT);
+    night.platformSpawnY = SCREEN_HEIGHT / 2.0f - (ERA_NIGHT + phase) * BAND;
+    night.cameraY = night.platformSpawnY + SCREEN_HEIGHT - 1.0f;
+    spawnPlatforms(&night);
+    Platform *crumble = &night.platforms[0];
+    float introFuse = crumbleDuration(crumble);
+    assert(crumble->fragile && introFuse > CRUMBLE_FRAMES);
+    Player landing = createPlayer();
+    landing.position =
+        (Vector2){crumble->position.x + platformWidth(crumble) * 0.5f,
+                  crumble->position.y - landing.radius + 1.0f};
+    landing.velocity.y = 10.0f;
+    bounceOnPlatforms(&night, &landing);
+    assert(crumble->fuse == introFuse && "intro crumble used the mature fuse");
+
+    World blocks = worldAtLevel(ERA_BLOCKS);
+    blocks.platformSpawnY = SCREEN_HEIGHT / 2.0f - (ERA_BLOCKS + phase) * BAND;
+    blocks.cameraY = blocks.platformSpawnY + SCREEN_HEIGHT - 1.0f;
+    spawnPlatforms(&blocks);
+    Platform *fall = &blocks.platforms[0];
+    assert(fall->active && fall->shape == 0 && fall->vy > 0.0f &&
+           fall->vy < BLOCK_FALL && padBoxes(fall, box) == PAD_BOXES);
+    assert(fabsf(fall->position.x + tetroWidth(fall->shape) * 0.5f -
+                 blocks.lastSpawnX) < 0.01f);
+  }
+
+  // Maze previews place a docile ghost opposite the coin route and a Pellet on
+  // that route before full steering pressure. The existing Pellet cue supplies
+  // sound while the frightened draw path changes both color and silhouette.
+  {
+    World maze = worldAtLevel(ERA_MAZE);
+    maze.lastSpawnX = 300.0f;
+    maze.monsterSpawnY = SCREEN_HEIGHT / 2.0f - (ERA_MAZE + 0.01f) * BAND;
+    maze.coins[0] =
+        (Coin){{650.0f, maze.monsterSpawnY}, true, ERA_MAZE, {0, 0}};
+    maze.cameraY = maze.monsterSpawnY + SCREEN_HEIGHT - 1.0f;
+    spawnMonsters(&maze);
+    Monster *preview = &maze.monsters[0];
+    float matureSpeed =
+        MONSTER_DRIFT * (1.0f + DIFFICULTY_SPEED * DIFFICULTY_CAP);
+    assert(preview->active && preview->era == ERA_MAZE &&
+           preview->position.x == SPAWN_MARGIN && preview->pressure < 0.1f &&
+           fabsf(preview->vx) < matureSpeed);
+
+    maze.powerupSpawnY = SCREEN_HEIGHT / 2.0f - (ERA_MAZE + 0.04f) * BAND;
+    maze.cameraY = maze.powerupSpawnY + SCREEN_HEIGHT - 1.0f;
+    spawnPowerups(&maze);
+    assert(maze.powerups[0].active && maze.powerups[0].type == POWERUP_PELLET &&
+           maze.powerups[0].position.x == 650.0f &&
+           POWERUP_SFX[POWERUP_PELLET] == SFX_PELLET);
+  }
+
+  // The mature core keeps the old capped debuff pressure, while the same high
+  // difficulty roll becomes a good pickup during outgoing relief.
+  {
+    float coreY = SCREEN_HEIGHT / 2.0f - (ERA_NIGHT + 0.5f) * BAND;
+    World core = worldAtLevel(ERA_BLOCKS);
+    core.powerupSpawnY = coreY;
+    core.cameraY = coreY + SCREEN_HEIGHT - 1.0f;
+    SetRandomSeed(2); // first 0..499 roll is 35, inside the mature 3/5 gate
+    spawnPowerups(&core);
+    assert(core.powerups[0].active &&
+           POWERUP_DEFS[core.powerups[0].type].debuff);
+
+    float reliefY = SCREEN_HEIGHT / 2.0f - (ERA_NIGHT + 0.999f) * BAND;
+    World relief = worldAtLevel(ERA_BLOCKS);
+    relief.powerupSpawnY = reliefY;
+    relief.cameraY = reliefY + SCREEN_HEIGHT - 1.0f;
+    SetRandomSeed(2);
+    spawnPowerups(&relief);
+    assert(relief.powerups[0].active &&
+           !POWERUP_DEFS[relief.powerups[0].type].debuff);
+    relief.monsterSpawnY = reliefY;
+    relief.cameraY = reliefY + SCREEN_HEIGHT - 1.0f;
+    spawnMonsters(&relief);
+    assert(!relief.monsters[0].active &&
+           "outgoing relief spawned a serious encounter");
+  }
+
   // A fill straddling Hills -> Skies must stamp each platform from its own Y,
   // not stamp both from the player's Skies era.
   {
@@ -1536,8 +1753,8 @@ static void checkEras(void) {
            "platforms used the player's era instead of world Y");
   }
 
-  // Coins, monsters, and power-ups use the same per-cursor sampling. The peak
-  // is deliberately in Blocks while these test spawns straddle Hills -> Skies.
+  // Coins and power-ups still stamp each side of a boundary. Monsters now
+  // leave that handoff quiet, then resume with local ownership in the core.
   {
     float edgeY = SCREEN_HEIGHT / 2.0f - BAND;
     World w = worldAtLevel(ERA_BLOCKS);
@@ -1554,13 +1771,19 @@ static void checkEras(void) {
     assert(w.powerups[0].era == ERA_HILLS && w.powerups[1].era == ERA_SKIES &&
            "power-up fill did not straddle the boundary");
 
-    float monsterStep = MONSTER_SPACING - DIFFICULTY_TIGHTEN * DIFFICULTY_CAP;
-    w.monsterSpawnY = edgeY + monsterStep / 2.0f;
-    w.cameraY = edgeY + SCREEN_HEIGHT - monsterStep;
-    SetRandomSeed(0); // both deterministic 4/5 spawn rolls succeed
+    w.monsterSpawnY = edgeY;
+    w.cameraY = edgeY + SCREEN_HEIGHT - 1.0f;
     spawnMonsters(&w);
-    assert(w.monsters[0].era == ERA_HILLS && w.monsters[1].era == ERA_SKIES &&
-           "monster fill did not straddle the boundary");
+    assert(!w.monsters[0].active && "boundary spawned a full-pressure monster");
+
+    World core = worldAtLevel(ERA_BLOCKS);
+    core.monsterSpawnY = edgeY - BAND * 0.5f;
+    core.cameraY = core.monsterSpawnY + SCREEN_HEIGHT - 1.0f;
+    SetRandomSeed(1); // deterministic 4/5 core roll succeeds
+    spawnMonsters(&core);
+    assert(core.monsters[0].active && core.monsters[0].era == ERA_SKIES &&
+           core.monsters[0].pressure == 1.0f &&
+           "core monster lost its local era or mature tuning");
   }
 
   // The closed-loop edge obeys the same rule: a Blocks piece below the reboot
@@ -1586,7 +1809,7 @@ static void checkEras(void) {
     Player p = createPlayer();
     p.position = (Vector2){700.0f, w.bestY};
     w.monsters[0] =
-        (Monster){{100.0f, w.bestY}, 0.0f, true, ERA_HILLS, 0.0f, 1};
+        (Monster){{100.0f, w.bestY}, 0.0f, true, ERA_HILLS, 0.0f, 1, 1.0f};
     World maze = worldAtLevel(ERA_MAZE);
     w.bestY = maze.bestY;
     w.level = maze.level;
@@ -1601,7 +1824,8 @@ static void checkEras(void) {
     World w = bareWorld(ERA_HILLS);
     Player p = createPlayer();
     p.position = (Vector2){700.0f, w.bestY};
-    w.monsters[0] = (Monster){{100.0f, w.bestY}, 0.0f, true, ERA_MAZE, 0.0f, 1};
+    w.monsters[0] =
+        (Monster){{100.0f, w.bestY}, 0.0f, true, ERA_MAZE, 0.0f, 1, 1.0f};
     updateMonsters(&w, &p);
     assert(w.monsters[0].vx > 0.0f && w.monsters[0].vy != 0.0f &&
            "Maze monster stopped chasing at the global boundary");
@@ -1704,8 +1928,8 @@ static void checkEras(void) {
   // zero-filled TETRO row (the failure a designated table hides) collapses all
   // four cells onto one square and trips the distinctness check.
   for (int s = 0; s < TETRO_COUNT; s++) {
-    Platform pl = {{0.0f, 0.0f}, true, false,      ERA_BLOCKS,
-                   0.0f,         0.0f, BLOCK_FALL, s};
+    Platform pl = {{0.0f, 0.0f}, true,       false, ERA_BLOCKS, 0.0f,
+                   0.0f,         BLOCK_FALL, s,     1.0f};
     Rectangle b[PAD_BOXES];
     assert(padBoxes(&pl, b) == PAD_BOXES);
     assert(tetroWidth(s) <= SCREEN_WIDTH - 2.0f * SPAWN_MARGIN);
@@ -1723,8 +1947,15 @@ static void checkEras(void) {
     Player p = createPlayer();
     p.position = (Vector2){400.0f, w.bestY};
     p.velocity = (Vector2){0.0f, 10.0f};
-    w.platforms[0] = (Platform){
-        {350.0f, w.bestY + 40.0f}, true, true, ERA_NIGHT, 0.0f, 0.0f, 0.0f, 0};
+    w.platforms[0] = (Platform){{350.0f, w.bestY + 40.0f},
+                                true,
+                                true,
+                                ERA_NIGHT,
+                                0.0f,
+                                0.0f,
+                                0.0f,
+                                0,
+                                1.0f};
     for (int i = 0; i < 20 && w.platforms[0].fuse <= 0.0f; i++) {
       updatePlayer(&p);
       updateWorld(&w, &p);
@@ -1742,8 +1973,15 @@ static void checkEras(void) {
     Player p = createPlayer();
     p.position = (Vector2){400.0f, w.bestY};
     p.velocity = (Vector2){0.0f, 10.0f};
-    w.platforms[0] = (Platform){
-        {350.0f, w.bestY + 40.0f}, true, false, ERA_HILLS, 0.0f, 0.0f, 0.0f, 0};
+    w.platforms[0] = (Platform){{350.0f, w.bestY + 40.0f},
+                                true,
+                                false,
+                                ERA_HILLS,
+                                0.0f,
+                                0.0f,
+                                0.0f,
+                                0,
+                                1.0f};
     for (int i = 0; i < 20; i++) {
       updatePlayer(&p);
       updateWorld(&w, &p);
@@ -1764,7 +2002,8 @@ static void checkEras(void) {
                                 0.0f,
                                 CLOUD_DRIFT,
                                 0.0f,
-                                0};
+                                0,
+                                1.0f};
     updateWorld(&w, &p);
     assert(w.platforms[0].position.x > 100.0f && "sky platform did not drift");
     w.platforms[0].position.x = SCREEN_WIDTH - PLATFORM_WIDTH;
@@ -1780,7 +2019,8 @@ static void checkEras(void) {
     World w = bareWorld(ERA_MAZE);
     Player p = createPlayer();
     p.position = (Vector2){700.0f, w.bestY};
-    w.monsters[0] = (Monster){{100.0f, w.bestY}, 0.0f, true, ERA_MAZE, 0.0f, 1};
+    w.monsters[0] =
+        (Monster){{100.0f, w.bestY}, 0.0f, true, ERA_MAZE, 0.0f, 1, 1.0f};
     float gap0 = p.position.x - w.monsters[0].position.x;
     for (int i = 0; i < 10; i++) {
       updateWorld(&w, &p);
@@ -1796,8 +2036,8 @@ static void checkEras(void) {
     assert(p.position.x - w.monsters[0].position.x > gap1 &&
            "ghost not fleeing");
 
-    w.monsters[1] =
-        (Monster){{p.position.x, p.position.y}, 0.0f, true, ERA_MAZE, 0.0f, 2};
+    w.monsters[1] = (Monster){
+        {p.position.x, p.position.y}, 0.0f, true, ERA_MAZE, 0.0f, 2, 1.0f};
     updateWorld(&w, &p);
     assert(!w.monsters[1].active && w.ghostChain == 1 &&
            w.comboBonus == GHOST_EAT_BONUS && "ghost was not eaten");
@@ -1810,14 +2050,14 @@ static void checkEras(void) {
     Player p = createPlayer();
     p.position = (Vector2){400.0f, w.bestY};
     w.powerTimer[POWERUP_PELLET] = 300.0f;
-    w.monsters[0] = (Monster){p.position, 0.0f, true, ERA_HILLS, 0.0f, 1};
+    w.monsters[0] = (Monster){p.position, 0.0f, true, ERA_HILLS, 0.0f, 1, 1.0f};
     updateMonsters(&w, &p);
     assert(!w.monsters[0].active && w.hitstop == 2 && p.velocity.y == 12.0f &&
            w.ghostChain == 0 && w.comboBonus == 0 &&
            "pellet immunity leaked to an ordinary monster");
 
     w.powerTimer[POWERUP_ROCKET] = 30.0f;
-    w.monsters[0] = (Monster){p.position, 0.0f, true, ERA_HILLS, 0.0f, 2};
+    w.monsters[0] = (Monster){p.position, 0.0f, true, ERA_HILLS, 0.0f, 2, 1.0f};
     updateMonsters(&w, &p);
     assert(w.hitstop == 3 && w.ghostChain == 0 && w.comboBonus == 0 &&
            "ordinary monster received a pellet chain bonus");
@@ -1836,7 +2076,8 @@ static void checkEras(void) {
                                 0.0f,
                                 0.0f,
                                 BLOCK_FALL,
-                                0};
+                                0,
+                                1.0f};
     w.platforms[1] = (Platform){{50.0f, w.bestY - 1000.0f},
                                 true,
                                 false,
@@ -1844,7 +2085,8 @@ static void checkEras(void) {
                                 0.0f,
                                 0.0f,
                                 BLOCK_FALL,
-                                0};
+                                0,
+                                1.0f};
     float y0 = w.platforms[1].position.y;
     updateWorld(&w, &p);
     assert(w.platforms[1].position.y > y0 && "the blocks are not falling");
@@ -1876,8 +2118,10 @@ int main(int argc, char **argv) {
         (Vector2){110.0f + i * 80.0f, 210.0f + (i % 3) * 55.0f};
     w.coins[i].active = true;
   }
-  w.monsters[0] = (Monster){{240.0f, 120.0f}, 1.0f, true, ERA_HILLS, 0.0f, 3};
-  w.monsters[1] = (Monster){{640.0f, 560.0f}, -1.0f, true, ERA_HILLS, 0.0f, 7};
+  w.monsters[0] =
+      (Monster){{240.0f, 120.0f}, 1.0f, true, ERA_HILLS, 0.0f, 3, 1.0f};
+  w.monsters[1] =
+      (Monster){{640.0f, 560.0f}, -1.0f, true, ERA_HILLS, 0.0f, 7, 1.0f};
   for (int i = 0; i < MAX_POWERUPS; i++) {
     w.powerups[i].position = (Vector2){130.0f + i * 190.0f, 640.0f};
     w.powerups[i].type = (PowerUpType)i; // magnet / rocket / balloon / shield
@@ -1925,10 +2169,11 @@ int main(int argc, char **argv) {
                        0.0f,
                        0.0f,
                        BLOCK_FALL,
-                       k};
+                       k,
+                       1.0f};
       }
     } else {
-      float vx = i == ERA_SKIES ? CLOUD_DRIFT : 0.0f;
+      float vx = i == ERA_SKIES ? CLOUD_DRIFT * INTRO_DRIFT_MUL : 0.0f;
       w.platforms[0] = (Platform){{80.0f, 470.0f},
                                   true,
                                   i == ERA_NIGHT,
@@ -1936,9 +2181,17 @@ int main(int argc, char **argv) {
                                   i == ERA_NIGHT ? CRUMBLE_FRAMES * 0.6f : 0.0f,
                                   vx,
                                   0.0f,
-                                  0};
-      w.platforms[1] = (Platform){
-          {440.0f, 355.0f}, true, i == ERA_NIGHT, i, 0.0f, -vx, 0.0f, 0};
+                                  0,
+                                  i == ERA_SKIES ? 0.0f : 1.0f};
+      w.platforms[1] = (Platform){{440.0f, 355.0f},
+                                  true,
+                                  i == ERA_NIGHT,
+                                  i,
+                                  0.0f,
+                                  -vx,
+                                  0.0f,
+                                  0,
+                                  i == ERA_SKIES ? 0.0f : 1.0f};
     }
     w.powerTimer[POWERUP_PELLET] = (i == ERA_MAZE) ? 300.0f : 0.0f;
     w.powerups[MAX_POWERUPS - 1].type =

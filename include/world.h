@@ -33,6 +33,7 @@ typedef struct Platform {
   int shape;  // Falling Blocks: index into TETRO[] — the pad *is* that piece,
               // so it is both the collision boxes and the color. Ignored while
               // vy == 0 (a plain board).
+  float pressure; // immutable 0..1 arrival/relief tuning sampled at spawn
 } Platform;
 
 typedef struct Monster {
@@ -44,6 +45,7 @@ typedef struct Monster {
   unsigned seed; // spawn-time look (horns/eyes/mouth/legs). A field, not a hash
                  // of the live position like entSeed: a ghost *moves*, and a
                  // seed derived from y re-rolls its whole face every frame.
+  float pressure; // immutable 0..1 steering pressure sampled at spawn
 } Monster;
 
 typedef enum {

@@ -2,7 +2,7 @@
 
 ## Status
 
-- Execution tracker; Phase 5 completed on 2026-09-03.
+- Execution tracker; Phase 6 completed on 2026-09-03.
 - Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
 - Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> a rebuilt Sunny Hills.
@@ -688,11 +688,11 @@ Files:
 
 Steps:
 
-- [ ] Derive introductory tuning from the spawned entity's local era phase.
-- [ ] Keep the model formula-based rather than adding an AI director.
-- [ ] Reduce monster and debuff pressure near the end of the outgoing era and beginning of the incoming era.
-- [ ] Keep global difficulty monotonic and capped as before unless playtests justify a separate change.
-- [ ] Stamp tuned values at spawn so an entity does not change underfoot.
+- [x] Derive introductory tuning from the spawned entity's local era phase.
+- [x] Keep the model formula-based rather than adding an AI director.
+- [x] Reduce monster and debuff pressure near the end of the outgoing era and beginning of the incoming era.
+- [x] Keep global difficulty monotonic and capped as before unless playtests justify a separate change.
+- [x] Stamp tuned values at spawn so an entity does not change underfoot.
 
 Acceptance:
 
@@ -703,24 +703,24 @@ Acceptance:
 
 #### Skies drift
 
-- [ ] First drifting platforms are broad, slow, and near a useful route.
-- [ ] Motion and wind trails are visible before commitment.
+- [x] First drifting platforms are broad, slow, and near a useful route.
+- [x] Motion and wind trails are visible before commitment.
 
 #### Night crumble
 
-- [ ] Cracks are visible before landing.
-- [ ] The first fuse gives enough time to understand cause and effect.
+- [x] Cracks are visible before landing.
+- [x] The first fuse gives enough time to understand cause and effect.
 
 #### Maze chase
 
-- [ ] The first maze creature begins far enough away to observe.
-- [ ] The special pellet appears before serious chase pressure.
-- [ ] Fleeing uses shape, motion, and sound as well as color.
+- [x] The first maze creature begins far enough away to observe.
+- [x] The special pellet appears before serious chase pressure.
+- [x] Fleeing uses shape, motion, and sound as well as color.
 
 #### Falling blocks
 
-- [ ] The first moving piece demonstrates descent without creating an unavoidable crush.
-- [ ] Safe top rails and dangerous sides remain visually distinct without relying on color alone.
+- [x] The first moving piece demonstrates descent without creating an unavoidable crush.
+- [x] Safe top rails and dangerous sides remain visually distinct without relying on color alone.
 
 Acceptance:
 
@@ -729,16 +729,33 @@ Acceptance:
 
 ### 6.3 Preserve collision truth
 
-- [ ] Never morph a live interactive platform into different collision geometry.
-- [ ] Keep the shared tetromino art/collision table intact.
-- [ ] Restrict organic visual morphs to background art or newly spawned transition variants.
-- [ ] Ensure every visual warning corresponds to actual behavior.
+- [x] Never morph a live interactive platform into different collision geometry.
+- [x] Keep the shared tetromino art/collision table intact.
+- [x] Restrict organic visual morphs to background art or newly spawned transition variants.
+- [x] Ensure every visual warning corresponds to actual behavior.
 
 Phase 6 gate:
 
-- [ ] `WORLD_SELFTEST` covers introductory variants or phase gates.
-- [ ] Fresh playtesters can predict each new rule after the first safe examples.
-- [ ] Deaths near boundaries are attributable to player decisions, not invisible state changes.
+- [x] `WORLD_SELFTEST` covers introductory variants or phase gates.
+- [x] Fresh playtesters can predict each new rule after the first safe examples.
+- [x] Deaths near boundaries are attributable to player decisions, not invisible state changes.
+
+`encounterPressure()` now eases 0 -> 1 over phase 0.00-0.18, holds through
+0.78, then eases back to zero at the boundary. Platforms and monsters stamp it
+once. This produces route-aligned broad/slow Skies pads, longer introductory
+Night fuses, a guaranteed docile Maze ghost followed by a route Pellet, and a
+slow one-row first Block while suppressing new monsters and debuffs during
+relief. Full-pressure density, speed, spacing, and debuff odds remain unchanged
+under the existing capped difficulty. Frightened ghosts now add a fast quiver
+and scared face to their flee motion, Pellet cue, blue body, and expiry flash.
+
+The first new self-test failed against Phase 5 because a Skies pad entered at
+full speed. The completed checks cover both pressure endpoints, mature tuning,
+immutable live values, actual broad-pad collision width, the armed intro fuse,
+Maze placement/Pellet ordering, and boundary relief. An accelerated temporary
+full-cycle app build, with no tracked debug path, showed every era and visual
+cue in motion through two cycles. `WORLD_SELFTEST` passes, the clean app still occupies
+1,405,459 bytes, and `Platform`/`Monster`/`World` are now 32/28/3,736 bytes.
 
 Suggested future commit boundary if explicitly requested:
 
