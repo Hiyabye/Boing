@@ -102,12 +102,11 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
   0.9f // extra downward vel/frame while anchored (doubles gravity)
 #define PARTICLE_GRAVITY 0.3f
 #define PARTICLE_DECAY 0.03f
-#define SHAKE_HIT 14.0f            // screen shake on a monster hit
-#define SHAKE_SPLAT 9.0f           // shake on an invincible plow-through splat
-#define SHAKE_LAUNCH 6.0f          // shake on floor bounce / rocket pickup
-#define SHAKE_DECAY 0.85f          // per-frame shake falloff
-#define FLASH_DECAY 0.08f          // pop-ring fade per frame
-#define LEVEL_BANNER_FRAMES 120.0f // ~2s of era name under the HUD level bar
+#define SHAKE_HIT 14.0f   // screen shake on a monster hit
+#define SHAKE_SPLAT 9.0f  // shake on an invincible plow-through splat
+#define SHAKE_LAUNCH 6.0f // shake on floor bounce / rocket pickup
+#define SHAKE_DECAY 0.85f // per-frame shake falloff
+#define FLASH_DECAY 0.08f // pop-ring fade per frame
 #define DEATH_DROP                                                             \
   700.0f // how far below the peak view the camera chases a fall
 #define BOTTOM_MARGIN                                                          \
@@ -944,15 +943,9 @@ void updateWorld(World *world, Player *player) {
   float floorY = peakY + DEATH_DROP;
   world->cameraY = clampf(need, peakY, floorY);
 
-  // Announce first arrival in a new theme band. This follows the monotonic
-  // peak, so a fall-and-reclimb never re-triggers it; soundtrack handoffs are
-  // scheduled independently on their outgoing bar line.
-  ThemeSample journey = themeSampleAt(peakAscent);
-  if (journey.level > world->level) {
-    world->level = journey.level;
-    world->levelBanner = LEVEL_BANNER_FRAMES; // the era's rules just changed;
-                                              // the HUD says which era it is
-  }
+  // Keep the highest reached level for end-of-run task progress. The HUD and
+  // soundtrack no longer fire an event at the mathematical boundary.
+  world->level = themeSampleAt(peakAscent).level;
 
   // Idle combo reset: no coin grabbed within COMBO_TIMEOUT drops the chain.
   if (world->combo > 0 && (world->comboTimer -= 1.0f) <= 0.0f) {
@@ -966,9 +959,6 @@ void updateWorld(World *world, Player *player) {
   }
   if (world->flash > 0.0f) {
     world->flash -= FLASH_DECAY;
-  }
-  if (world->levelBanner > 0.0f) {
-    world->levelBanner -= 1.0f;
   }
   spawnCoins(world);
   spawnPlatforms(world);

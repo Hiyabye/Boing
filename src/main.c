@@ -64,7 +64,9 @@ static void updateMusicLayers(const Game *g) {
       (screenY - SCREEN_HEIGHT * 0.5f) / (SCREEN_HEIGHT * 0.35f), 0.0f, 1.0f);
   ThemeSample journey = themeSampleAt(worldPeakAscent(&g->world));
   float finale =
-      journey.era == THEME_COUNT - 1 && journey.phase >= 0.75f ? 1.0f : 0.0f;
+      THEMES[journey.era].bridge == BRIDGE_REBOOT && journey.phase >= 0.75f
+          ? 1.0f
+          : 0.0f;
   setMusicDynamics(g->world.combo, fallSpeed * depth, finale);
 }
 

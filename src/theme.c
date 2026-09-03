@@ -317,6 +317,24 @@ void themeSampleSelfTest(void) {
   s = themeSampleAt(BAND_HEIGHT * (TRANSITION_START + 1.0f) * 0.5f);
   assert(fabsf(s.blend - 0.5f) < 0.0001f);
 
+  // Post bloom follows the eased visual sample: stable through the core, then
+  // descending smoothly across the reboot before daylight starts.
+  s = themeSampleAt(BAND_HEIGHT * (ERA_BLOCKS + 0.70f));
+  assert(s.blend == 0.0f &&
+         fabsf(themeGlow(s) - THEMES[ERA_BLOCKS].glow) < 0.0001f);
+  s = themeSampleAt(BAND_HEIGHT *
+                    (ERA_BLOCKS + (TRANSITION_START + 1.0f) * 0.5f));
+  float rebootGlow = themeGlow(s);
+  assert(fabsf(s.blend - 0.5f) < 0.0001f &&
+         rebootGlow < THEMES[ERA_BLOCKS].glow &&
+         rebootGlow > THEMES[ERA_HILLS].glow);
+
+  int rebootEdges = 0;
+  for (int era = 0; era < ERA_COUNT; era++) {
+    rebootEdges += THEMES[era].bridge == BRIDGE_REBOOT;
+  }
+  assert(rebootEdges == 1 && THEMES[ERA_BLOCKS].bridge == BRIDGE_REBOOT);
+
   for (int level = 0; level < ERA_COUNT; level++) {
     float edge = BAND_HEIGHT * (level + 1);
     EraId next = (EraId)((level + 1) % ERA_COUNT);
@@ -337,7 +355,8 @@ void themeSampleSelfTest(void) {
   float wrap = BAND_HEIGHT * ERA_COUNT;
   s = themeSampleAt(wrap);
   assert(s.level == ERA_COUNT && s.cycle == 1 && s.era == ERA_HILLS &&
-         s.next == ERA_SKIES && s.phase == 0.0f && s.blend == 0.0f);
+         s.next == ERA_SKIES && s.phase == 0.0f && s.blend == 0.0f &&
+         fabsf(themeGlow(s) - THEMES[ERA_HILLS].glow) < 0.0001f);
   s = themeSampleAt(nextafterf(wrap, INFINITY));
   assert(s.level == ERA_COUNT && s.cycle == 1 && s.era == ERA_HILLS &&
          s.phase > 0.0f && s.blend == 0.0f);

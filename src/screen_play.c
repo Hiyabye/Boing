@@ -17,6 +17,7 @@
 
 #define FIXED_DT (1.0f / 60.0f)
 #define MAX_FRAME_TIME 0.25f // clamp on a slow frame so physics can't spiral
+#define CYCLE_REVEAL_PHASE 0.18f
 
 static Rectangle rPauseBtn(void) {
   return (Rectangle){SCREEN_WIDTH - 54, 10, 44, 44};
@@ -131,15 +132,15 @@ void updateGameover(Game *g) {
 // ---------------------------------------------------------------------------
 // HUD + game-over card
 // ---------------------------------------------------------------------------
-// Score badge + coin tally + level bar + power-up timer bars, in screen space
-// (drawn after the world's rlPopMatrix, in the frame's scaled 800x800 space).
+// Score, coin, continuous height, and power-up timers in screen space (drawn
+// after the world's rlPopMatrix, in the frame's scaled 800x800 space).
 static void drawHud(const World *world) {
-  float pw = 360, ph = 12, px = (SCREEN_WIDTH - pw) / 2.0f, py = 30;
+  float centerW = 360, centerX = (SCREEN_WIDTH - centerW) / 2.0f;
   const char *scoreStr = TextFormat("SCORE %d", getScore(world));
   int scoreSize = 30;
-  // Keep 8px clear of the level bar; the badge starts at x=8 and adds 24px
-  // of horizontal padding around the text.
-  const int scoreMaxWidth = (int)px - 40;
+  // Keep 8px clear of the centered height badge; the score badge starts at x=8
+  // and adds 24px of horizontal padding around the text.
+  const int scoreMaxWidth = (int)centerX - 40;
   while (scoreSize > 8 && uiTextWidth(scoreStr, scoreSize) > scoreMaxWidth) {
     scoreSize--;
   }
@@ -159,29 +160,33 @@ static void drawHud(const World *world) {
   drawCoinGlyph(gcx, gcy);
   drawTextShadow(coinStr, (int)gcx + 16, (int)cby + 5, 30, RAYWHITE);
 
-  // Level progress bar (top-center): raw progress through the monotonic peak
-  // sample, independent of the camera-relative palette blend.
+  // Height never resets at an era seam. The cycle label appears only after the
+  // reboot's safe-arrival window; on later reboots the previous number holds
+  // until then instead of ticking over at the mathematical boundary.
   ThemeSample journey = themeSampleAt(worldPeakAscent(world));
-  const char *lvlStr = TextFormat("LEVEL %d", journey.level + 1);
-  drawTextShadow(lvlStr, (int)(SCREEN_WIDTH - uiTextWidth(lvlStr, 18)) / 2, 8,
-                 18, RAYWHITE);
-  DrawRectangleRounded((Rectangle){px, py, pw, ph}, 0.9f, 8, Fade(BLACK, 0.3f));
-  DrawRectangleRounded((Rectangle){px, py, pw * journey.phase, ph}, 0.9f, 8,
-                       Fade(COIN_HI, 0.9f));
-
-  // Combo multiplier: shown centered under the level bar while a chain is
-  // going, bigger the higher it climbs.
-  if (world->combo > 1) {
-    drawCenteredText(TextFormat("COMBO x%d", world->combo), (int)py + 22,
-                     20 + (world->combo > 10 ? 10 : world->combo), GOLD);
+  int height = (int)((FLOOR_Y - world->bestY) / 10.0f);
+  int cycle = journey.cycle + 1;
+  if (journey.era == ERA_HILLS && journey.phase < CYCLE_REVEAL_PHASE) {
+    cycle--;
   }
+  const char *climbStr =
+      cycle > 1 ? TextFormat("HEIGHT %d m  CYCLE %d", height, cycle)
+                : TextFormat("HEIGHT %d m", height);
+  int climbSize = 20;
+  while (climbSize > 8 &&
+         uiTextWidth(climbStr, climbSize) > (int)centerW - 24) {
+    climbSize--;
+  }
+  DrawRectangleRounded((Rectangle){centerX, 8, centerW, 40}, 0.4f, 8,
+                       Fade(BLACK, 0.28f));
+  drawTextShadow(climbStr,
+                 (SCREEN_WIDTH - uiTextWidth(climbStr, climbSize)) / 2,
+                 8 + (40 - climbSize) / 2, climbSize, RAYWHITE);
 
-  // Era callout: each band changes the *rules*, not just the palette, so the
-  // level-up says which era you just walked into. Fades out over its last
-  // ~0.7s; sits clear of the combo readout above it.
-  if (world->levelBanner > 0.0f) {
-    float a = fminf(world->levelBanner / 40.0f, 1.0f);
-    drawCenteredText(THEMES[journey.era].name, 112, 34, Fade(GOLD, a));
+  // Combo multiplier sits below the height badge, growing with the chain.
+  if (world->combo > 1) {
+    drawCenteredText(TextFormat("COMBO x%d", world->combo), 54,
+                     20 + (world->combo > 10 ? 10 : world->combo), GOLD);
   }
 
   // One timer bar per active power-up, stacked (magnet + rocket can overlap).

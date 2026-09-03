@@ -2116,6 +2116,9 @@ static void checkDynamics(void) {
   assert(curTrack == TRACK_HILLS && loopPos[TRACK_HILLS] == 0 &&
          pendingTrack == TRACK_NONE);
 
+  curTrack = prevTrack = TRACK_HILLS;
+  Stereo noFinale = renderFinale(0, 1.0f);
+  assert(noFinale.l == 0.0f && noFinale.r == 0.0f);
   curTrack = prevTrack = TRACK_BLOCKS;
   crossfade = 1.0f;
   float low = 0.0f, high = 0.0f, mono = 0.0f, danger = 0.0f;

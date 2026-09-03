@@ -117,14 +117,13 @@ typedef struct World {
   Vector2 flashPos; // where the last collect "pop" ring is centered
   float flash;      // pop-ring life, 1 at collect -> 0
   int coinsCollected;
-  int level; // last announced peak-sample level; gates one-shot arrival events
+  int level; // highest peak-sample level reached; used by end-of-run tasks
   int combo; // coins chained without falling to the floor / taking a hit
-  float comboTimer;  // frames left before an idle chain auto-resets
-  int bestCombo;     // longest chain this run (game-over summary)
-  int comboBonus;    // accumulated combo bonus points, folded into getScore
-  int hitstop;       // frames of physics freeze remaining (impact juice)
-  int ghostChain;    // monsters eaten on the current pellet (doubling bonus)
-  float levelBanner; // frames left on the "you're in a new era" HUD callout
+  float comboTimer; // frames left before an idle chain auto-resets
+  int bestCombo;    // longest chain this run (game-over summary)
+  int comboBonus;   // accumulated combo bonus points, folded into getScore
+  int hitstop;      // frames of physics freeze remaining (impact juice)
+  int ghostChain;   // monsters eaten on the current pellet (doubling bonus)
 } World;
 
 World createWorld(void);

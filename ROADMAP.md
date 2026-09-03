@@ -2,7 +2,7 @@
 
 ## Status
 
-- Execution tracker; Phase 7 completed on 2026-09-03.
+- Execution tracker; Phase 8 completed on 2026-09-03.
 - Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
 - Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> a rebuilt Sunny Hills.
@@ -880,6 +880,9 @@ Decision checkpoint for that future session:
 
 Do not proceed until the user confirms which treatment they want if their preference is still unknown.
 
+Decision: the user confirmed the recommended continuous-height treatment for
+Phase 8.
+
 ### 8.2 Implement the chosen HUD model
 
 Files:
@@ -888,11 +891,11 @@ Files:
 
 Steps for the recommended model:
 
-- [ ] Replace the exact `LEVEL N` boundary bar with continuous height or journey progress.
-- [ ] Remove the era title from the exact mathematical boundary.
-- [ ] Keep the era name in the game-over summary.
-- [ ] If discovery titles remain, show them after safe arrival rather than at phase zero.
-- [ ] Preserve score, coin, combo, pause, and power-up readability.
+- [x] Replace the exact `LEVEL N` boundary bar with continuous height or journey progress.
+- [x] Remove the era title from the exact mathematical boundary.
+- [x] Keep the era name in the game-over summary.
+- [x] If discovery titles remain, show them after safe arrival rather than at phase zero.
+- [x] Preserve score, coin, combo, pause, and power-up readability.
 
 Acceptance:
 
@@ -908,11 +911,11 @@ Files:
 
 Steps:
 
-- [ ] Keep bloom stable through each era's core.
-- [ ] Ease bloom through transition blend rather than raw full-band phase.
-- [ ] Reduce digital bloom naturally before daylight returns.
-- [ ] Do not reuse Fog or CRT language for biome transitions.
-- [ ] Do not add a new render target.
+- [x] Keep bloom stable through each era's core.
+- [x] Ease bloom through transition blend rather than raw full-band phase.
+- [x] Reduce digital bloom naturally before daylight returns.
+- [x] Do not reuse Fog or CRT language for biome transitions.
+- [x] Do not add a new render target.
 
 Acceptance:
 
@@ -928,9 +931,9 @@ Files:
 
 Steps:
 
-- [ ] Trigger finale intensity from the explicit reboot edge or bridge metadata.
-- [ ] Remove `journey.era == THEME_COUNT - 1` as the semantic test.
-- [ ] Keep the Falling Blocks finale layer tied to its semantic track or style.
+- [x] Trigger finale intensity from the explicit reboot edge or bridge metadata.
+- [x] Remove `journey.era == THEME_COUNT - 1` as the semantic test.
+- [x] Keep the Falling Blocks finale layer tied to its semantic track or style.
 
 Acceptance:
 
@@ -938,8 +941,32 @@ Acceptance:
 
 Phase 8 gate:
 
-- [ ] HUD, post, and audio remain synchronized through a full cycle.
-- [ ] UI remains readable under every transition palette.
+- [x] HUD, post, and audio remain synchronized through a full cycle.
+- [x] UI remains readable under every transition palette.
+
+The top-center HUD now reports continuous run height instead of `LEVEL N` and
+a resetting phase bar. The boundary era callout and its `World.levelBanner`
+timer are gone; the authoritative era name remains on the game-over card.
+Cycle information is delayed through the reboot's 18% safe-arrival window, so
+`CYCLE 2` appears after the rebuilt Hills settle rather than at the modulo
+boundary. Later loops hold their previous cycle number through the same window.
+Score, coin, combo, pause, and power-up layouts remain unchanged and readable.
+
+Post already consumed the camera-relative `ThemeSample` through `themeGlow()`,
+so no production shader or render-target change was needed. New sampler checks
+lock bloom to the stable core, verify its eased Blocks -> Hills descent, and
+confirm the daylight value at the wrap. Finale intensity now keys off the
+current theme's explicit `BRIDGE_REBOOT`; `renderFinale()` remains gated on
+semantic `TRACK_BLOCKS`, with a new negative sound check for other tracks.
+
+A temporary 20-second-per-era app sweep, removed before the final build, ran
+HUD, post, and audio through every edge and one complete cycle. Twelve captures
+covered stable eras, outgoing transitions, the exact reboot, and phase 0.20 of
+the rebuilt Hills with `COMBO x12`; the HUD remained readable, showed no cycle
+change at the seam, and revealed `CYCLE 2` only after safe arrival. `BG`,
+`WORLD`, `POST`, and `SOUND` self-tests pass. Removing the banner timer reduced
+`World` from 3,736 to 3,732 bytes. The Universal 2 bundle remains 1,421,827
+bytes with 52,733 bytes free.
 
 Suggested future commit boundary if explicitly requested:
 
@@ -1160,7 +1187,7 @@ Goal: remove migration scaffolding and synchronize documentation without gratuit
 - [ ] Remove old theme-global blend wrappers once no caller uses them.
 - [ ] Remove stale comments describing whole-band palette interpolation.
 - [ ] Remove old level-track ordering assumptions.
-- [ ] Remove unused banner state if the chosen HUD no longer needs it.
+- [x] Remove unused banner state if the chosen HUD no longer needs it.
 - [ ] Remove temporary tuning logs and debug paths.
 - [ ] Search for all `THEME_COUNT`, `worldEra`, old track names, and old bridge constants.
 

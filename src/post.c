@@ -234,6 +234,19 @@ void unloadPost(void) {
 #define TEST_W 400
 #define CELL 200
 
+static const PostFx TEST_CASES[] = {
+    {0},                                            // baseline
+    {.bloom = 1.0f},                                //
+    {.fog = 1.0f},                                  //
+    {.crt = 1.0f, .crtRect = {100, 140, 600, 460}}, //
+    {.vignette = 1.0f},                             //
+};
+static const char *const TEST_NAMES[] = {"base", "bloom", "fog", "crt",
+                                         "vignette"};
+STATIC_ASSERT(sizeof(TEST_NAMES) / sizeof(TEST_NAMES[0]) ==
+                  sizeof(TEST_CASES) / sizeof(TEST_CASES[0]),
+              post_case_names_complete);
+
 // A stand-in scene: dark field, bright neon bars and discs (bloom bait), a
 // mid-grey ramp (fog/vignette bait). Drawn in 800-space like the real screens.
 static void testScene(void) {
@@ -287,20 +300,9 @@ int main(int argc, char **argv) {
   SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI);
   InitWindow(TEST_W, TEST_W, "post selftest");
 
-  const PostFx CASES[] = {
-      {0},                                            // baseline
-      {.bloom = 1.0f},                                //
-      {.fog = 1.0f},                                  //
-      {.crt = 1.0f, .crtRect = {100, 140, 600, 460}}, //
-      {.vignette = 1.0f},                             //
-  };
-  const char *NAMES[] = {"base", "bloom", "fog", "crt", "vignette"};
-  STATIC_ASSERT(sizeof(NAMES) / sizeof(NAMES[0]) ==
-                    sizeof(CASES) / sizeof(CASES[0]),
-                post_case_names_complete);
-  const int N = sizeof(CASES) / sizeof(CASES[0]);
+  const int N = sizeof(TEST_CASES) / sizeof(TEST_CASES[0]);
 
-  Image base = shot(&CASES[0]);
+  Image base = shot(&TEST_CASES[0]);
   // postBegin ran at least once, so the shader verdict is in.
   assert(!gFailed &&
          "post shader failed to compile or framebuffer unavailable");
@@ -312,9 +314,9 @@ int main(int argc, char **argv) {
 
   Image strip = GenImageColor(CELL * N, CELL, BLACK);
   for (int i = 0; i < N; i++) {
-    Image im = shot(&CASES[i]);
+    Image im = shot(&TEST_CASES[i]);
     double d = diff(base, im);
-    printf("%-9s mean delta %6.2f\n", NAMES[i], d);
+    printf("%-9s mean delta %6.2f\n", TEST_NAMES[i], d);
     if (i > 0) {
       assert(d > 1.0 &&
              "effect changed nothing — uniform not reaching the GPU");
@@ -324,7 +326,7 @@ int main(int argc, char **argv) {
     UnloadImage(im);
   }
   // Vignette must darken the corners and leave the middle alone.
-  Image vig = shot(&CASES[4]);
+  Image vig = shot(&TEST_CASES[4]);
   Color mid = GetImageColor(vig, vig.width / 2, vig.height / 2);
   Color corner = GetImageColor(vig, 2, 2);
   Color baseCorner = GetImageColor(base, 2, 2);
