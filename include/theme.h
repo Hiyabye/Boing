@@ -33,8 +33,8 @@ typedef struct {
   float blend;
 } ThemeSample;
 
-// Authored outgoing relationship for each era. Rendering is added later; this
-// metadata makes the closed-loop Blocks -> Hills edge explicit now.
+// Authored outgoing relationship for each era. Bridge geometry and optional
+// atmosphere-only palette keys render between eras without becoming eras.
 typedef enum {
   BRIDGE_CLOUDLINE,
   BRIDGE_TWILIGHT,

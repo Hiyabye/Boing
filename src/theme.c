@@ -260,30 +260,45 @@ static Theme lerpTheme(const Theme *a, const Theme *b, float f) {
   return r;
 }
 
-// The direct Blocks -> Hills RGB path turns grey halfway through. One authored
-// predawn key keeps the bridge colorful without adding an era or color system.
-// These are exactly the atmosphere colors before `mouth` in Theme.
+// Edge-only palette keys give two transitions authored color anchors. They
+// cover atmosphere through cloud shade, never gameplay colors, and remain
+// bridge rendering rather than gameplay eras.
+static const Color BLUE_HOUR[] = {
+    {0x37, 0x57, 0x90, 0xFF}, {0xC7, 0x79, 0xA0, 0xFF},
+    {0x20, 0x2F, 0x68, 0xFF}, {0x70, 0x4D, 0x85, 0xFF},
+    {0xFF, 0xD1, 0x9A, 0xFF}, {0xFF, 0xF1, 0xD4, 0xFF},
+    {0xC7, 0xB5, 0xD2, 0xFF}, {0x78, 0x6F, 0x9D, 0xFF},
+};
 static const Color REBOOT_DAWN[] = {
     {0x35, 0x34, 0x78, 0xFF}, {0xD4, 0x72, 0x82, 0xFF},
     {0x1C, 0x26, 0x58, 0xFF}, {0x69, 0x42, 0x76, 0xFF},
     {0xFF, 0xB3, 0x72, 0xFF}, {0xFF, 0xE6, 0xB0, 0xFF},
     {0x4D, 0xC6, 0xB6, 0xFF}, {0x36, 0x62, 0x76, 0xFF},
 };
+#define ATMOSPHERE_COLOR_COUNT (offsetof(Theme, mouth) / sizeof(Color))
+STATIC_ASSERT(sizeof(BLUE_HOUR) / sizeof(BLUE_HOUR[0]) ==
+                  ATMOSPHERE_COLOR_COUNT,
+              blue_hour_full);
 STATIC_ASSERT(sizeof(REBOOT_DAWN) / sizeof(REBOOT_DAWN[0]) ==
-                  offsetof(Theme, mouth) / sizeof(Color),
+                  ATMOSPHERE_COLOR_COUNT,
               reboot_dawn_full);
 
 static Theme renderedTheme(ThemeSample sample) {
   const Theme *a = &THEMES[sample.era], *b = &THEMES[sample.next];
   Theme r = lerpTheme(a, b, sample.blend);
-  if (a->bridge == BRIDGE_REBOOT) {
+  const Color *key = NULL;
+  if (a->bridge == BRIDGE_TWILIGHT) {
+    key = BLUE_HOUR;
+  } else if (a->bridge == BRIDGE_REBOOT) {
+    key = REBOOT_DAWN;
+  }
+  if (key != NULL) {
     float f = sample.blend * 2.0f;
-    const Color *from = f < 1.0f ? (const Color *)a : REBOOT_DAWN;
-    const Color *to = f < 1.0f ? REBOOT_DAWN : (const Color *)b;
+    const Color *from = f < 1.0f ? (const Color *)a : key;
+    const Color *to = f < 1.0f ? key : (const Color *)b;
     f = f < 1.0f ? f : f - 1.0f;
     Color *colors = (Color *)&r;
-    for (int i = 0; i < (int)(sizeof(REBOOT_DAWN) / sizeof(REBOOT_DAWN[0]));
-         i++) {
+    for (int i = 0; i < (int)ATMOSPHERE_COLOR_COUNT; i++) {
       colors[i] = ColorLerp(from[i], to[i], f);
     }
   }
@@ -366,8 +381,22 @@ void themeSampleSelfTest(void) {
   assert(themeLevelAt(wrap) == ERA_COUNT);
   assert(themeBandProgressAt(edge) == 0.0f);
 
-  themeUpdate(
-      (ThemeSample){.era = ERA_BLOCKS, .next = ERA_HILLS, .blend = 0.5f});
+  float midpoint = (TRANSITION_START + 1.0f) * 0.5f;
+  s = themeSampleAt(BAND_HEIGHT * (ERA_SKIES + midpoint));
+  assert(s.level == ERA_SKIES && s.cycle == 0 && s.era == ERA_SKIES &&
+         s.next == ERA_NIGHT && fabsf(s.blend - 0.5f) < 0.0001f);
+  s.blend = 0.5f;
+  themeUpdate(s);
+  assert(
+      gTheme.skyTop.r == BLUE_HOUR[0].r && gTheme.skyTop.g == BLUE_HOUR[0].g &&
+      gTheme.skyTop.b == BLUE_HOUR[0].b && gTheme.skyBot.r == BLUE_HOUR[1].r &&
+      gTheme.skyBot.g == BLUE_HOUR[1].g && gTheme.skyBot.b == BLUE_HOUR[1].b);
+
+  s = themeSampleAt(BAND_HEIGHT * (ERA_BLOCKS + midpoint));
+  assert(s.level == ERA_BLOCKS && s.cycle == 0 && s.era == ERA_BLOCKS &&
+         s.next == ERA_HILLS && fabsf(s.blend - 0.5f) < 0.0001f);
+  s.blend = 0.5f;
+  themeUpdate(s);
   assert(gTheme.skyTop.r == REBOOT_DAWN[0].r &&
          gTheme.skyTop.g == REBOOT_DAWN[0].g &&
          gTheme.skyTop.b == REBOOT_DAWN[0].b &&

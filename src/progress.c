@@ -421,6 +421,13 @@ int main(void) {
   checkTaskDefs(DAILY_TASK_POOL, DAILY_POOL_COUNT);
   checkTaskDefs(REPEATABLE_TASKS, REPEATABLE_TASK_COUNT);
   checkTaskDefs(ACHIEVEMENTS, ACHIEVEMENT_COUNT);
+
+  // Visual bridge keyframes are not levels: era tasks read only World.level.
+  World eraRun = {.level = ERA_COUNT - 1};
+  assert(missionValue(&eraRun, MSTAT_ERAS) == ERA_COUNT);
+  eraRun.level++;
+  assert(missionValue(&eraRun, MSTAT_ERAS) == ERA_COUNT + 1);
+
   configLoad("/no/such/save.json");
   configSetInt("skinMask", 15);    // legacy bundle keys are ignored
   configSetInt("selectedSkin", 3); // instead of partially migrating an outfit

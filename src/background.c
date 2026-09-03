@@ -817,9 +817,10 @@ static void drawTwilightIslands(float cameraY, float t) {
   }
 }
 
-// Night -> Maze: free stars settle onto signal rows, and each straight
-// constellation bends toward an orthogonal corridor. The moon contracts into
-// one pulsing node while island seams extend into the same line language.
+// Night -> Maze, the Constellation Lock keyframe: free stars first settle
+// onto regular signal rows, then each straight constellation bends into an
+// orthogonal corridor. The moon contracts into one pulsing node while island
+// seams extend into the same line language.
 static void drawSignalFar(float cameraY, float t) {
   drawCelestial(SUN_R * (1.0f - 0.72f * t), 1.0f - t, 0.95f * (1.0f - t));
 
@@ -827,6 +828,8 @@ static void drawSignalFar(float cameraY, float t) {
   if (alpha <= 0.01f) {
     return;
   }
+  float lock = easedWindow(t, 0.08f, 0.72f);
+  float route = easedWindow(t, 0.38f, 0.92f);
   Vector2 node[12];
   float off = wrapf(-cameraY * 0.4f, MAZE_CELL);
   for (int i = 0; i < 12; i++) {
@@ -836,8 +839,8 @@ static void drawSignalFar(float cameraY, float t) {
         wrapf(i * 137.0f - cameraY * depth, SCREEN_HEIGHT + 100.0f)};
     Vector2 grid = {70.0f + (i % 4) * 220.0f,
                     80.0f + (i / 4) * 260.0f + off * 0.35f};
-    node[i] = (Vector2){star.x + (grid.x - star.x) * t,
-                        star.y + (grid.y - star.y) * t};
+    node[i] = (Vector2){star.x + (grid.x - star.x) * lock,
+                        star.y + (grid.y - star.y) * lock};
   }
 
   BeginBlendMode(BLEND_ADDITIVE);
@@ -845,12 +848,12 @@ static void drawSignalFar(float cameraY, float t) {
   for (int i = 0; i < 12; i++) {
     drawTex(TEX_PUFF, node[i].x, node[i].y, 24.0f, 24.0f, 0.0f,
             Fade(SUN_CORE, 0.22f * alpha));
-    DrawCircleV(node[i], 2.0f + 2.0f * t, Fade(SUN_CORE, 0.6f * alpha));
+    DrawCircleV(node[i], 2.0f + 2.0f * lock, Fade(SUN_CORE, 0.6f * alpha));
     if (i % 4 != 3) {
       Vector2 q = node[i + 1];
       Vector2 mid = {(node[i].x + q.x) * 0.5f, (node[i].y + q.y) * 0.5f};
-      Vector2 elbow = {mid.x + (q.x - mid.x) * t,
-                       mid.y + (node[i].y - mid.y) * t};
+      Vector2 elbow = {mid.x + (q.x - mid.x) * route,
+                       mid.y + (node[i].y - mid.y) * route};
       DrawLineEx(node[i], elbow, 2.0f, line);
       DrawLineEx(elbow, q, 2.0f, line);
     }
@@ -858,10 +861,10 @@ static void drawSignalFar(float cameraY, float t) {
   float pulse = 0.65f + 0.35f * sinf((float)GetTime() * 4.0f);
   drawTex(TEX_PUFF, SUN_X, SUN_Y, 150.0f, 150.0f, 0.0f,
           Fade(CLOUD, 0.2f * alpha * pulse));
-  DrawRectangleLinesEx((Rectangle){SUN_X - 12.0f - 8.0f * t,
-                                   SUN_Y - 12.0f - 8.0f * t, 24.0f + 16.0f * t,
-                                   24.0f + 16.0f * t},
-                       2.0f, Fade(CLOUD, 0.52f * alpha));
+  DrawRectangleLinesEx(
+      (Rectangle){SUN_X - 12.0f - 8.0f * route, SUN_Y - 12.0f - 8.0f * route,
+                  24.0f + 16.0f * route, 24.0f + 16.0f * route},
+      2.0f, Fade(CLOUD, 0.52f * alpha));
   EndBlendMode();
 }
 
@@ -870,16 +873,17 @@ static void drawSignalMid(float cameraY, float t) {
   if (alpha <= 0.01f) {
     return;
   }
+  float lock = easedWindow(t, 0.16f, 0.86f);
   for (int i = 0; i < 4; i++) {
     float x = 90.0f + i * 215.0f;
     float y = wrapf(i * 211.0f - cameraY * (0.3f + 0.05f * (i % 2)),
                     SCREEN_HEIGHT + 260.0f) -
               80.0f;
-    float reach = 30.0f + 90.0f * t;
+    float reach = 30.0f + 90.0f * lock;
     Color seam = Fade(CLOUD, 0.34f * alpha);
     DrawLineEx((Vector2){x - reach, y}, (Vector2){x + reach, y}, 3.0f, seam);
     DrawLineEx((Vector2){x + reach, y},
-               (Vector2){x + reach, y + 30.0f + 55.0f * t}, 3.0f, seam);
+               (Vector2){x + reach, y + 30.0f + 55.0f * lock}, 3.0f, seam);
   }
 }
 

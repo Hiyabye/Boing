@@ -2,7 +2,7 @@
 
 ## Status
 
-- Execution tracker; Phase 9 completed on 2026-09-03.
+- Execution tracker; Phase 10 completed on 2026-09-03.
 - Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
 - Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> a rebuilt Sunny Hills.
@@ -1117,29 +1117,56 @@ Goal: improve continuity without bloating mechanics, missions, soundtrack buffer
 
 Position: Skies -> Night.
 
-- [ ] Add an authored twilight palette or edge treatment.
-- [ ] Do not increment level or mission-era progress.
-- [ ] Do not add a separate music loop.
-- [ ] Reuse sun, clouds, birds, stars, and current sound layers.
+- [x] Add an authored twilight palette or edge treatment.
+- [x] Do not increment level or mission-era progress.
+- [x] Do not add a separate music loop.
+- [x] Reuse sun, clouds, birds, stars, and current sound layers.
 
 ### 10.2 Constellation Lock keyframe
 
 Position: Night -> Neon Maze.
 
-- [ ] Align stars into an increasingly regular signal pattern.
-- [ ] Preserve original imagery rather than recreating a known product's maze or characters.
-- [ ] Do not add a separate mechanic unless promoted to a full era later.
+- [x] Align stars into an increasingly regular signal pattern.
+- [x] Preserve original imagery rather than recreating a known product's maze or characters.
+- [x] Do not add a separate mechanic unless promoted to a full era later.
 
 ### 10.3 Reboot Dawn keyframe
 
 Position: Falling Blocks -> Sunny Hills.
 
-- [ ] Keep it as bridge data and rendering, not another `THEMES[]` gameplay row.
-- [ ] Confirm that missions and first-cycle coin economy remain unchanged.
+- [x] Keep it as bridge data and rendering, not another `THEMES[]` gameplay row.
+- [x] Confirm that missions and first-cycle coin economy remain unchanged.
 
 Phase 10 gate:
 
-- [ ] Visual keyframes do not affect level count, difficulty, economy, track count, or task progression.
+- [x] Visual keyframes do not affect level count, difficulty, economy, track count, or task progression.
+
+Blue Hour is one eight-color atmosphere key on `BRIDGE_TWILIGHT`: the sky moves
+through deep blue and a rose horizon, the shared disc warms before becoming the
+moon, and existing clouds, birds, stars, islands, and musical bridge continue
+through it. Only colors before `Theme.mouth` take the key; gameplay colors keep
+the ordinary eased era interpolation.
+
+Constellation Lock now uses two timings inside the existing `BRIDGE_SIGNAL`
+drawing. Free stars settle onto regular rows first, then their straight links
+bend into orthogonal signal routes and the island seams follow. It adds no
+entity, collision rule, character, backdrop, or sound cue. Reboot Dawn remains
+the existing atmosphere key plus far/mid bridge rendering selected by
+`BRIDGE_REBOOT`, not a `THEMES[]` row.
+
+No era, theme, track, world, difficulty, or save table gained a row. Theme
+self-checks prove both palette midpoints retain their source level, cycle, era,
+and destination; the progress self-test now explicitly locks era tasks to
+`World.level`. `BG`, `WORLD`, `SOUND`, `PROGRESS`, and `PERSIST` self-tests pass,
+the full-resolution transition and world sheets remain readable, formatting is
+clean, and a Launch Services build reached the menu normally. The Universal 2
+bundle remains 1,421,827 bytes with 52,733 bytes free.
+
+Suggested future commit boundary if explicitly requested:
+
+```text
+feat: add visual transition keyframes
+```
 
 ## Phase 11: Add new full eras one at a time
 
