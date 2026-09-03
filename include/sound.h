@@ -11,14 +11,15 @@ void deinitAudio(AudioStream *stream);
 // ready, keeping expensive synthesis off both the frame and audio stream paths.
 bool audioPreloadStep(void);
 
-// The first five ids stay parallel with THEMES[]. UI cues follow them.
+// Gameplay tracks have semantic ids; each Theme selects one explicitly.
 typedef enum {
-  TRACK_L1,      // Sunny Hills
-  TRACK_L2,      // Birdsong Skies
-  TRACK_L3,      // Night Blocks
-  TRACK_L4,      // Neon Maze
-  TRACK_L5,      // Falling Blocks
-  TRACK_MENU,    // title, help, missions, menu-opened settings
+  TRACK_HILLS,
+  TRACK_SKIES,
+  TRACK_NIGHT,
+  TRACK_MAZE,
+  TRACK_BLOCKS,
+  TRACK_GAMEPLAY_COUNT,
+  TRACK_MENU = TRACK_GAMEPLAY_COUNT, // title/help/missions/settings
   TRACK_SHOP,    // beat-synchronized variation of the menu theme
   TRACK_CREDITS, // dedicated reflective finale
   TRACK_RESULTS, // quiet game-over results bed
@@ -38,7 +39,8 @@ void setMusicPaused(bool paused);
 // clamped.
 void setMusicDynamics(int combo, float danger, float finale);
 void musicMonsterHit(void);
-void musicEraTransition(int era);
+// Play the level-arrival stinger in the destination gameplay track's palette.
+void musicEraTransition(MusicTrack track);
 void musicLogoSting(void);
 
 // Independent buses, both 0..1.

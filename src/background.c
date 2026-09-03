@@ -726,7 +726,7 @@ void drawGameBackground(float cameraY) {
 
   DrawRectangleGradientV(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SKY_TOP, SKY_BOT);
 
-  int lo, hi;
+  EraId lo, hi;
   float f;
   themeBlend(&lo, &hi, &f);
   float fx = backdropCrossfade(f);
@@ -735,7 +735,7 @@ void drawGameBackground(float cameraY) {
 }
 
 void drawGameForeground(float cameraY) {
-  int lo, hi;
+  EraId lo, hi;
   float f;
   themeBlend(&lo, &hi, &f);
   float fx = backdropCrossfade(f);

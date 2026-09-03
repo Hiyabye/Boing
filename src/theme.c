@@ -1,7 +1,6 @@
 #include "theme.h"
 
-#include "core.h"  // clampf
-#include "sound.h" // MusicTrack ids for Theme.track
+#include "core.h" // clampf
 
 #include <stddef.h> // offsetof
 
@@ -47,7 +46,10 @@ const Theme THEMES[] = {
                 {0xFF, 0x9E, 0x3D, 0xFF},
             },
         .backdrop = BACKDROP_HILLS,
-        .track = TRACK_L1,
+        .bridge = BRIDGE_CLOUDLINE,
+        .track = TRACK_HILLS,
+        .name = "SUNNY HILLS",
+        .glow = 0.12f,
     },
     // 1 - Birdsong Skies: clear azure air, sunlit cloud banks and migrating
     // birds. Platforms drift sideways on the wind.
@@ -81,7 +83,10 @@ const Theme THEMES[] = {
                 {0x9D, 0xDE, 0xF5, 0xFF},
             },
         .backdrop = BACKDROP_SKIES,
-        .track = TRACK_L2,
+        .bridge = BRIDGE_TWILIGHT,
+        .track = TRACK_SKIES,
+        .name = "BIRDSONG SKIES",
+        .glow = 0.16f,
     },
     // 2 - Night Blocks: moonlit deep-blue sky, pixel stars, blocky terrain. A
     // voxel-survival dusk (homage to blocky night-survival games).
@@ -115,7 +120,10 @@ const Theme THEMES[] = {
                 {0xFF, 0xE3, 0x6B, 0xFF},
             },
         .backdrop = BACKDROP_STARS,
-        .track = TRACK_L3,
+        .bridge = BRIDGE_SIGNAL,
+        .track = TRACK_NIGHT,
+        .name = "NIGHT BLOCKS",
+        .glow = 0.35f,
     },
     // 3 - Neon Maze: purple-black void, neon maze walls + pellet dots, ghost
     // creatures (homage to the golden-age dot-muncher maze arcades).
@@ -149,7 +157,10 @@ const Theme THEMES[] = {
                 {0xFF, 0x9E, 0x3D, 0xFF},
             },
         .backdrop = BACKDROP_MAZE,
-        .track = TRACK_L4,
+        .bridge = BRIDGE_FRAGMENTATION,
+        .track = TRACK_MAZE,
+        .name = "NEON MAZE",
+        .glow = 1.0f,
     },
     // 4 - Falling Blocks: green digital sky, falling neon tetromino backdrop.
     // The endgame (homage to the falling-block puzzle era).
@@ -183,21 +194,21 @@ const Theme THEMES[] = {
             {0xE6, 0x8A, 0x2D, 0xFF},
         },
         .backdrop = BACKDROP_BLOCKS,
-        .track = TRACK_L5,
+        .bridge = BRIDGE_REBOOT,
+        .track = TRACK_BLOCKS,
+        .name = "FALLING BLOCKS",
+        .glow = 0.7f,
     },
 };
-// THEME_COUNT is a macro (theme.h) so tables keyed off the theme list can be
-// checked at compile time; keep it honest about the table it names.
-STATIC_ASSERT(sizeof(THEMES) / sizeof(THEMES[0]) == THEME_COUNT, themes_full);
-// Level tracks are the first contiguous MusicTrack ids, one per theme row.
-STATIC_ASSERT(THEME_COUNT == TRACK_MENU, theme_level_tracks_full);
+STATIC_ASSERT(sizeof(THEMES) / sizeof(THEMES[0]) == ERA_COUNT, themes_full);
+STATIC_ASSERT((int)BRIDGE_COUNT == (int)ERA_COUNT, era_bridges_full);
 
 Theme gTheme;
 Color gUiAccent = {255, 127, 176, 255};
 Color gUiAccentDark = {228, 70, 139, 255};
 
-// Neighbor indices + blend factor from the last themeUpdate.
-static int bandLo = 0, bandHi = 1;
+// Neighbor eras + blend factor from the last themeUpdate.
+static EraId bandLo = ERA_HILLS, bandHi = ERA_SKIES;
 static float bandF = 0.0f;
 
 // lerpTheme walks the leading Color run as a raw Color[] up to `backdrop`, so
@@ -208,7 +219,7 @@ STATIC_ASSERT(offsetof(Theme, backdrop) % sizeof(Color) == 0, theme_color_run);
 
 // Blend every Color field (the whole leading run of the struct) from a->b by f.
 static Theme lerpTheme(const Theme *a, const Theme *b, float f) {
-  Theme r = *a;
+  Theme r = f < 0.5f ? *a : *b;
   const Color *ca = (const Color *)a;
   const Color *cb = (const Color *)b;
   Color *cr = (Color *)&r;
@@ -216,9 +227,6 @@ static Theme lerpTheme(const Theme *a, const Theme *b, float f) {
   for (int i = 0; i < n; i++) {
     cr[i] = ColorLerp(ca[i], cb[i], f);
   }
-  // Keep a discrete fallback backdrop value, though background.c reads
-  // themeBlend() directly to crossfade the two shapes.
-  r.backdrop = f < 0.5f ? a->backdrop : b->backdrop;
   return r;
 }
 
@@ -232,32 +240,23 @@ void themeUpdate(float ascent) {
   // Levels are infinite; themes loop, so once the last theme's band fills it
   // wraps back to the first (Sunny Hills -> Birdsong Skies -> Night Blocks ->
   // Neon Maze -> Falling Blocks -> Sunny Hills -> ...).
-  bandLo = level % THEME_COUNT;
-  bandHi = (level + 1) % THEME_COUNT;
+  bandLo = (EraId)(level % ERA_COUNT);
+  bandHi = (EraId)((level + 1) % ERA_COUNT);
   gTheme = lerpTheme(&THEMES[bandLo], &THEMES[bandHi], bandF);
 }
 
-void themeBlend(int *lo, int *hi, float *f) {
+void themeBlend(EraId *lo, EraId *hi, float *f) {
   *lo = bandLo;
   *hi = bandHi;
   *f = bandF;
 }
 
-// How much post-processing bloom this altitude wants. A separate table rather
-// than a Theme field because Theme's leading run must stay all-Color for the
-// generic lerp above; blended over the band by hand so the glow rises into the
-// neon level and falls out of it with the palette.
-//
-// It also weights every additive stamp in world.c (see glowStamp), so this is
-// the one knob for how hard the arcade eras blaze. Sunny Hills is no longer a
-// flat 0: real daylight blooms too, and the value that used to mean "no bloom"
-// now also meant "no light on the coins".
-static const float GLOW[] = {0.12f, 0.16f, 0.35f, 1.0f, 0.7f};
-STATIC_ASSERT(sizeof(GLOW) / sizeof(GLOW[0]) == THEME_COUNT,
-              theme_glow_table_complete);
-
+// How much post-processing bloom this altitude wants. It also weights every
+// additive stamp in world.c, so each authoritative theme row owns one glow
+// knob. Sunny Hills keeps a small base because daylight coins still need light.
 float themeGlow(void) {
-  return GLOW[bandLo] + (GLOW[bandHi] - GLOW[bandLo]) * bandF;
+  float lo = THEMES[bandLo].glow, hi = THEMES[bandHi].glow;
+  return lo + (hi - lo) * bandF;
 }
 
 // 0-based level (theme band) fully entered at this ascent — increments once

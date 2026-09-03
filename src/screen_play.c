@@ -131,16 +131,6 @@ void updateGameover(Game *g) {
 // ---------------------------------------------------------------------------
 // HUD + game-over card
 // ---------------------------------------------------------------------------
-// Era names in climb order — one per THEMES[] row (theme.c), same order. Themes
-// loop, so callers index worldEra(). Homage to a genre/era each, never a named
-// product.
-static const char *ERA_NAMES[] = {"SUNNY HILLS", "BIRDSONG SKIES",
-                                  "NIGHT BLOCKS", "NEON MAZE",
-                                  "FALLING BLOCKS"};
-// A theme without a name here would show the wrong era (or read past the end).
-STATIC_ASSERT(sizeof(ERA_NAMES) / sizeof(ERA_NAMES[0]) == THEME_COUNT,
-              era_names_full);
-
 // Score badge + coin tally + level bar + power-up timer bars, in screen space
 // (drawn after the world's rlPopMatrix, in the frame's scaled 800x800 space).
 static void drawHud(const World *world) {
@@ -171,7 +161,7 @@ static void drawHud(const World *world) {
 
   // Level progress bar (top-center): how far into the current theme band the
   // climb has reached (f = blend toward the next theme).
-  int lo, hi;
+  EraId lo, hi;
   float f;
   themeBlend(&lo, &hi, &f);
   const char *lvlStr = TextFormat("LEVEL %d", worldLevel(world) + 1);
@@ -193,7 +183,7 @@ static void drawHud(const World *world) {
   // ~0.7s; sits clear of the combo readout above it.
   if (world->levelBanner > 0.0f) {
     float a = fminf(world->levelBanner / 40.0f, 1.0f);
-    drawCenteredText(ERA_NAMES[worldEra(world)], 112, 34, Fade(GOLD, a));
+    drawCenteredText(THEMES[worldEra(world)].name, 112, 34, Fade(GOLD, a));
   }
 
   // One timer bar per active power-up, stacked (magnet + rocket can overlap).
@@ -237,7 +227,7 @@ static void drawSummaryCard(Game *g) {
       {"HEIGHT", TextFormat("%d m", (int)((FLOOR_Y - w->bestY) / 10.0f))},
       {"COINS", TextFormat("%d", w->coinsCollected)},
       {"BEST COMBO", TextFormat("x%d", w->bestCombo)},
-      {"ERA", ERA_NAMES[worldEra(w)]},
+      {"ERA", THEMES[worldEra(w)].name},
   };
   int ry = 268;
   for (int i = 0; i < (int)(sizeof(rows) / sizeof(rows[0])); i++) {

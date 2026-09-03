@@ -3,6 +3,7 @@
 
 #include "player.h"
 #include "raylib.h"
+#include "theme.h"
 
 #include <stdbool.h>
 
@@ -140,7 +141,7 @@ int worldLevel(const World *world); // 0-based theme band the climb has entered
 // Which era's *mechanics* are live: worldLevel() wrapped into THEMES[] (levels
 // are infinite, themes loop), so gameplay cycles in step with the art. Every
 // per-era rule in world.c gates on this one query.
-int worldEra(const World *world);
+EraId worldEra(const World *world);
 float worldPowerTimer(const World *world, PowerUpType type);
 bool worldInvincible(const World *world); // active immunity-granting power-up
 float worldInputDir(

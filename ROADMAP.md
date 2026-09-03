@@ -2,8 +2,8 @@
 
 ## Status
 
-- Execution tracker; Phase 0 completed on 2026-09-03.
-- This file was created without a git commit.
+- Execution tracker; Phase 1 completed on 2026-09-03.
+- Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
 - Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> a rebuilt Sunny Hills.
 - North star: players should notice that the world evolved, but never notice a technical cut.
@@ -39,7 +39,7 @@ This is not a rewrite. Preserve the current fixed pools, procedural art, table-d
 
 The temporary matrix is `/tmp/boing_transitions.png`. It is not durable and may disappear between sessions.
 
-## Current-state diagnosis
+## Baseline diagnosis
 
 ### Themes are keyframes while gameplay treats them as chapters
 
@@ -223,12 +223,12 @@ Files:
 
 Steps:
 
-- [ ] Move the private `Era` enum from `src/world.c` to `include/theme.h`.
-- [ ] Give entries semantic names: Hills, Skies, Night, Maze, Blocks, and count.
-- [ ] Make `THEME_COUNT` derive from or alias the public era count if keeping the macro is still useful.
-- [ ] Remove the duplicate private enum.
-- [ ] Preserve positional unsized tables and compile-time completeness checks.
-- [ ] Mutate one guarded table temporarily and verify that its `STATIC_ASSERT` still fails, then restore it.
+- [x] Move the private `Era` enum from `src/world.c` to `include/theme.h`.
+- [x] Give entries semantic names: Hills, Skies, Night, Maze, Blocks, and count.
+- [x] Make `THEME_COUNT` derive from or alias the public era count if keeping the macro is still useful.
+- [x] Remove the duplicate private enum.
+- [x] Preserve positional unsized tables and compile-time completeness checks.
+- [x] Mutate one guarded table temporarily and verify that its `STATIC_ASSERT` still fails, then restore it.
 
 Acceptance:
 
@@ -245,13 +245,13 @@ Files:
 
 Steps:
 
-- [ ] Add `const char *name` after all color fields and other non-color metadata.
-- [ ] Add `float glow` after the color run.
-- [ ] Populate both fields in every `THEMES[]` row.
-- [ ] Remove `ERA_NAMES[]` from `screen_play.c`.
-- [ ] Remove `GLOW[]` from `theme.c`.
-- [ ] Read names and glow from the authoritative theme row.
-- [ ] Preserve the `offsetof(Theme, backdrop)` color-run guard.
+- [x] Add `const char *name` after all color fields and other non-color metadata.
+- [x] Add `float glow` after the color run.
+- [x] Populate both fields in every `THEMES[]` row.
+- [x] Remove `ERA_NAMES[]` from `screen_play.c`.
+- [x] Remove `GLOW[]` from `theme.c`.
+- [x] Read names and glow from the authoritative theme row.
+- [x] Preserve the `offsetof(Theme, backdrop)` color-run guard.
 
 Acceptance:
 
@@ -267,11 +267,11 @@ Files:
 
 Steps:
 
-- [ ] Define a small `BridgeStyle` enum for the five ordered edges.
-- [ ] Add the outgoing bridge style to each theme row.
-- [ ] Use original internal names such as cloudline, twilight, signal, fragmentation, and reboot.
-- [ ] Add a completeness guard where appropriate.
-- [ ] Do not render bridges yet.
+- [x] Define a small `BridgeStyle` enum for the five ordered edges.
+- [x] Add the outgoing bridge style to each theme row.
+- [x] Use original internal names such as cloudline, twilight, signal, fragmentation, and reboot.
+- [x] Add a completeness guard where appropriate.
+- [x] Do not render bridges yet.
 
 Acceptance:
 
@@ -289,13 +289,13 @@ Files:
 
 Steps:
 
-- [ ] Rename gameplay track IDs from positional `TRACK_L1` names to semantic era names.
-- [ ] Add an explicit gameplay-track sentinel or a similarly direct test.
-- [ ] Remove `THEME_COUNT == TRACK_MENU` assumptions.
-- [ ] Update `levelTrack()` so it does not hard-code `TRACK_L5` as the range endpoint.
-- [ ] Make `musicEraTransition()` resolve track metadata through `THEMES[era].track` or accept the needed track IDs directly.
-- [ ] Keep every current loop, composition, playhead, and transition duration unchanged.
-- [ ] Update sound self-test assertions to use semantic names.
+- [x] Rename gameplay track IDs from positional `TRACK_L1` names to semantic era names.
+- [x] Add an explicit gameplay-track sentinel or a similarly direct test.
+- [x] Remove `THEME_COUNT == TRACK_MENU` assumptions.
+- [x] Update `levelTrack()` so it does not hard-code `TRACK_L5` as the range endpoint.
+- [x] Make `musicEraTransition()` resolve track metadata through `THEMES[era].track` or accept the needed track IDs directly.
+- [x] Keep every current loop, composition, playhead, and transition duration unchanged.
+- [x] Update sound self-test assertions to use semantic names.
 
 Acceptance:
 
@@ -306,10 +306,16 @@ Acceptance:
 
 Phase 1 gate:
 
-- [ ] Clean build.
-- [ ] Relevant self-tests pass.
-- [ ] Transition and pure-era sheets match the baseline by eye.
-- [ ] Bundle remains within budget and approximately unchanged.
+- [x] Clean build.
+- [x] Relevant self-tests pass.
+- [x] Transition and pure-era sheets match the baseline by eye.
+- [x] Bundle remains within budget and approximately unchanged.
+
+Launch verification also exposed a transient raylib platform-init failure that
+made the old unconditional `CloseWindow()` call jump through unloaded GL
+functions. `main()` now returns immediately when `IsWindowReady()` is false;
+five consecutive Launch Services relaunches produced no further crash report.
+All nine exported soundtrack WAVs were byte-identical to the Phase 0 commit.
 
 Suggested future commit boundary if explicitly requested:
 
@@ -1234,7 +1240,7 @@ Fill this section as future sessions gather evidence.
 
 | Measurement | Baseline | Latest | Notes |
 |---|---:|---:|---|
-| App bundle bytes | 1,405,427 | 1,405,427 | Clean Universal 2 MinSizeRel bundle |
+| App bundle bytes | 1,405,427 | 1,389,043 | Clean Universal 2 MinSizeRel bundle; one 16,384-byte Mach-O page smaller |
 | Typical seconds per era | Unknown | 19.22-32.42 | Five runs each: normal median 22.20, missed-coin median 30.88, one-rocket median 19.28 |
 | Transition window seconds | Unknown | 4.23-7.13 | Phase 0.78-1.00, derived as 22% of the observed era range |
 | Audio preload duration | Unknown | Unknown | Re-measure after adding tracks or bridges |

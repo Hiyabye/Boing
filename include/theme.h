@@ -2,12 +2,35 @@
 #define THEME_H
 
 #include "raylib.h"
+#include "sound.h"
 
 // The palette is runtime state now: a game can hold several themes and morph
 // between them as the player climbs (see theme.c / THEMES[]). `gTheme` is the
 // blended palette for the *current frame*; themeUpdate() recomputes it from the
 // ascent. Scene-color macros read `gTheme`; the UI accent macros read the
 // selected outfit colors instead.
+
+// Stable gameplay eras in climb order. Level is unbounded, while EraId wraps
+// through this closed loop.
+typedef enum {
+  ERA_HILLS,
+  ERA_SKIES,
+  ERA_NIGHT,
+  ERA_MAZE,
+  ERA_BLOCKS,
+  ERA_COUNT
+} EraId;
+
+// Authored outgoing relationship for each era. Rendering is added later; this
+// metadata makes the closed-loop Blocks -> Hills edge explicit now.
+typedef enum {
+  BRIDGE_CLOUDLINE,
+  BRIDGE_TWILIGHT,
+  BRIDGE_SIGNAL,
+  BRIDGE_FRAGMENTATION,
+  BRIDGE_REBOOT,
+  BRIDGE_COUNT
+} BridgeStyle;
 
 typedef enum {
   BACKDROP_HILLS, // L1: day sky, clouds + rolling green hills/bushes
@@ -17,11 +40,8 @@ typedef enum {
   BACKDROP_BLOCKS // L5: falling neon tetromino cells
 } BackdropStyle;
 
-// Number of rows in THEMES[] (theme.c static-asserts the table matches) and the
-// per-theme particle-color count. Macros, not `const int`, so tables keyed off
-// the theme list can be checked at compile time — see ERA_NAMES in
-// screen_play.c, which must stay one name per theme.
-#define THEME_COUNT 5
+// Compatibility name for tables and loops that count gameplay eras.
+#define THEME_COUNT ERA_COUNT
 #define CONFETTI_COUNT 6
 
 // One theme. Every Color must come before `backdrop` — themeUpdate() blends the
@@ -44,7 +64,10 @@ typedef struct {
   Color confetti[CONFETTI_COUNT];
   // --- non-Color fields must stay after every Color above ---
   BackdropStyle backdrop;
-  int track; // music cue id; the active cue also selects the SFX palette
+  BridgeStyle bridge;
+  MusicTrack track; // active cue also selects the SFX palette
+  const char *name;
+  float glow;
 } Theme;
 
 // The blended palette for the current frame, plus the selected outfit colors
@@ -57,9 +80,9 @@ extern const Theme THEMES[];
 
 // Recompute `gTheme` for the given ascent (-cameraY; 0 at the ground).
 void themeUpdate(float ascent);
-// The two neighbor theme indices and blend factor f (0..1) from the last
-// themeUpdate — used by the background to crossfade backdrop shapes.
-void themeBlend(int *lo, int *hi, float *f);
+// The two neighbor eras and blend factor f (0..1) from the last themeUpdate,
+// used by the background to crossfade backdrop shapes.
+void themeBlend(EraId *lo, EraId *hi, float *f);
 // Post-processing bloom weight (0..1) for the current blend - subtle in
 // daylight, full in the neon level, blended across the band like the palette.
 float themeGlow(void);

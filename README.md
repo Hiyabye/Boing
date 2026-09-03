@@ -123,7 +123,7 @@ clang-format이 있으면 `cmake --build build --target format`으로 소스를
 
 기본 빌드는 `MinSizeRel` + strip + Hardened Runtime ad-hoc 서명이다. 빌드 마지막에 `.app` 안의
 모든 파일을 합산해 1,474,560바이트를 넘으면 실패한다. 현재 Universal 2 번들은
-1,405,427바이트이며 69,133바이트가 남는다.
+1,389,043바이트이며 85,517바이트가 남는다.
 
 ```sh
 find build/Boing.app -type f -exec stat -f %z {} \; | \

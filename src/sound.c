@@ -1,7 +1,6 @@
 #include "sound.h"
 
 #include "core.h"
-#include "theme.h"
 
 #include <assert.h>
 #include <math.h>
@@ -833,11 +832,10 @@ static const Track TRACKS[] = {
      composeResults},
 };
 STATIC_ASSERT(ARRAY_LEN(TRACKS) == TRACK_COUNT, tracks_full);
-STATIC_ASSERT(THEME_COUNT == TRACK_MENU, theme_level_tracks_full);
 
 static const MusicTrack PRELOAD_ORDER[] = {
-    TRACK_MENU, TRACK_L1,   TRACK_L2,      TRACK_L3,      TRACK_L4,
-    TRACK_L5,   TRACK_SHOP, TRACK_CREDITS, TRACK_RESULTS,
+    TRACK_MENU,   TRACK_HILLS, TRACK_SKIES,   TRACK_NIGHT,   TRACK_MAZE,
+    TRACK_BLOCKS, TRACK_SHOP,  TRACK_CREDITS, TRACK_RESULTS,
 };
 STATIC_ASSERT(ARRAY_LEN(PRELOAD_ORDER) == TRACK_COUNT,
               audio_preload_order_full);
@@ -973,8 +971,8 @@ static void buildLoop(int track) {
 }
 
 static bool validTrack(int track) { return track >= 0 && track < TRACK_COUNT; }
-static bool levelTrack(int track) {
-  return track >= TRACK_L1 && track <= TRACK_L5;
+static bool gameplayTrack(int track) {
+  return track >= 0 && track < TRACK_GAMEPLAY_COUNT;
 }
 static bool menuPair(int a, int b) {
   return (a == TRACK_MENU || a == TRACK_SHOP) &&
@@ -1008,7 +1006,7 @@ void setTrack(int track) {
       loopPos[track] = 0;
     }
     float seconds;
-    if (levelTrack(outgoing) && levelTrack(track)) {
+    if (gameplayTrack(outgoing) && gameplayTrack(track)) {
       seconds = TRACKS[track].beatsPerBar * 60.0f / TRACKS[track].bpm;
     } else if (menuPair(outgoing, track)) {
       seconds = 2.0f * 60.0f / TRACKS[track].bpm;
@@ -1170,10 +1168,10 @@ void musicLogoSting(void) {
   }
 }
 
-void musicEraTransition(int era) {
-  if (era >= 0 && era < THEME_COUNT) {
-    triggerCue(SFX_LEVELUP, 1.0f, 0.0f, true, TRACKS[era].style,
-               TRACKS[era].rootMidi);
+void musicEraTransition(MusicTrack track) {
+  if (gameplayTrack(track)) {
+    triggerCue(SFX_LEVELUP, 1.0f, 0.0f, true, TRACKS[track].style,
+               TRACKS[track].rootMidi);
   }
 }
 
@@ -1521,17 +1519,17 @@ static Stereo renderDanger(unsigned pos, float amount) {
 }
 
 static Stereo renderFinale(unsigned pos, float amount) {
-  if (amount <= 0.0f || curTrack != TRACK_L5) {
+  if (amount <= 0.0f || curTrack != TRACK_BLOCKS) {
     return (Stereo){0.0f, 0.0f};
   }
-  int beat = (int)(SAMPLE_RATE * 60.0f / TRACKS[TRACK_L5].bpm + 0.5f);
+  int beat = (int)(SAMPLE_RATE * 60.0f / TRACKS[TRACK_BLOCKS].bpm + 0.5f);
   int half = beat / 2;
   int phase = (int)(pos % (unsigned)half);
   int len = (int)(0.32f * SAMPLE_RATE);
   float env = liveHitEnv(phase, len);
   static const int NOTES[] = {0, 3, 7, 11, 12, 8, 7, 3};
   int note = (int)(pos / (unsigned)half) % ARRAY_LEN(NOTES);
-  float hz = midiHz(TRACKS[TRACK_L5].rootMidi + 12 + NOTES[note]);
+  float hz = midiHz(TRACKS[TRACK_BLOCKS].rootMidi + 12 + NOTES[note]);
   float t = (float)phase / SAMPLE_RATE;
   float value = 0.085f * amount * env *
                 styleWave(STYLE_BLOCKS, hz * t, hz, phase, 0xF1A1Eu);
@@ -1796,11 +1794,16 @@ static void checkCues(void) {
   assert(foundPriority && "high-priority cue was not voice-stolen in");
 
   memset(voices, 0, sizeof(voices));
-  for (int era = 0; era < THEME_COUNT; era++) {
-    musicEraTransition(era);
-    assert(voices[era].active && voices[era].type == SFX_LEVELUP);
-    assert(voices[era].style == TRACKS[era].style);
-    assert(voices[era].rootMidi == TRACKS[era].rootMidi);
+  musicEraTransition((MusicTrack)-1);
+  musicEraTransition(TRACK_MENU);
+  for (int i = 0; i < MAX_VOICES; i++) {
+    assert(!voices[i].active);
+  }
+  for (MusicTrack track = TRACK_HILLS; track < TRACK_GAMEPLAY_COUNT; track++) {
+    musicEraTransition(track);
+    assert(voices[track].active && voices[track].type == SFX_LEVELUP);
+    assert(voices[track].style == TRACKS[track].style);
+    assert(voices[track].rootMidi == TRACKS[track].rootMidi);
   }
 }
 
@@ -1809,15 +1812,15 @@ static void checkDynamics(void) {
   loopPos[TRACK_MENU] = 1234;
   setTrack(TRACK_SHOP);
   assert(loopPos[TRACK_SHOP] == 1234 && crossfade == 0.0f);
-  setTrack(TRACK_L1);
-  setTrack(TRACK_L2);
-  assert(loopPos[TRACK_L2] == 0);
-  int barFrames = (int)(TRACKS[TRACK_L2].beatsPerBar * 60.0f /
-                            TRACKS[TRACK_L2].bpm * SAMPLE_RATE +
+  setTrack(TRACK_HILLS);
+  setTrack(TRACK_SKIES);
+  assert(loopPos[TRACK_SKIES] == 0);
+  int barFrames = (int)(TRACKS[TRACK_SKIES].beatsPerBar * 60.0f /
+                            TRACKS[TRACK_SKIES].bpm * SAMPLE_RATE +
                         0.5f);
   assert(crossfadeFrames == barFrames);
 
-  setTrack(TRACK_L5);
+  setTrack(TRACK_BLOCKS);
   crossfade = 1.0f;
   float low = 0.0f, high = 0.0f, mono = 0.0f, danger = 0.0f;
   float finale = 0.0f;

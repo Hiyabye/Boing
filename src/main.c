@@ -101,6 +101,9 @@ int main(void) {
   // hint: a driver that can't provide it silently ignores it.
   SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI);
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Boing!");
+  if (!IsWindowReady()) {
+    return 1; // CloseWindow is unsafe when raylib platform setup failed
+  }
   SetExitKey(KEY_NULL); // Esc leaves the settings menu, it doesn't quit
   HideCursor();         // ui.c's drawCursor() replaces the OS arrow
 

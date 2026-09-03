@@ -54,18 +54,7 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define PLATFORM_SPACING 300.0f // vertical distance between platforms
 #define PLATFORM_WIDTH 100.0f
 #define PLATFORM_HEIGHT 16.0f
-// Theme-order names for gameplay gates. Keeping the order here explicit makes
-// inserting a theme fail loudly instead of silently moving every numeric gate.
-typedef enum {
-  ERA_HILLS,
-  ERA_SKIES,
-  ERA_NIGHT,
-  ERA_MAZE,
-  ERA_BLOCKS,
-  ERA_COUNT
-} Era;
-STATIC_ASSERT(ERA_COUNT == THEME_COUNT, era_order_matches_themes);
-// Per-era platform mechanics (stamped at spawn, see worldEra). Era 0 uses
+// Per-era platform mechanics (stamped at spawn, see worldEra). Hills uses
 // neither, so the baseline jumper is exactly what it always was.
 #define CLOUD_DRIFT 1.15f    // Birdsong Skies: horizontal platform speed
 #define CRUMBLE_FRAMES 24.0f // Night Blocks: frames from landing to break
@@ -179,7 +168,7 @@ int worldLevel(const World *world) { return world->level; } // 0-based band
 // themes loop, so the mechanics loop with them. Every per-era rule below reads
 // this — spawn gates stamp it onto the entity, so an entity keeps the behaviour
 // of the era it was born in even as the boundary passes under it.
-int worldEra(const World *world) { return world->level % THEME_COUNT; }
+EraId worldEra(const World *world) { return (EraId)(world->level % ERA_COUNT); }
 
 float worldPowerTimer(const World *world, PowerUpType type) {
   return world->powerTimer[type];
@@ -297,7 +286,7 @@ static void spawnPlatforms(World *world) {
   // The era is stamped on the pad at birth rather than read at landing time, so
   // a Night Blocks pad can *look* cracked before you commit to it and a pad
   // never changes the rules underfoot as the band boundary passes.
-  int e = worldEra(world);
+  EraId e = worldEra(world);
   while (world->platformSpawnY > world->cameraY - SCREEN_HEIGHT) {
     FIND_FREE(s, platforms, MAX_PLATFORMS);
     if (s >= 0) {
@@ -348,7 +337,7 @@ static void spawnMonsters(World *world) {
 
 // Spawn-axis upgrade: extra weight for an upgraded good power-up so it
 // dominates good picks. Debuffs (and untracked types) get no bonus.
-static int spawnWeightOf(PowerUpType t, int era) {
+static int spawnWeightOf(PowerUpType t, EraId era) {
   int bonus = 0;
   switch (t) {
   case POWERUP_PELLET:
@@ -377,7 +366,7 @@ static int spawnWeightOf(PowerUpType t, int era) {
 // Weighted pick over spawnWeightOf(), restricted to one category (good or
 // debuff). Both categories have positive total weight, so the fallback return
 // is unreachable.
-static PowerUpType pickPowerup(bool debuff, int era) {
+static PowerUpType pickPowerup(bool debuff, EraId era) {
   int total = 0;
   for (int k = 0; k < POWERUP_COUNT; k++) {
     if (POWERUP_DEFS[k].debuff == debuff) {
@@ -405,7 +394,7 @@ static void spawnPowerups(World *world) {
   // higher levels make bad pickups rarer (and clear them entirely once the
   // level reaches d).
   int d = difficulty(world) - gPuUpg[PU_DEBUFF_SUPPRESS];
-  int e = worldEra(world);
+  EraId e = worldEra(world);
   while (world->powerupSpawnY > world->cameraY - SCREEN_HEIGHT) {
     FIND_FREE(s, powerups, MAX_POWERUPS);
     if (s >= 0) {
@@ -854,7 +843,7 @@ void updateWorld(World *world, Player *player) {
     world->level = lvl;
     world->levelBanner = LEVEL_BANNER_FRAMES; // the era's rules just changed;
                                               // the HUD says which era it is
-    musicEraTransition(worldEra(world));
+    musicEraTransition(THEMES[worldEra(world)].track);
   }
 
   // Idle combo reset: no coin grabbed within COMBO_TIMEOUT drops the chain.
@@ -1489,7 +1478,11 @@ static void checkEras(void) {
   }
 
   // The spawn gate: what stamps an era's rule onto an entity at birth.
-  for (int e = 0; e < THEME_COUNT; e++) {
+  for (EraId e = ERA_HILLS; e < ERA_COUNT; e++) {
+    assert(THEMES[e].name != NULL && THEMES[e].name[0] != '\0');
+    assert(THEMES[e].glow >= 0.0f && THEMES[e].glow <= 1.0f);
+    assert(THEMES[e].bridge == (BridgeStyle)e);
+    assert(THEMES[e].track >= 0 && THEMES[e].track < TRACK_GAMEPLAY_COUNT);
     int goodWeight = 0, badWeight = 0;
     for (int t = 0; t < POWERUP_COUNT; t++) {
       int weight = spawnWeightOf((PowerUpType)t, e);
