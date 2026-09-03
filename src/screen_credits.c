@@ -67,7 +67,11 @@ void updateCredits(Game *g) {
     }
     return;
   }
+  float oldAnim = g->creditsAnim;
   g->creditsAnim = clampf(g->creditsAnim + step, 0.0f, 1.0f);
+  if (oldAnim < 1.0f && g->creditsAnim >= 1.0f) {
+    sfx(SFX_STATIC); // the visual channel-change burst gets its matching sound
+  }
   if (g->creditsAnim >= 1.0f) { // count down the channel-change static
     if (g->creditsStatic > 0.0f) {
       g->creditsStatic = clampf(g->creditsStatic - dt, 0.0f, 1.0f);

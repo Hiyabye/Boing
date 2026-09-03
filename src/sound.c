@@ -1,925 +1,1327 @@
 #include "sound.h"
 
-#include "core.h" // STATIC_ASSERT
-#include "raylib.h"
-#include "theme.h" // THEME_COUNT for era-stinger completeness
+#include "core.h"
+#include "theme.h"
 
 #include <assert.h>
 #include <math.h>
+#include <pthread.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define BUFFER_SIZE 4096
 #define SAMPLE_RATE 44100
-
-// Note frequencies (Hz), scientific pitch notation.
-static const float C0 = 16.35f;
-static const float CS0 = 17.32f;
-static const float D0 = 18.35f;
-static const float DS0 = 19.45f;
-static const float E0 = 20.60f;
-static const float F0 = 21.83f;
-static const float FS0 = 23.12f;
-static const float G0 = 24.50f;
-static const float GS0 = 25.96f;
-static const float A0 = 27.50f;
-static const float AS0 = 29.14f;
-static const float B0 = 30.87f;
-
-static const float C1 = 32.70f;
-static const float CS1 = 34.65f;
-static const float D1 = 36.71f;
-static const float DS1 = 38.89f;
-static const float E1 = 41.20f;
-static const float F1 = 43.65f;
-static const float FS1 = 46.25f;
-static const float G1 = 49.00f;
-static const float GS1 = 51.91f;
-static const float A1 = 55.00f;
-static const float AS1 = 58.27f;
-static const float B1 = 61.74f;
-
-static const float C2 = 65.41f;
-static const float CS2 = 69.30f;
-static const float D2 = 73.42f;
-static const float DS2 = 77.78f;
-static const float E2 = 82.41f;
-static const float F2 = 87.31f;
-static const float FS2 = 92.50f;
-static const float G2 = 98.00f;
-static const float GS2 = 103.83f;
-static const float A2 = 110.00f;
-static const float AS2 = 116.54f;
-static const float B2 = 123.47f;
-
-static const float C3 = 130.81f;
-static const float CS3 = 138.59f;
-static const float D3 = 146.83f;
-static const float DS3 = 155.56f;
-static const float E3 = 164.81f;
-static const float F3 = 174.61f;
-static const float FS3 = 185.00f;
-static const float G3 = 196.00f;
-static const float GS3 = 207.65f;
-static const float A3 = 220.00f;
-static const float AS3 = 233.08f;
-static const float B3 = 246.94f;
-
-static const float C4 = 261.63f;
-static const float CS4 = 277.18f;
-static const float D4 = 293.66f;
-static const float DS4 = 311.13f;
-static const float E4 = 329.63f;
-static const float F4 = 349.23f;
-static const float FS4 = 369.99f;
-static const float G4 = 392.00f;
-static const float GS4 = 415.30f;
-static const float A4 = 440.00f;
-static const float AS4 = 466.16f;
-static const float B4 = 493.88f;
-
-static const float C5 = 523.25f;
-static const float CS5 = 554.37f;
-static const float D5 = 587.33f;
-static const float DS5 = 622.25f;
-static const float E5 = 659.25f;
-static const float F5 = 698.46f;
-static const float FS5 = 739.99f;
-static const float G5 = 783.99f;
-static const float GS5 = 830.61f;
-static const float A5 = 880.00f;
-static const float AS5 = 932.33f;
-static const float B5 = 987.77f;
-
-static const float C6 = 1046.50f;
-static const float CS6 = 1108.73f;
-static const float D6 = 1174.66f;
-static const float DS6 = 1244.51f;
-static const float E6 = 1318.51f;
-static const float F6 = 1396.91f;
-static const float FS6 = 1479.98f;
-static const float G6 = 1567.98f;
-static const float GS6 = 1661.22f;
-static const float A6 = 1760.00f;
-static const float AS6 = 1864.66f;
-static const float B6 = 1975.53f;
-
-static const float C7 = 2093.00f;
-static const float CS7 = 2217.46f;
-static const float D7 = 2349.32f;
-static const float DS7 = 2489.00f;
-static const float E7 = 2637.00f;
-static const float F7 = 2793.83f;
-static const float FS7 = 2959.96f;
-static const float G7 = 3135.96f;
-static const float GS7 = 3322.44f;
-static const float A7 = 3520.00f;
-static const float AS7 = 3729.31f;
-static const float B7 = 3951.00f;
-
-static const float C8 = 4186.00f;
-static const float CS8 = 4434.92f;
-static const float D8 = 4698.63f;
-static const float DS8 = 4978.00f;
-static const float E8 = 5274.00f;
-static const float F8 = 5587.65f;
-static const float FS8 = 5919.90f;
-static const float G8 = 6271.93f;
-static const float GS8 = 6644.88f;
-static const float A8 = 7040.00f;
-static const float AS8 = 7458.62f;
-static const float B8 = 7902.13f;
+#define BUFFER_FRAMES 2048
+#define CHANNELS 2
+#define MAX_VOICES 12
+#define TAU (2.0f * PI)
+#define ARRAY_LEN(a) ((int)(sizeof(a) / sizeof((a)[0])))
 
 typedef struct {
-  float frequency;
-  float start;    // start time within the loop (seconds)
-  float duration; // length of the note (seconds)
-} Note;
+  float l, r;
+} Stereo;
 
-// Per-track lead instrument voice (harmonic content of tone()). Bass-register
-// notes ignore this and always play a rounded warm shape (see tone()).
 typedef enum {
-  TIMBRE_WARM,   // sine + soft harmonics + vibrato (the original voice)
-  TIMBRE_SOFT,   // near-pure sine, gentle slow vibrato — calm/night
-  TIMBRE_PULSE,  // narrow ~30% duty pulse, gritty — neon maze
-  TIMBRE_SQUARE, // bright 50% square with fundamental body — arcade
-} Timbre;
+  STYLE_SUNNY,
+  STYLE_SKIES,
+  STYLE_NIGHT,
+  STYLE_MAZE,
+  STYLE_BLOCKS,
+  STYLE_UI,
+  STYLE_CREDITS,
+  STYLE_RESULTS,
+  STYLE_COUNT
+} SoundStyle;
 
-// Per-track baked percussion pattern (laid on a 0.5s beat grid in buildLoop).
+static const float STYLE_PITCH[] = {1.0f,  1.12f, 0.88f, 1.02f,
+                                    0.96f, 1.0f,  0.94f, 0.88f};
+STATIC_ASSERT(ARRAY_LEN(STYLE_PITCH) == STYLE_COUNT, style_pitches_full);
+
 typedef enum {
-  DRUMS_NONE,
-  DRUMS_FOUR,    // kick every beat, hat offbeat, snare on beats 2 & 4
-  DRUMS_DRIVING, // FOUR + extra offbeat hats (busier, energetic)
-} DrumStyle;
+  INST_MALLET,
+  INST_PLUCK,
+  INST_AIR,
+  INST_PAD,
+  INST_BASS,
+  INST_KEYS,
+  INST_NEON,
+  INST_BLOCK
+} Instrument;
 
-// Track L1 — Sunny Hills: upbeat, bouncy day melody (A major, 32s loop).
-static const Note NOTES_NATURE[] = {
-    {A4, 0.0f, 0.2f},     {CS5, 0.25f, 0.2f},   {E5, 0.5f, 0.45f},
-    {E5, 1.0f, 0.2f},     {FS5, 1.25f, 0.2f},   {E5, 1.5f, 0.45f},
-    {GS4, 2.0f, 0.2f},    {B4, 2.25f, 0.2f},    {E5, 2.5f, 0.45f},
-    {D5, 3.0f, 0.2f},     {B4, 3.25f, 0.2f},    {GS4, 3.5f, 0.45f},
-    {A4, 4.0f, 0.2f},     {CS5, 4.25f, 0.2f},   {FS5, 4.5f, 0.45f},
-    {A5, 5.0f, 0.2f},     {FS5, 5.25f, 0.2f},   {E5, 5.5f, 0.45f},
-    {D5, 6.0f, 0.2f},     {FS5, 6.25f, 0.2f},   {A5, 6.5f, 0.45f},
-    {FS5, 7.0f, 0.2f},    {D5, 7.25f, 0.2f},    {A4, 7.5f, 0.45f},
-    {A4, 8.0f, 0.2f},     {CS5, 8.25f, 0.2f},   {E5, 8.5f, 0.45f},
-    {A5, 9.0f, 0.45f},    {GS5, 9.5f, 0.2f},    {FS5, 9.75f, 0.2f},
-    {GS4, 10.0f, 0.2f},   {B4, 10.25f, 0.2f},   {E5, 10.5f, 0.45f},
-    {GS5, 11.0f, 0.45f},  {B4, 11.5f, 0.2f},    {E5, 11.75f, 0.2f},
-    {FS5, 12.0f, 0.45f},  {D5, 12.5f, 0.2f},    {A4, 12.75f, 0.2f},
-    {D5, 13.0f, 0.45f},   {FS5, 13.5f, 0.45f},  {E5, 14.0f, 0.45f},
-    {GS5, 14.5f, 0.2f},   {B5, 14.75f, 0.2f},   {E5, 15.0f, 0.95f},
-    {A4, 16.0f, 0.2f},    {CS5, 16.25f, 0.2f},  {E5, 16.5f, 0.45f},
-    {E5, 17.0f, 0.2f},    {FS5, 17.25f, 0.2f},  {E5, 17.5f, 0.45f},
-    {GS4, 18.0f, 0.2f},   {B4, 18.25f, 0.2f},   {E5, 18.5f, 0.45f},
-    {D5, 19.0f, 0.2f},    {B4, 19.25f, 0.2f},   {GS4, 19.5f, 0.45f},
-    {A4, 20.0f, 0.2f},    {CS5, 20.25f, 0.2f},  {FS5, 20.5f, 0.45f},
-    {A5, 21.0f, 0.2f},    {FS5, 21.25f, 0.2f},  {E5, 21.5f, 0.45f},
-    {D5, 22.0f, 0.2f},    {FS5, 22.25f, 0.2f},  {A5, 22.5f, 0.45f},
-    {FS5, 23.0f, 0.2f},   {D5, 23.25f, 0.2f},   {A4, 23.5f, 0.45f},
-    {A4, 24.0f, 0.2f},    {CS5, 24.25f, 0.2f},  {E5, 24.5f, 0.45f},
-    {A5, 25.0f, 0.45f},   {GS5, 25.5f, 0.2f},   {FS5, 25.75f, 0.2f},
-    {GS4, 26.0f, 0.2f},   {B4, 26.25f, 0.2f},   {E5, 26.5f, 0.45f},
-    {GS5, 27.0f, 0.45f},  {B4, 27.5f, 0.2f},    {E5, 27.75f, 0.2f},
-    {FS5, 28.0f, 0.45f},  {D5, 28.5f, 0.2f},    {A4, 28.75f, 0.2f},
-    {D5, 29.0f, 0.45f},   {FS5, 29.5f, 0.45f},  {E5, 30.0f, 0.45f},
-    {GS5, 30.5f, 0.2f},   {B5, 30.75f, 0.2f},   {A5, 31.0f, 0.95f},
-    {A2, 0.0f, 0.25f},    {A3, 0.25f, 0.25f},   {A2, 0.5f, 0.25f},
-    {A3, 0.75f, 0.25f},   {A2, 1.0f, 0.25f},    {A3, 1.25f, 0.25f},
-    {A2, 1.5f, 0.25f},    {A3, 1.75f, 0.25f},   {E2, 2.0f, 0.25f},
-    {E3, 2.25f, 0.25f},   {E2, 2.5f, 0.25f},    {E3, 2.75f, 0.25f},
-    {E2, 3.0f, 0.25f},    {E3, 3.25f, 0.25f},   {E2, 3.5f, 0.25f},
-    {E3, 3.75f, 0.25f},   {FS2, 4.0f, 0.25f},   {FS3, 4.25f, 0.25f},
-    {FS2, 4.5f, 0.25f},   {FS3, 4.75f, 0.25f},  {FS2, 5.0f, 0.25f},
-    {FS3, 5.25f, 0.25f},  {FS2, 5.5f, 0.25f},   {FS3, 5.75f, 0.25f},
-    {D2, 6.0f, 0.25f},    {D3, 6.25f, 0.25f},   {D2, 6.5f, 0.25f},
-    {D3, 6.75f, 0.25f},   {D2, 7.0f, 0.25f},    {D3, 7.25f, 0.25f},
-    {D2, 7.5f, 0.25f},    {D3, 7.75f, 0.25f},   {A2, 8.0f, 0.25f},
-    {A3, 8.25f, 0.25f},   {A2, 8.5f, 0.25f},    {A3, 8.75f, 0.25f},
-    {A2, 9.0f, 0.25f},    {A3, 9.25f, 0.25f},   {A2, 9.5f, 0.25f},
-    {A3, 9.75f, 0.25f},   {E2, 10.0f, 0.25f},   {E3, 10.25f, 0.25f},
-    {E2, 10.5f, 0.25f},   {E3, 10.75f, 0.25f},  {E2, 11.0f, 0.25f},
-    {E3, 11.25f, 0.25f},  {E2, 11.5f, 0.25f},   {E3, 11.75f, 0.25f},
-    {D2, 12.0f, 0.25f},   {D3, 12.25f, 0.25f},  {D2, 12.5f, 0.25f},
-    {D3, 12.75f, 0.25f},  {D2, 13.0f, 0.25f},   {D3, 13.25f, 0.25f},
-    {D2, 13.5f, 0.25f},   {D3, 13.75f, 0.25f},  {E2, 14.0f, 0.25f},
-    {E3, 14.25f, 0.25f},  {E2, 14.5f, 0.25f},   {E3, 14.75f, 0.25f},
-    {E2, 15.0f, 0.25f},   {E3, 15.25f, 0.25f},  {E2, 15.5f, 0.25f},
-    {E3, 15.75f, 0.25f},  {A2, 16.0f, 0.25f},   {A3, 16.25f, 0.25f},
-    {A2, 16.5f, 0.25f},   {A3, 16.75f, 0.25f},  {A2, 17.0f, 0.25f},
-    {A3, 17.25f, 0.25f},  {A2, 17.5f, 0.25f},   {A3, 17.75f, 0.25f},
-    {E2, 18.0f, 0.25f},   {E3, 18.25f, 0.25f},  {E2, 18.5f, 0.25f},
-    {E3, 18.75f, 0.25f},  {E2, 19.0f, 0.25f},   {E3, 19.25f, 0.25f},
-    {E2, 19.5f, 0.25f},   {E3, 19.75f, 0.25f},  {FS2, 20.0f, 0.25f},
-    {FS3, 20.25f, 0.25f}, {FS2, 20.5f, 0.25f},  {FS3, 20.75f, 0.25f},
-    {FS2, 21.0f, 0.25f},  {FS3, 21.25f, 0.25f}, {FS2, 21.5f, 0.25f},
-    {FS3, 21.75f, 0.25f}, {D2, 22.0f, 0.25f},   {D3, 22.25f, 0.25f},
-    {D2, 22.5f, 0.25f},   {D3, 22.75f, 0.25f},  {D2, 23.0f, 0.25f},
-    {D3, 23.25f, 0.25f},  {D2, 23.5f, 0.25f},   {D3, 23.75f, 0.25f},
-    {A2, 24.0f, 0.25f},   {A3, 24.25f, 0.25f},  {A2, 24.5f, 0.25f},
-    {A3, 24.75f, 0.25f},  {A2, 25.0f, 0.25f},   {A3, 25.25f, 0.25f},
-    {A2, 25.5f, 0.25f},   {A3, 25.75f, 0.25f},  {E2, 26.0f, 0.25f},
-    {E3, 26.25f, 0.25f},  {E2, 26.5f, 0.25f},   {E3, 26.75f, 0.25f},
-    {E2, 27.0f, 0.25f},   {E3, 27.25f, 0.25f},  {E2, 27.5f, 0.25f},
-    {E3, 27.75f, 0.25f},  {D2, 28.0f, 0.25f},   {D3, 28.25f, 0.25f},
-    {D2, 28.5f, 0.25f},   {D3, 28.75f, 0.25f},  {D2, 29.0f, 0.25f},
-    {D3, 29.25f, 0.25f},  {D2, 29.5f, 0.25f},   {D3, 29.75f, 0.25f},
-    {A2, 30.0f, 0.25f},   {A3, 30.25f, 0.25f},  {A2, 30.5f, 0.25f},
-    {A3, 30.75f, 0.25f},  {A2, 31.0f, 0.25f},   {A3, 31.25f, 0.25f},
-    {A2, 31.5f, 0.25f},   {A3, 31.75f, 0.25f},
-};
+typedef struct MusicBuild MusicBuild;
+typedef void (*ComposeFn)(MusicBuild *);
 
-// Track L5 - Falling Blocks: energetic puzzle-arcade theme (A minor, 64s loop).
-// Same {frequency, start, duration} form as NOTES_NATURE (start/duration in
-// seconds within this track's loop). The shared A2 tonic-pedal pad plays under
-// every track; keep each track's loop length a whole number of seconds so that
-// pedal stays seamless.
-static const Note NOTES_ARCADE[] = {
-    // RIGHT HAND (melody + one harmony tone per chord beat)
-    {E5, 0.0f, 0.45f},
-    {B4, 0.5f, 0.2f},
-    {C5, 0.75f, 0.2f},
-    {D5, 1.0f, 0.45f},
-    {C5, 1.5f, 0.2f},
-    {B4, 1.75f, 0.2f},
-    {A4, 2.0f, 0.45f},
-    {A4, 2.5f, 0.2f},
-    {C5, 2.75f, 0.2f},
-    {E5, 3.0f, 0.45f},
-    {D5, 3.5f, 0.2f},
-    {C5, 3.75f, 0.2f},
-    {B4, 4.0f, 0.7f},
-    {C5, 4.75f, 0.2f},
-    {D5, 5.0f, 0.45f},
-    {E5, 5.5f, 0.45f},
-    {C5, 6.0f, 0.45f},
-    {A4, 6.5f, 0.45f},
-    {A4, 7.0f, 0.45f},
-    {D5, 8.25f, 0.45f},
-    {F5, 8.75f, 0.2f},
-    {A5, 9.0f, 0.45f},
-    {G5, 9.5f, 0.2f},
-    {F5, 9.75f, 0.2f},
-    {E5, 10.0f, 0.7f},
-    {C5, 10.75f, 0.2f},
-    {E5, 11.0f, 0.45f},
-    {D5, 11.5f, 0.2f},
-    {C5, 11.75f, 0.2f},
-    {B4, 12.0f, 0.7f},
-    {C5, 12.75f, 0.2f},
-    {D5, 13.0f, 0.45f},
-    {E5, 13.5f, 0.45f},
-    {C5, 14.0f, 0.45f},
-    {A4, 14.5f, 0.45f},
-    {A4, 15.0f, 0.45f},
-    {GS4, 0.0f, 0.45f},
-    {E4, 2.0f, 0.45f},
-    {GS4, 4.0f, 0.7f},
-    {A4, 6.0f, 0.45f},
-    {F4, 8.25f, 0.45f},
-    {C5, 10.0f, 0.7f},
-    {GS4, 12.0f, 0.7f},
-    {A4, 14.0f, 0.45f},
-    {E5, 16.0f, 0.45f},
-    {B4, 16.5f, 0.2f},
-    {C5, 16.75f, 0.2f},
-    {D5, 17.0f, 0.45f},
-    {C5, 17.5f, 0.2f},
-    {B4, 17.75f, 0.2f},
-    {A4, 18.0f, 0.45f},
-    {A4, 18.5f, 0.2f},
-    {C5, 18.75f, 0.2f},
-    {E5, 19.0f, 0.45f},
-    {D5, 19.5f, 0.2f},
-    {C5, 19.75f, 0.2f},
-    {B4, 20.0f, 0.7f},
-    {C5, 20.75f, 0.2f},
-    {D5, 21.0f, 0.45f},
-    {E5, 21.5f, 0.45f},
-    {C5, 22.0f, 0.45f},
-    {A4, 22.5f, 0.45f},
-    {A4, 23.0f, 0.45f},
-    {D5, 24.25f, 0.45f},
-    {F5, 24.75f, 0.2f},
-    {A5, 25.0f, 0.45f},
-    {G5, 25.5f, 0.2f},
-    {F5, 25.75f, 0.2f},
-    {E5, 26.0f, 0.7f},
-    {C5, 26.75f, 0.2f},
-    {E5, 27.0f, 0.45f},
-    {D5, 27.5f, 0.2f},
-    {C5, 27.75f, 0.2f},
-    {B4, 28.0f, 0.7f},
-    {C5, 28.75f, 0.2f},
-    {D5, 29.0f, 0.45f},
-    {E5, 29.5f, 0.45f},
-    {C5, 30.0f, 0.45f},
-    {A4, 30.5f, 0.45f},
-    {A4, 31.0f, 0.45f},
-    {GS4, 16.0f, 0.45f},
-    {E4, 18.0f, 0.45f},
-    {GS4, 20.0f, 0.7f},
-    {A4, 22.0f, 0.45f},
-    {F4, 24.25f, 0.45f},
-    {C5, 26.0f, 0.7f},
-    {GS4, 28.0f, 0.7f},
-    {A4, 30.0f, 0.45f},
-    {E5, 32.0f, 0.95f},
-    {C5, 33.0f, 0.95f},
-    {D5, 34.0f, 0.95f},
-    {B4, 35.0f, 0.95f},
-    {C5, 36.0f, 0.95f},
-    {A4, 37.0f, 0.95f},
-    {GS4, 38.0f, 1.95f},
-    {E5, 40.0f, 0.95f},
-    {C5, 41.0f, 0.95f},
-    {D5, 42.0f, 0.95f},
-    {B4, 43.0f, 0.95f},
-    {C5, 44.0f, 0.45f},
-    {E5, 44.5f, 0.45f},
-    {A5, 45.0f, 0.45f},
-    {A5, 45.5f, 0.45f},
-    {GS5, 46.0f, 1.95f},
-    {GS4, 32.0f, 0.95f},
-    {A4, 33.0f, 0.95f},
-    {B4, 34.0f, 0.95f},
-    {GS4, 35.0f, 0.95f},
-    {A4, 36.0f, 0.95f},
-    {E4, 37.0f, 0.95f},
-    {E4, 38.0f, 1.95f},
-    {GS4, 40.0f, 0.95f},
-    {A4, 41.0f, 0.95f},
-    {B4, 42.0f, 0.95f},
-    {GS4, 43.0f, 0.95f},
-    {E5, 46.0f, 1.95f},
-    {E5, 48.0f, 0.45f},
-    {B4, 48.5f, 0.2f},
-    {C5, 48.75f, 0.2f},
-    {D5, 49.0f, 0.45f},
-    {C5, 49.5f, 0.2f},
-    {B4, 49.75f, 0.2f},
-    {A4, 50.0f, 0.45f},
-    {A4, 50.5f, 0.2f},
-    {C5, 50.75f, 0.2f},
-    {E5, 51.0f, 0.45f},
-    {D5, 51.5f, 0.2f},
-    {C5, 51.75f, 0.2f},
-    {B4, 52.0f, 0.7f},
-    {C5, 52.75f, 0.2f},
-    {D5, 53.0f, 0.45f},
-    {E5, 53.5f, 0.45f},
-    {C5, 54.0f, 0.45f},
-    {A4, 54.5f, 0.45f},
-    {A4, 55.0f, 0.45f},
-    {D5, 56.25f, 0.45f},
-    {F5, 56.75f, 0.2f},
-    {A5, 57.0f, 0.45f},
-    {G5, 57.5f, 0.2f},
-    {F5, 57.75f, 0.2f},
-    {E5, 58.0f, 0.7f},
-    {C5, 58.75f, 0.2f},
-    {E5, 59.0f, 0.45f},
-    {D5, 59.5f, 0.2f},
-    {C5, 59.75f, 0.2f},
-    {B4, 60.0f, 0.7f},
-    {C5, 60.75f, 0.2f},
-    {D5, 61.0f, 0.45f},
-    {E5, 61.5f, 0.45f},
-    {C5, 62.0f, 0.45f},
-    {A4, 62.5f, 0.45f},
-    {A4, 63.0f, 0.45f},
-    {GS4, 48.0f, 0.45f},
-    {E4, 50.0f, 0.45f},
-    {GS4, 52.0f, 0.7f},
-    {A4, 54.0f, 0.45f},
-    {F4, 56.25f, 0.45f},
-    {C5, 58.0f, 0.7f},
-    {GS4, 60.0f, 0.7f},
-    {A4, 62.0f, 0.45f},
-    // LEFT HAND (oom-pah: low/high octave eighths on the chord bass)
-    {E2, 0.0f, 0.25f},
-    {E3, 0.25f, 0.25f},
-    {E2, 0.5f, 0.25f},
-    {E3, 0.75f, 0.25f},
-    {E2, 1.0f, 0.25f},
-    {E3, 1.25f, 0.25f},
-    {E2, 1.5f, 0.25f},
-    {E3, 1.75f, 0.25f},
-    {A2, 2.0f, 0.25f},
-    {A3, 2.25f, 0.25f},
-    {A2, 2.5f, 0.25f},
-    {A3, 2.75f, 0.25f},
-    {A2, 3.0f, 0.25f},
-    {A3, 3.25f, 0.25f},
-    {A2, 3.5f, 0.25f},
-    {A3, 3.75f, 0.25f},
-    {B2, 4.0f, 0.25f},
-    {B3, 4.25f, 0.25f},
-    {B2, 4.5f, 0.25f},
-    {B3, 4.75f, 0.25f},
-    {B2, 5.0f, 0.25f},
-    {B3, 5.25f, 0.25f},
-    {B2, 5.5f, 0.25f},
-    {B3, 5.75f, 0.25f},
-    {A2, 6.0f, 0.25f},
-    {A3, 6.25f, 0.25f},
-    {A2, 6.5f, 0.25f},
-    {A3, 6.75f, 0.25f},
-    {A2, 7.0f, 0.25f},
-    {A3, 7.25f, 0.25f},
-    {A2, 7.5f, 0.25f},
-    {A3, 7.75f, 0.25f},
-    {D3, 8.0f, 0.25f},
-    {D4, 8.25f, 0.25f},
-    {D3, 8.5f, 0.25f},
-    {D4, 8.75f, 0.25f},
-    {D3, 9.0f, 0.25f},
-    {D4, 9.25f, 0.25f},
-    {D3, 9.5f, 0.25f},
-    {D4, 9.75f, 0.25f},
-    {C3, 10.0f, 0.25f},
-    {C4, 10.25f, 0.25f},
-    {C3, 10.5f, 0.25f},
-    {C4, 10.75f, 0.25f},
-    {C3, 11.0f, 0.25f},
-    {C4, 11.25f, 0.25f},
-    {C3, 11.5f, 0.25f},
-    {C4, 11.75f, 0.25f},
-    {B2, 12.0f, 0.25f},
-    {B3, 12.25f, 0.25f},
-    {B2, 12.5f, 0.25f},
-    {B3, 12.75f, 0.25f},
-    {B2, 13.0f, 0.25f},
-    {B3, 13.25f, 0.25f},
-    {B2, 13.5f, 0.25f},
-    {B3, 13.75f, 0.25f},
-    {A2, 14.0f, 0.25f},
-    {A3, 14.25f, 0.25f},
-    {A2, 14.5f, 0.25f},
-    {A3, 14.75f, 0.25f},
-    {A2, 15.0f, 0.25f},
-    {A3, 15.25f, 0.25f},
-    {A2, 15.5f, 0.25f},
-    {A3, 15.75f, 0.25f},
-    {E2, 16.0f, 0.25f},
-    {E3, 16.25f, 0.25f},
-    {E2, 16.5f, 0.25f},
-    {E3, 16.75f, 0.25f},
-    {E2, 17.0f, 0.25f},
-    {E3, 17.25f, 0.25f},
-    {E2, 17.5f, 0.25f},
-    {E3, 17.75f, 0.25f},
-    {A2, 18.0f, 0.25f},
-    {A3, 18.25f, 0.25f},
-    {A2, 18.5f, 0.25f},
-    {A3, 18.75f, 0.25f},
-    {A2, 19.0f, 0.25f},
-    {A3, 19.25f, 0.25f},
-    {A2, 19.5f, 0.25f},
-    {A3, 19.75f, 0.25f},
-    {B2, 20.0f, 0.25f},
-    {B3, 20.25f, 0.25f},
-    {B2, 20.5f, 0.25f},
-    {B3, 20.75f, 0.25f},
-    {B2, 21.0f, 0.25f},
-    {B3, 21.25f, 0.25f},
-    {B2, 21.5f, 0.25f},
-    {B3, 21.75f, 0.25f},
-    {A2, 22.0f, 0.25f},
-    {A3, 22.25f, 0.25f},
-    {A2, 22.5f, 0.25f},
-    {A3, 22.75f, 0.25f},
-    {A2, 23.0f, 0.25f},
-    {A3, 23.25f, 0.25f},
-    {A2, 23.5f, 0.25f},
-    {A3, 23.75f, 0.25f},
-    {D3, 24.0f, 0.25f},
-    {D4, 24.25f, 0.25f},
-    {D3, 24.5f, 0.25f},
-    {D4, 24.75f, 0.25f},
-    {D3, 25.0f, 0.25f},
-    {D4, 25.25f, 0.25f},
-    {D3, 25.5f, 0.25f},
-    {D4, 25.75f, 0.25f},
-    {C3, 26.0f, 0.25f},
-    {C4, 26.25f, 0.25f},
-    {C3, 26.5f, 0.25f},
-    {C4, 26.75f, 0.25f},
-    {C3, 27.0f, 0.25f},
-    {C4, 27.25f, 0.25f},
-    {C3, 27.5f, 0.25f},
-    {C4, 27.75f, 0.25f},
-    {B2, 28.0f, 0.25f},
-    {B3, 28.25f, 0.25f},
-    {B2, 28.5f, 0.25f},
-    {B3, 28.75f, 0.25f},
-    {B2, 29.0f, 0.25f},
-    {B3, 29.25f, 0.25f},
-    {B2, 29.5f, 0.25f},
-    {B3, 29.75f, 0.25f},
-    {A2, 30.0f, 0.25f},
-    {A3, 30.25f, 0.25f},
-    {A2, 30.5f, 0.25f},
-    {A3, 30.75f, 0.25f},
-    {A2, 31.0f, 0.25f},
-    {A3, 31.25f, 0.25f},
-    {A2, 31.5f, 0.25f},
-    {A3, 31.75f, 0.25f},
-    {A2, 32.0f, 0.25f},
-    {A3, 32.25f, 0.25f},
-    {A2, 32.5f, 0.25f},
-    {A3, 32.75f, 0.25f},
-    {A2, 33.0f, 0.25f},
-    {A3, 33.25f, 0.25f},
-    {A2, 33.5f, 0.25f},
-    {A3, 33.75f, 0.25f},
-    {GS2, 34.0f, 0.25f},
-    {GS3, 34.25f, 0.25f},
-    {GS2, 34.5f, 0.25f},
-    {GS3, 34.75f, 0.25f},
-    {GS2, 35.0f, 0.25f},
-    {GS3, 35.25f, 0.25f},
-    {GS2, 35.5f, 0.25f},
-    {GS3, 35.75f, 0.25f},
-    {A2, 36.0f, 0.25f},
-    {A3, 36.25f, 0.25f},
-    {A2, 36.5f, 0.25f},
-    {A3, 36.75f, 0.25f},
-    {A2, 37.0f, 0.25f},
-    {A3, 37.25f, 0.25f},
-    {A2, 37.5f, 0.25f},
-    {A3, 37.75f, 0.25f},
-    {B2, 38.0f, 0.25f},
-    {B3, 38.25f, 0.25f},
-    {B2, 38.5f, 0.25f},
-    {B3, 38.75f, 0.25f},
-    {B2, 39.0f, 0.25f},
-    {B3, 39.25f, 0.25f},
-    {B2, 39.5f, 0.25f},
-    {B3, 39.75f, 0.25f},
-    {A2, 40.0f, 0.25f},
-    {A3, 40.25f, 0.25f},
-    {A2, 40.5f, 0.25f},
-    {A3, 40.75f, 0.25f},
-    {A2, 41.0f, 0.25f},
-    {A3, 41.25f, 0.25f},
-    {A2, 41.5f, 0.25f},
-    {A3, 41.75f, 0.25f},
-    {B2, 42.0f, 0.25f},
-    {B3, 42.25f, 0.25f},
-    {B2, 42.5f, 0.25f},
-    {B3, 42.75f, 0.25f},
-    {B2, 43.0f, 0.25f},
-    {B3, 43.25f, 0.25f},
-    {B2, 43.5f, 0.25f},
-    {B3, 43.75f, 0.25f},
-    {C3, 44.0f, 0.25f},
-    {C4, 44.25f, 0.25f},
-    {C3, 44.5f, 0.25f},
-    {C4, 44.75f, 0.25f},
-    {C3, 45.0f, 0.25f},
-    {C4, 45.25f, 0.25f},
-    {C3, 45.5f, 0.25f},
-    {C4, 45.75f, 0.25f},
-    {B2, 46.0f, 0.25f},
-    {B3, 46.25f, 0.25f},
-    {B2, 46.5f, 0.25f},
-    {B3, 46.75f, 0.25f},
-    {B2, 47.0f, 0.25f},
-    {B3, 47.25f, 0.25f},
-    {B2, 47.5f, 0.25f},
-    {B3, 47.75f, 0.25f},
-    {E2, 48.0f, 0.25f},
-    {E3, 48.25f, 0.25f},
-    {E2, 48.5f, 0.25f},
-    {E3, 48.75f, 0.25f},
-    {E2, 49.0f, 0.25f},
-    {E3, 49.25f, 0.25f},
-    {E2, 49.5f, 0.25f},
-    {E3, 49.75f, 0.25f},
-    {A2, 50.0f, 0.25f},
-    {A3, 50.25f, 0.25f},
-    {A2, 50.5f, 0.25f},
-    {A3, 50.75f, 0.25f},
-    {A2, 51.0f, 0.25f},
-    {A3, 51.25f, 0.25f},
-    {A2, 51.5f, 0.25f},
-    {A3, 51.75f, 0.25f},
-    {B2, 52.0f, 0.25f},
-    {B3, 52.25f, 0.25f},
-    {B2, 52.5f, 0.25f},
-    {B3, 52.75f, 0.25f},
-    {B2, 53.0f, 0.25f},
-    {B3, 53.25f, 0.25f},
-    {B2, 53.5f, 0.25f},
-    {B3, 53.75f, 0.25f},
-    {A2, 54.0f, 0.25f},
-    {A3, 54.25f, 0.25f},
-    {A2, 54.5f, 0.25f},
-    {A3, 54.75f, 0.25f},
-    {A2, 55.0f, 0.25f},
-    {A3, 55.25f, 0.25f},
-    {A2, 55.5f, 0.25f},
-    {A3, 55.75f, 0.25f},
-    {D3, 56.0f, 0.25f},
-    {D4, 56.25f, 0.25f},
-    {D3, 56.5f, 0.25f},
-    {D4, 56.75f, 0.25f},
-    {D3, 57.0f, 0.25f},
-    {D4, 57.25f, 0.25f},
-    {D3, 57.5f, 0.25f},
-    {D4, 57.75f, 0.25f},
-    {C3, 58.0f, 0.25f},
-    {C4, 58.25f, 0.25f},
-    {C3, 58.5f, 0.25f},
-    {C4, 58.75f, 0.25f},
-    {C3, 59.0f, 0.25f},
-    {C4, 59.25f, 0.25f},
-    {C3, 59.5f, 0.25f},
-    {C4, 59.75f, 0.25f},
-    {B2, 60.0f, 0.25f},
-    {B3, 60.25f, 0.25f},
-    {B2, 60.5f, 0.25f},
-    {B3, 60.75f, 0.25f},
-    {B2, 61.0f, 0.25f},
-    {B3, 61.25f, 0.25f},
-    {B2, 61.5f, 0.25f},
-    {B3, 61.75f, 0.25f},
-    {A2, 62.0f, 0.25f},
-    {A3, 62.25f, 0.25f},
-    {A2, 62.5f, 0.25f},
-    {A3, 62.75f, 0.25f},
-    {A2, 63.0f, 0.25f},
-    {A3, 63.25f, 0.25f},
-    {A2, 63.5f, 0.25f},
-    {A3, 63.75f, 0.25f},
-};
-
-// Track L2 - Birdsong Skies: light A-major arpeggios with high bird-call
-// answers (16s loop). Sparse soft tones leave air between phrases.
-static const Note NOTES_SKIES[] = {
-    // floating lead
-    {A4, 0.0f, 0.45f},
-    {CS5, 0.5f, 0.45f},
-    {E5, 1.0f, 0.9f},
-    {B4, 2.0f, 0.45f},
-    {D5, 2.5f, 0.45f},
-    {FS5, 3.0f, 0.9f},
-    {CS5, 4.0f, 0.45f},
-    {E5, 4.5f, 0.45f},
-    {A5, 5.0f, 0.9f},
-    {E5, 6.0f, 0.45f},
-    {CS5, 6.5f, 0.45f},
-    {B4, 7.0f, 0.9f},
-    {A4, 8.0f, 0.45f},
-    {CS5, 8.5f, 0.45f},
-    {FS5, 9.0f, 0.9f},
-    {E5, 10.0f, 0.45f},
-    {B4, 10.5f, 0.45f},
-    {D5, 11.0f, 0.9f},
-    {CS5, 12.0f, 0.45f},
-    {E5, 12.5f, 0.45f},
-    {B5, 13.0f, 0.9f},
-    {E5, 14.0f, 0.45f},
-    {CS5, 14.5f, 0.45f},
-    {A4, 15.0f, 0.9f},
-    // quick high answers, like calls crossing the stereo-less open space
-    {E6, 1.75f, 0.18f},
-    {FS6, 1.98f, 0.18f},
-    {A6, 5.75f, 0.18f},
-    {E6, 5.98f, 0.18f},
-    {CS6, 9.75f, 0.18f},
-    {E6, 9.98f, 0.18f},
-    {B5, 13.75f, 0.18f},
-    {A5, 13.98f, 0.18f},
-    // slow roots and fifths keep the breeze grounded without percussion
-    {A3, 0.0f, 1.9f},
-    {E4, 2.0f, 1.9f},
-    {D3, 4.0f, 1.9f},
-    {A3, 6.0f, 1.9f},
-    {FS3, 8.0f, 1.9f},
-    {CS4, 10.0f, 1.9f},
-    {E3, 12.0f, 1.9f},
-    {B3, 14.0f, 1.9f},
-};
-
-// Track L3 - Night Blocks: calm, sparse, melancholic Am-F-C-G pad with a
-// slow pentatonic melody + high sparkle (A minor, 32s loop).
-static const Note NOTES_NIGHT[] = {
-    // melody (long, breathing)
-    {A4, 0.0f, 1.9f},
-    {C5, 2.0f, 1.9f},
-    {E5, 4.0f, 1.9f},
-    {D5, 6.0f, 1.9f},
-    {E5, 8.0f, 1.9f},
-    {G5, 10.0f, 1.9f},
-    {E5, 12.0f, 1.9f},
-    {D5, 14.0f, 1.9f},
-    {C5, 16.0f, 1.9f},
-    {A4, 18.0f, 1.9f},
-    {D5, 20.0f, 1.9f},
-    {E5, 22.0f, 1.9f},
-    {G5, 24.0f, 1.9f},
-    {E5, 26.0f, 1.9f},
-    {D5, 28.0f, 1.9f},
-    {C5, 30.0f, 1.9f},
-    // high sparkle (offbeat)
-    {E5, 1.0f, 0.9f},
-    {A5, 5.0f, 0.9f},
-    {B5, 9.0f, 0.9f},
-    {G5, 13.0f, 0.9f},
-    {E5, 17.0f, 0.9f},
-    {A5, 21.0f, 0.9f},
-    {D6, 25.0f, 0.9f},
-    {B5, 29.0f, 0.9f},
-    // low sustained roots: Am F C G
-    {A2, 0.0f, 3.9f},
-    {F2, 4.0f, 3.9f},
-    {C3, 8.0f, 3.9f},
-    {G2, 12.0f, 3.9f},
-    {A2, 16.0f, 3.9f},
-    {F2, 20.0f, 3.9f},
-    {C3, 24.0f, 3.9f},
-    {G2, 28.0f, 3.9f},
-};
-
-// Track L4 - Neon Maze: tense, driving chase riff over Am-Dm-E, staccato
-// melody stabs + walking octave bass (A minor, 16s loop).
-static const Note NOTES_MAZE[] = {
-    // melody stabs
-    {A4, 0.0f, 0.45f},
-    {C5, 0.5f, 0.45f},
-    {E5, 1.0f, 0.45f},
-    {C5, 1.5f, 0.45f},
-    {A4, 2.0f, 0.45f},
-    {E5, 2.5f, 0.45f},
-    {A5, 3.0f, 0.45f},
-    {E5, 3.5f, 0.45f},
-    {D5, 4.0f, 0.45f},
-    {F5, 4.5f, 0.45f},
-    {A5, 5.0f, 0.45f},
-    {F5, 5.5f, 0.45f},
-    {D5, 6.0f, 0.45f},
-    {A5, 6.5f, 0.45f},
-    {D6, 7.0f, 0.45f},
-    {A5, 7.5f, 0.45f},
-    {E5, 8.0f, 0.45f},
-    {GS5, 8.5f, 0.45f},
-    {B5, 9.0f, 0.45f},
-    {GS5, 9.5f, 0.45f},
-    {B4, 10.0f, 0.45f},
-    {E5, 10.5f, 0.45f},
-    {GS5, 11.0f, 0.45f},
-    {B5, 11.5f, 0.45f},
-    {A4, 12.0f, 0.45f},
-    {C5, 12.5f, 0.45f},
-    {E5, 13.0f, 0.45f},
-    {A5, 13.5f, 0.45f},
-    {E5, 14.0f, 0.45f},
-    {D5, 14.5f, 0.45f},
-    {C5, 15.0f, 0.45f},
-    {B4, 15.5f, 0.45f},
-    // walking octave bass: Am Am Dm Dm E E Am E
-    {A2, 0.0f, 0.45f},
-    {A3, 0.5f, 0.45f},
-    {A2, 1.0f, 0.45f},
-    {A3, 1.5f, 0.45f},
-    {A2, 2.0f, 0.45f},
-    {A3, 2.5f, 0.45f},
-    {A2, 3.0f, 0.45f},
-    {A3, 3.5f, 0.45f},
-    {D3, 4.0f, 0.45f},
-    {D4, 4.5f, 0.45f},
-    {D3, 5.0f, 0.45f},
-    {D4, 5.5f, 0.45f},
-    {D3, 6.0f, 0.45f},
-    {D4, 6.5f, 0.45f},
-    {D3, 7.0f, 0.45f},
-    {D4, 7.5f, 0.45f},
-    {E2, 8.0f, 0.45f},
-    {E3, 8.5f, 0.45f},
-    {E2, 9.0f, 0.45f},
-    {E3, 9.5f, 0.45f},
-    {E2, 10.0f, 0.45f},
-    {E3, 10.5f, 0.45f},
-    {E2, 11.0f, 0.45f},
-    {E3, 11.5f, 0.45f},
-    {A2, 12.0f, 0.45f},
-    {A3, 12.5f, 0.45f},
-    {A2, 13.0f, 0.45f},
-    {A3, 13.5f, 0.45f},
-    {E2, 14.0f, 0.45f},
-    {E3, 14.5f, 0.45f},
-    {E2, 15.0f, 0.45f},
-    {E3, 15.5f, 0.45f},
-};
-
-// Track — Menu/Credits: warm, inviting sustained theme (A mixolydian, 32s).
-static const Note NOTES_MENU[] = {
-    {E5, 0.0f, 0.95f},   {A5, 1.0f, 0.95f},  {E5, 2.0f, 0.95f},
-    {CS5, 3.0f, 0.95f},  {FS5, 4.0f, 0.95f}, {D5, 5.0f, 0.95f},
-    {A5, 6.0f, 0.95f},   {FS5, 7.0f, 0.95f}, {G5, 8.0f, 0.95f},
-    {B4, 9.0f, 0.95f},   {D5, 10.0f, 0.95f}, {G5, 11.0f, 0.95f},
-    {FS5, 12.0f, 0.95f}, {A5, 13.0f, 0.95f}, {GS5, 14.0f, 0.95f},
-    {E5, 15.0f, 0.95f},  {A5, 16.0f, 0.95f}, {E5, 17.0f, 0.95f},
-    {CS5, 18.0f, 0.95f}, {E5, 19.0f, 0.95f}, {D5, 20.0f, 0.95f},
-    {FS5, 21.0f, 0.95f}, {A5, 22.0f, 0.95f}, {FS5, 23.0f, 0.95f},
-    {G5, 24.0f, 0.95f},  {D5, 25.0f, 0.95f}, {FS5, 26.0f, 0.95f},
-    {A5, 27.0f, 0.95f},  {E5, 28.0f, 0.95f}, {GS5, 29.0f, 0.95f},
-    {A5, 30.0f, 1.95f},  {A2, 0.0f, 0.5f},   {A3, 0.5f, 0.5f},
-    {A2, 1.0f, 0.5f},    {A3, 1.5f, 0.5f},   {A2, 2.0f, 0.5f},
-    {A3, 2.5f, 0.5f},    {A2, 3.0f, 0.5f},   {A3, 3.5f, 0.5f},
-    {D2, 4.0f, 0.5f},    {D3, 4.5f, 0.5f},   {D2, 5.0f, 0.5f},
-    {D3, 5.5f, 0.5f},    {D2, 6.0f, 0.5f},   {D3, 6.5f, 0.5f},
-    {D2, 7.0f, 0.5f},    {D3, 7.5f, 0.5f},   {G2, 8.0f, 0.5f},
-    {G3, 8.5f, 0.5f},    {G2, 9.0f, 0.5f},   {G3, 9.5f, 0.5f},
-    {G2, 10.0f, 0.5f},   {G3, 10.5f, 0.5f},  {G2, 11.0f, 0.5f},
-    {G3, 11.5f, 0.5f},   {D2, 12.0f, 0.5f},  {D3, 12.5f, 0.5f},
-    {D2, 13.0f, 0.5f},   {D3, 13.5f, 0.5f},  {E2, 14.0f, 0.5f},
-    {E3, 14.5f, 0.5f},   {E2, 15.0f, 0.5f},  {E3, 15.5f, 0.5f},
-    {A2, 16.0f, 0.5f},   {A3, 16.5f, 0.5f},  {A2, 17.0f, 0.5f},
-    {A3, 17.5f, 0.5f},   {A2, 18.0f, 0.5f},  {A3, 18.5f, 0.5f},
-    {A2, 19.0f, 0.5f},   {A3, 19.5f, 0.5f},  {D2, 20.0f, 0.5f},
-    {D3, 20.5f, 0.5f},   {D2, 21.0f, 0.5f},  {D3, 21.5f, 0.5f},
-    {D2, 22.0f, 0.5f},   {D3, 22.5f, 0.5f},  {D2, 23.0f, 0.5f},
-    {D3, 23.5f, 0.5f},   {G2, 24.0f, 0.5f},  {G3, 24.5f, 0.5f},
-    {G2, 25.0f, 0.5f},   {G3, 25.5f, 0.5f},  {D2, 26.0f, 0.5f},
-    {D3, 26.5f, 0.5f},   {D2, 27.0f, 0.5f},  {D3, 27.5f, 0.5f},
-    {E2, 28.0f, 0.5f},   {E3, 28.5f, 0.5f},  {E2, 29.0f, 0.5f},
-    {E3, 29.5f, 0.5f},   {A2, 30.0f, 0.5f},  {A3, 30.5f, 0.5f},
-    {A2, 31.0f, 0.5f},   {A3, 31.5f, 0.5f},
-};
-
-// Track 3 — Game over: somber, sparse A-minor loop (8s).
-static const Note NOTES_GAMEOVER[] = {
-    {E5, 0.0f, 0.95f}, {D5, 1.0f, 0.95f}, {C5, 2.0f, 1.4f},   {A4, 3.5f, 0.45f},
-    {E5, 4.0f, 0.95f}, {C5, 5.0f, 0.95f}, {GS4, 6.0f, 1.95f}, {A3, 0.0f, 1.9f},
-    {C4, 0.0f, 1.9f},  {F3, 2.0f, 1.9f},  {A3, 2.0f, 1.9f},   {C3, 4.0f, 1.9f},
-    {E4, 4.0f, 1.9f},  {E3, 6.0f, 1.9f},  {GS3, 6.0f, 1.9f},
-};
-
-// A track is its note list plus its own loop length; the A2 pedal underlies
-// every track and stays seamless for any whole-second `duration`.
 typedef struct {
-  const Note *notes;
-  int count;
-  float duration;  // loop length (s); per-track so a longer arrangement fits
-  Timbre timbre;   // lead instrument voice
-  DrumStyle drums; // baked percussion pattern
-  float echo;      // 0..1 wet mix of the seam-safe 2-tap delay
+  float bpm;
+  int bars;
+  int beatsPerBar;
+  int rootMidi;
+  SoundStyle style;
+  float echo;
+  float room;
+  float targetRms;
+  ComposeFn compose;
 } Track;
-#define TRACK(a, dur, tb, dr, ec)                                              \
-  {(a), (int)(sizeof(a) / sizeof((a)[0])), (dur), (tb), (dr), (ec)}
-// TRACK_L1..L5/MENU/GAMEOVER live in sound.h (themes select L1..L5 by climb
-// band; main.c hard-cuts to MENU/GAMEOVER by state). Each track's duration must
-// give the A2 pedal whole cycles (110Hz * integer seconds) for a seamless seam
-// — 16/32/64/8s all qualify.
-// Positional in exact MusicTrack order, so dropping any row shortens the table
-// and fails the count check instead of leaving a zero-filled track.
-static const Track TRACKS[] = {
-    TRACK(NOTES_NATURE, 32.0f, TIMBRE_WARM, DRUMS_FOUR, 0.2f),
-    TRACK(NOTES_SKIES, 16.0f, TIMBRE_SOFT, DRUMS_NONE, 0.3f),
-    TRACK(NOTES_NIGHT, 32.0f, TIMBRE_SOFT, DRUMS_NONE, 0.35f),
-    TRACK(NOTES_MAZE, 16.0f, TIMBRE_PULSE, DRUMS_DRIVING, 0.15f),
-    TRACK(NOTES_ARCADE, 64.0f, TIMBRE_SQUARE, DRUMS_DRIVING, 0.15f),
-    TRACK(NOTES_MENU, 32.0f, TIMBRE_WARM, DRUMS_NONE, 0.2f),
-    TRACK(NOTES_GAMEOVER, 8.0f, TIMBRE_SOFT, DRUMS_NONE, 0.2f),
-};
-// Every MusicTrack id must have a TRACKS[] row.
-STATIC_ASSERT(sizeof(TRACKS) / sizeof(TRACKS[0]) == TRACK_COUNT, tracks_full);
 
-// Startup priority: the only track the first real screen needs, then gameplay
-// in climb order, then the game-over track.
-static const MusicTrack PRELOAD_ORDER[] = {TRACK_MENU,    TRACK_L1, TRACK_L2,
-                                           TRACK_L3,      TRACK_L4, TRACK_L5,
-                                           TRACK_GAMEOVER};
-STATIC_ASSERT(sizeof(PRELOAD_ORDER) / sizeof(PRELOAD_ORDER[0]) == TRACK_COUNT,
+struct MusicBuild {
+  float *buf; // interleaved stereo
+  int frames;
+  const Track *track;
+};
+
+static float fractf(float x) { return x - floorf(x); }
+
+static unsigned hash32(unsigned x) {
+  x ^= x >> 16;
+  x *= 0x7feb352du;
+  x ^= x >> 15;
+  x *= 0x846ca68bu;
+  x ^= x >> 16;
+  return x;
+}
+
+static float noiseAt(unsigned seed, unsigned sample) {
+  return (float)(hash32(seed ^ sample) & 0xffffu) / 32767.5f - 1.0f;
+}
+
+static float smoothNoise(unsigned seed, unsigned sample, unsigned period) {
+  unsigned cell = sample / period;
+  unsigned rem = sample % period;
+  float f = (float)rem / period;
+  f = f * f * (3.0f - 2.0f * f);
+  float a = noiseAt(seed, cell);
+  float b = noiseAt(seed, cell + 1u);
+  return a + (b - a) * f;
+}
+
+static float midiHz(int midi) {
+  static const float SEMITONE[] = {
+      1.0f,       1.0594631f, 1.1224620f, 1.1892071f, 1.2599211f, 1.3348398f,
+      1.4142136f, 1.4983071f, 1.5874011f, 1.6817928f, 1.7817974f, 1.8877486f,
+  };
+  int delta = midi - 69;
+  int octave = delta >= 0 ? delta / 12 : -((-delta + 11) / 12);
+  int note = delta - octave * 12;
+  return ldexpf(440.0f * SEMITONE[note], octave);
+}
+
+static float polyBlep(float phase, float step) {
+  if (phase < step) {
+    float t = phase / step;
+    return t + t - t * t - 1.0f;
+  }
+  if (phase > 1.0f - step) {
+    float t = (phase - 1.0f) / step;
+    return t * t + t + t + 1.0f;
+  }
+  return 0.0f;
+}
+
+static float sawWave(float cycles, float hz) {
+  float p = fractf(cycles);
+  return 2.0f * p - 1.0f - polyBlep(p, hz / SAMPLE_RATE);
+}
+
+static float pulseWave(float cycles, float hz, float duty) {
+  float p = fractf(cycles);
+  float out = p < duty ? 1.0f : -1.0f;
+  out += polyBlep(p, hz / SAMPLE_RATE);
+  float edge = fractf(p - duty);
+  out -= polyBlep(edge, hz / SAMPLE_RATE);
+  return out;
+}
+
+static float triangleWave(float cycles) {
+  float p = fractf(cycles);
+  return 1.0f - 4.0f * fabsf(p - 0.5f);
+}
+
+// Integrate a sinusoidal frequency deviation instead of multiplying f*t by a
+// changing frequency. That keeps vibrato centered and free of pitch drift.
+static float vibratoCycles(float hz, float t, float rate, float depth) {
+  if (rate <= 0.0f || depth <= 0.0f) {
+    return hz * t;
+  }
+  return hz * t + hz * depth * (1.0f - cosf(TAU * rate * t)) / (TAU * rate);
+}
+
+static float styleWave(SoundStyle style, float cycles, float hz, int sample,
+                       unsigned seed) {
+  float sine = sinf(TAU * cycles);
+  switch (style) {
+  case STYLE_SUNNY:
+    return 0.68f * sine + 0.2f * sinf(TAU * cycles * 2.0f) +
+           0.12f * triangleWave(cycles);
+  case STYLE_SKIES:
+    return 0.78f * sine + 0.17f * sinf(TAU * cycles * 2.01f + 0.35f * sine) +
+           0.05f * smoothNoise(seed, (unsigned)sample, 37u);
+  case STYLE_NIGHT:
+    return 0.55f * triangleWave(cycles) + 0.35f * sine +
+           0.1f * sinf(TAU * cycles * 3.0f);
+  case STYLE_MAZE:
+    return 0.5f * pulseWave(cycles, hz, 0.28f) + 0.3f * sawWave(cycles, hz) +
+           0.2f * sine;
+  case STYLE_BLOCKS: {
+    float digital = 0.62f * pulseWave(cycles, hz, 0.5f) + 0.38f * sine;
+    return floorf(digital * 18.0f + 0.5f) / 18.0f;
+  }
+  case STYLE_CREDITS:
+    return 0.72f * sine + 0.2f * triangleWave(cycles) +
+           0.08f * sinf(TAU * cycles * 2.0f);
+  case STYLE_RESULTS:
+    return 0.82f * sine + 0.18f * triangleWave(cycles);
+  case STYLE_UI:
+  default:
+    return 0.62f * sine + 0.28f * triangleWave(cycles) +
+           0.1f * sinf(TAU * cycles * 2.0f);
+  }
+}
+
+static float heldEnvelope(float t, float attack, float decay, float sustain) {
+  if (t < attack) {
+    return t / attack;
+  }
+  if (t < attack + decay) {
+    float f = (t - attack) / decay;
+    return 1.0f + (sustain - 1.0f) * f;
+  }
+  return sustain;
+}
+
+static float adsr(float t, float gate, float attack, float decay, float sustain,
+                  float release) {
+  float atGate = heldEnvelope(gate, attack, decay, sustain);
+  if (t <= gate) {
+    return heldEnvelope(t, attack, decay, sustain);
+  }
+  float f = (t - gate) / release;
+  if (f >= 1.0f) {
+    return 0.0f;
+  }
+  float tail = 1.0f - f;
+  return atGate * tail * tail;
+}
+
+static float instrumentRelease(Instrument inst) {
+  switch (inst) {
+  case INST_PAD:
+    return 0.9f;
+  case INST_AIR:
+    return 0.55f;
+  case INST_KEYS:
+    return 0.38f;
+  case INST_MALLET:
+    return 0.3f;
+  case INST_PLUCK:
+    return 0.18f;
+  default:
+    return 0.14f;
+  }
+}
+
+static float instrumentSample(Instrument inst, float hz, float t, float gate,
+                              int sample, unsigned seed) {
+  float cycles;
+  float env;
+  float n = noiseAt(seed, (unsigned)sample);
+
+  switch (inst) {
+  case INST_MALLET:
+    cycles = vibratoCycles(hz, t, 5.1f, 0.001f);
+    env = (1.0f - expf(-t * 300.0f)) * expf(-t * 3.8f) *
+          adsr(t, gate, 0.003f, 0.08f, 0.65f, 0.3f);
+    return env *
+           (0.72f * sinf(TAU * cycles) + 0.2f * sinf(TAU * cycles * 2.01f) +
+            0.08f * sinf(TAU * cycles * 3.97f));
+
+  case INST_PLUCK:
+    cycles = vibratoCycles(hz, t, 4.8f, 0.0015f);
+    env = (1.0f - expf(-t * 500.0f)) * expf(-t * 4.5f) *
+          adsr(t, gate, 0.002f, 0.08f, 0.5f, 0.18f);
+    return env * (0.48f * triangleWave(cycles) +
+                  0.32f * pulseWave(cycles, hz, 0.42f) +
+                  0.17f * sinf(TAU * cycles) + 0.03f * n);
+
+  case INST_AIR:
+    cycles = vibratoCycles(hz, t, 4.2f, 0.0035f);
+    env = adsr(t, gate, 0.075f, 0.18f, 0.78f, 0.55f);
+    return env *
+           (0.82f * sinf(TAU * cycles) + 0.13f * sinf(TAU * cycles * 2.0f) +
+            0.05f * smoothNoise(seed, (unsigned)sample, 53u));
+
+  case INST_PAD:
+    cycles = vibratoCycles(hz, t, 0.32f, 0.0015f);
+    env = adsr(t, gate, 0.32f, 0.45f, 0.68f, 0.9f);
+    return env * (0.44f * sawWave(cycles, hz) +
+                  0.32f * sawWave(cycles * 1.003f, hz * 1.003f) +
+                  0.24f * sinf(TAU * cycles));
+
+  case INST_BASS:
+    cycles = vibratoCycles(hz, t, 4.0f, 0.0007f);
+    env = adsr(t, gate, 0.006f, 0.12f, 0.72f, 0.14f);
+    return env * (0.58f * sinf(TAU * cycles) + 0.3f * triangleWave(cycles) +
+                  0.12f * sawWave(cycles, hz));
+
+  case INST_KEYS: {
+    cycles = vibratoCycles(hz, t, 5.0f, 0.001f);
+    env = adsr(t, gate, 0.006f, 0.32f, 0.42f, 0.38f);
+    float mod = 1.7f * expf(-t * 2.8f) * sinf(TAU * cycles * 2.0f);
+    return env * (0.78f * sinf(TAU * cycles + mod) +
+                  0.22f * sinf(TAU * cycles * 0.5f));
+  }
+
+  case INST_NEON:
+    cycles = vibratoCycles(hz, t, 5.5f, 0.002f);
+    env = adsr(t, gate, 0.004f, 0.09f, 0.58f, 0.14f);
+    return env *
+           (0.48f * pulseWave(cycles, hz, 0.25f) + 0.28f * sawWave(cycles, hz) +
+            0.24f * sinf(TAU * cycles + 0.8f * sinf(TAU * cycles * 2.0f)));
+
+  case INST_BLOCK:
+  default: {
+    cycles = vibratoCycles(hz, t, 6.0f, 0.001f);
+    env = adsr(t, gate, 0.003f, 0.1f, 0.62f, 0.12f);
+    float s = 0.58f * pulseWave(cycles, hz, 0.5f) +
+              0.27f * sinf(TAU * cycles + 0.65f * sinf(TAU * cycles * 1.5f)) +
+              0.15f * triangleWave(cycles);
+    return env * floorf(s * 20.0f + 0.5f) / 20.0f;
+  }
+  }
+}
+
+static int frameAtBeat(const MusicBuild *b, float beat) {
+  return (int)(beat * 60.0f / b->track->bpm * SAMPLE_RATE + 0.5f);
+}
+
+static int wrapFrame(int frame, int frames) {
+  frame %= frames;
+  return frame < 0 ? frame + frames : frame;
+}
+
+static void addNote(MusicBuild *b, Instrument inst, int midi, float beat,
+                    float beats, float gain, float pan, unsigned seed) {
+  int start = frameAtBeat(b, beat);
+  float gate = beats * 60.0f / b->track->bpm;
+  float release = instrumentRelease(inst);
+  int count = (int)((gate + release) * SAMPLE_RATE + 0.5f);
+  pan = clampf(pan, -1.0f, 1.0f);
+  float angle = (pan + 1.0f) * PI * 0.25f;
+  float left = cosf(angle), right = sinf(angle);
+  float hz = midiHz(midi);
+  bool wide = inst == INST_PAD || inst == INST_AIR;
+  float hzLeft = wide ? hz * 0.99798f : hz;
+  float hzRight = wide ? hz * 1.00202f : hz;
+
+  for (int i = 0; i < count; i++) {
+    float t = (float)i / SAMPLE_RATE;
+    int frame = wrapFrame(start + i, b->frames);
+    float l = instrumentSample(inst, hzLeft, t, gate, i, seed);
+    float r =
+        wide ? instrumentSample(inst, hzRight, t, gate, i, seed + 0x91u) : l;
+    b->buf[frame * 2] += gain * left * l;
+    b->buf[frame * 2 + 1] += gain * right * r;
+  }
+}
+
+static const int SCALE_MAJOR[] = {0, 2, 4, 5, 7, 9, 11};
+static const int SCALE_LYDIAN[] = {0, 2, 4, 6, 7, 9, 11};
+static const int SCALE_MINOR[] = {0, 2, 3, 5, 7, 8, 10};
+static const int SCALE_DORIAN[] = {0, 2, 3, 5, 7, 9, 10};
+static const int SCALE_HARMONIC_MINOR[] = {0, 2, 3, 5, 7, 8, 11};
+
+static int degreeMidi(const int *scale, int tonic, int degree) {
+  int octave;
+  if (degree >= 0) {
+    octave = degree / 7;
+  } else {
+    octave = -((-degree + 6) / 7);
+  }
+  int index = degree - octave * 7;
+  return tonic + octave * 12 + scale[index];
+}
+
+static void addChord(MusicBuild *b, const int *scale, int tonic, int degree,
+                     float beat, float beats, Instrument inst, float gain,
+                     unsigned seed) {
+  static const float PAN[] = {-0.42f, 0.05f, 0.42f};
+  for (int i = 0; i < 3; i++) {
+    addNote(b, inst, degreeMidi(scale, tonic, degree + i * 2), beat, beats,
+            gain, PAN[i], seed + (unsigned)i * 17u);
+  }
+}
+
+typedef struct {
+  signed char degree;
+  unsigned char step;
+  unsigned char length;
+} MotifNote;
+
+// Original eight-note "Boing" cell. Every cue reshapes this same upward leap,
+// giving the soundtrack one identity without forcing one genre on every era.
+static const MotifNote MOTIF[] = {{0, 0, 2},  {2, 2, 2},  {4, 4, 3},
+                                  {5, 7, 2},  {4, 10, 2}, {6, 12, 1},
+                                  {2, 13, 1}, {1, 14, 2}};
+
+static void addMotif(MusicBuild *b, const int *scale, int tonic, float beat,
+                     float stretch, int degreeShift, Instrument inst,
+                     float gain, float pan, unsigned seed) {
+  for (int i = 0; i < ARRAY_LEN(MOTIF); i++) {
+    float start = beat + MOTIF[i].step * 0.25f * stretch;
+    float len = MOTIF[i].length * 0.22f * stretch;
+    float spread = (i & 1) ? 0.16f : -0.16f;
+    addNote(b, inst, degreeMidi(scale, tonic, MOTIF[i].degree + degreeShift),
+            start, len, gain * (i == 0 || i == 3 ? 1.08f : 1.0f),
+            clampf(pan + spread, -0.8f, 0.8f), seed + (unsigned)i * 31u);
+  }
+}
+
+typedef enum {
+  DRUM_KICK,
+  DRUM_SNARE,
+  DRUM_HAT,
+  DRUM_CLAP,
+  DRUM_SHAKER,
+  DRUM_TOM
+} DrumKind;
+
+static float sweepCycles(float startHz, float endHz, float t, float duration) {
+  return startHz * t + 0.5f * (endHz - startHz) * t * t / duration;
+}
+
+static float drumSample(DrumKind kind, float t, float duration, int sample,
+                        unsigned seed) {
+  float x = t / duration;
+  float attack = sample < 24 ? (float)sample / 24.0f : 1.0f;
+  float n = noiseAt(seed, (unsigned)sample);
+  float hp = n - noiseAt(seed, (unsigned)(sample > 0 ? sample - 1 : 0));
+
+  switch (kind) {
+  case DRUM_KICK: {
+    float env = attack * expf(-x * 7.5f);
+    float phase = sweepCycles(165.0f, 48.0f, t, duration);
+    return env * (0.9f * sinf(TAU * phase) + 0.1f * n * expf(-x * 25.0f));
+  }
+  case DRUM_SNARE: {
+    float env = attack * expf(-x * 9.0f);
+    return env * (0.72f * hp + 0.28f * sinf(TAU * 185.0f * t));
+  }
+  case DRUM_HAT:
+    return attack * expf(-x * 15.0f) *
+           (0.72f * hp + 0.28f * pulseWave(4210.0f * t, 4210.0f, 0.37f));
+  case DRUM_CLAP: {
+    float burst = expf(-fmodf(t, 0.018f) * 85.0f);
+    return attack * expf(-x * 8.0f) * burst * hp;
+  }
+  case DRUM_SHAKER:
+    return attack * expf(-x * 12.0f) *
+           (0.65f * hp + 0.35f * smoothNoise(seed, (unsigned)sample, 11u));
+  case DRUM_TOM:
+  default: {
+    float env = attack * expf(-x * 6.0f);
+    float phase = sweepCycles(225.0f, 105.0f, t, duration);
+    return env * (0.84f * sinf(TAU * phase) + 0.16f * n);
+  }
+  }
+}
+
+static float drumDuration(DrumKind kind) {
+  switch (kind) {
+  case DRUM_KICK:
+    return 0.22f;
+  case DRUM_SNARE:
+  case DRUM_CLAP:
+    return 0.18f;
+  case DRUM_HAT:
+    return 0.07f;
+  case DRUM_SHAKER:
+    return 0.1f;
+  case DRUM_TOM:
+  default:
+    return 0.25f;
+  }
+}
+
+static void addDrum(MusicBuild *b, DrumKind kind, float beat, float gain,
+                    float pan, unsigned seed) {
+  float duration = drumDuration(kind);
+  int count = (int)(duration * SAMPLE_RATE + 0.5f);
+  int start = frameAtBeat(b, beat);
+  pan = clampf(pan, -1.0f, 1.0f);
+  float angle = (pan + 1.0f) * PI * 0.25f;
+  float left = cosf(angle), right = sinf(angle);
+  for (int i = 0; i < count; i++) {
+    int frame = wrapFrame(start + i, b->frames);
+    float value =
+        gain * drumSample(kind, (float)i / SAMPLE_RATE, duration, i, seed);
+    b->buf[frame * 2] += left * value;
+    b->buf[frame * 2 + 1] += right * value;
+  }
+}
+
+static void addPopDrums(MusicBuild *b, float beat, float amount,
+                        unsigned seed) {
+  addDrum(b, DRUM_KICK, beat, 0.5f * amount, 0.0f, seed);
+  addDrum(b, DRUM_KICK, beat + 2.0f, 0.42f * amount, 0.0f, seed + 1u);
+  addDrum(b, DRUM_SNARE, beat + 1.0f, 0.31f * amount, 0.04f, seed + 2u);
+  addDrum(b, DRUM_SNARE, beat + 3.0f, 0.34f * amount, -0.04f, seed + 3u);
+  for (int i = 0; i < 8; i++) {
+    addDrum(b, DRUM_SHAKER, beat + i * 0.5f, 0.09f * amount,
+            (i & 1) ? 0.48f : -0.48f, seed + 10u + (unsigned)i);
+  }
+}
+
+static void addElectroDrums(MusicBuild *b, float beat, float amount,
+                            unsigned seed) {
+  for (int i = 0; i < 4; i++) {
+    addDrum(b, DRUM_KICK, beat + i, 0.5f * amount, 0.0f, seed + (unsigned)i);
+  }
+  addDrum(b, DRUM_CLAP, beat + 1.0f, 0.3f * amount, 0.12f, seed + 9u);
+  addDrum(b, DRUM_CLAP, beat + 3.0f, 0.34f * amount, -0.12f, seed + 10u);
+  for (int i = 0; i < 8; i++) {
+    addDrum(b, DRUM_HAT, beat + i * 0.5f + 0.25f, 0.1f * amount,
+            (i & 1) ? 0.55f : -0.55f, seed + 20u + (unsigned)i);
+  }
+}
+
+static void addBreakDrums(MusicBuild *b, float beat, float amount,
+                          unsigned seed) {
+  static const float KICKS[] = {0.0f, 1.5f, 2.75f};
+  static const float SNARES[] = {1.0f, 3.0f};
+  for (int i = 0; i < ARRAY_LEN(KICKS); i++) {
+    addDrum(b, DRUM_KICK, beat + KICKS[i], 0.56f * amount, 0.0f,
+            seed + (unsigned)i);
+  }
+  for (int i = 0; i < ARRAY_LEN(SNARES); i++) {
+    addDrum(b, DRUM_SNARE, beat + SNARES[i], 0.36f * amount, i ? 0.1f : -0.1f,
+            seed + 6u + (unsigned)i);
+  }
+  for (int i = 0; i < 16; i++) {
+    addDrum(b, DRUM_HAT, beat + i * 0.25f, 0.075f * amount,
+            (i & 1) ? 0.62f : -0.62f, seed + 20u + (unsigned)i);
+  }
+}
+
+static void composeSunny(MusicBuild *b) {
+  static const signed char PROG[] = {0, 4, 5, 3, 0, 2, 3, 4, 5, 3, 4, 0};
+  int tonic = b->track->rootMidi;
+  for (int bar = 0; bar < b->track->bars; bar++) {
+    float at = bar * 4.0f;
+    int degree = PROG[bar];
+    addChord(b, SCALE_MAJOR, tonic, degree, at, 3.72f, INST_PAD, 0.055f,
+             100u + (unsigned)bar);
+    for (int i = 0; i < 8; i++) {
+      int chordDegree = degree + (i % 3) * 2;
+      addNote(b, INST_PLUCK, degreeMidi(SCALE_MAJOR, tonic, chordDegree),
+              at + i * 0.5f, 0.28f, 0.105f, (i & 1) ? 0.44f : -0.44f,
+              300u + (unsigned)(bar * 8 + i));
+    }
+    addNote(b, INST_BASS, degreeMidi(SCALE_MAJOR, tonic - 24, degree), at,
+            1.65f, 0.22f, 0.0f, 500u + (unsigned)bar);
+    addNote(b, INST_BASS, degreeMidi(SCALE_MAJOR, tonic - 24, degree + 4),
+            at + 2.0f, 1.55f, 0.18f, 0.0f, 520u + (unsigned)bar);
+    addPopDrums(b, at, bar < 4 ? 0.78f : 1.0f, 700u + (unsigned)bar * 31u);
+  }
+  addMotif(b, SCALE_MAJOR, tonic + 12, 0.0f, 1.0f, 0, INST_MALLET, 0.21f,
+           -0.12f, 900u);
+  addMotif(b, SCALE_MAJOR, tonic + 12, 16.0f, 1.0f, 1, INST_MALLET, 0.2f, 0.12f,
+           1000u);
+  addMotif(b, SCALE_MAJOR, tonic + 12, 32.0f, 1.0f, 0, INST_MALLET, 0.23f, 0.0f,
+           1100u);
+  static const int RESPONSE[] = {4, 3, 2, 0};
+  for (int phrase = 0; phrase < 3; phrase++) {
+    float at = 8.0f + phrase * 16.0f;
+    for (int i = 0; i < ARRAY_LEN(RESPONSE); i++) {
+      addNote(b, INST_AIR, degreeMidi(SCALE_MAJOR, tonic + 12, RESPONSE[i]),
+              at + i * 0.5f, 0.38f, 0.12f, 0.34f,
+              1200u + (unsigned)(phrase * 8 + i));
+    }
+  }
+}
+
+static void composeSkies(MusicBuild *b) {
+  static const signed char PROG[] = {0, 1, 3, 0, 5, 1, 4, 0, 3, 1, 4, 0};
+  int tonic = b->track->rootMidi;
+  for (int bar = 0; bar < b->track->bars; bar++) {
+    float at = bar * 3.0f;
+    int degree = PROG[bar];
+    addChord(b, SCALE_LYDIAN, tonic, degree, at, 2.78f, INST_PAD, 0.065f,
+             1300u + (unsigned)bar);
+    addNote(b, INST_BASS, degreeMidi(SCALE_LYDIAN, tonic - 24, degree), at,
+            2.55f, 0.13f, 0.0f, 1400u + (unsigned)bar);
+    for (int i = 0; i < 6; i++) {
+      int d = degree + (i % 3) * 2;
+      addNote(b, INST_PLUCK, degreeMidi(SCALE_LYDIAN, tonic + 12, d),
+              at + i * 0.5f, 0.34f, 0.09f, (i & 1) ? 0.58f : -0.58f,
+              1500u + (unsigned)(bar * 6 + i));
+      addDrum(b, DRUM_SHAKER, at + i * 0.5f, 0.045f, (i & 1) ? 0.7f : -0.7f,
+              1600u + (unsigned)(bar * 6 + i));
+    }
+    if (bar % 4 == 2) {
+      static const int CALL[] = {7, 9, 8};
+      for (int i = 0; i < ARRAY_LEN(CALL); i++) {
+        addNote(b, INST_AIR, degreeMidi(SCALE_LYDIAN, tonic + 12, CALL[i]),
+                at + 1.35f + i * 0.34f, 0.25f, 0.13f, i & 1 ? -0.55f : 0.55f,
+                1700u + (unsigned)(bar * 4 + i));
+      }
+    }
+  }
+  addMotif(b, SCALE_LYDIAN, tonic + 12, 0.0f, 0.75f, 0, INST_AIR, 0.18f, -0.25f,
+           1800u);
+  addMotif(b, SCALE_LYDIAN, tonic + 12, 12.0f, 0.75f, 1, INST_AIR, 0.17f, 0.25f,
+           1900u);
+  addMotif(b, SCALE_LYDIAN, tonic + 12, 24.0f, 0.75f, 0, INST_AIR, 0.2f, 0.0f,
+           2000u);
+}
+
+static void composeNight(MusicBuild *b) {
+  static const signed char PROG[] = {0, 3, 6, 4, 0, 5, 3, 4};
+  int tonic = b->track->rootMidi;
+  for (int bar = 0; bar < b->track->bars; bar++) {
+    float at = bar * 4.0f;
+    int degree = PROG[bar];
+    addChord(b, SCALE_DORIAN, tonic, degree, at, 3.82f, INST_PAD, 0.075f,
+             2100u + (unsigned)bar);
+    addNote(b, INST_BASS, degreeMidi(SCALE_DORIAN, tonic - 24, degree), at,
+            3.45f, 0.15f, 0.0f, 2200u + (unsigned)bar);
+    addNote(b, INST_KEYS, degreeMidi(SCALE_DORIAN, tonic + 12, degree + 4),
+            at + 2.5f, 0.8f, 0.075f, (bar & 1) ? 0.38f : -0.38f,
+            2300u + (unsigned)bar);
+    if ((bar & 1) == 0) {
+      addDrum(b, DRUM_TOM, at, 0.12f, -0.08f, 2400u + (unsigned)bar);
+    }
+    addDrum(b, DRUM_SHAKER, at + 3.5f, 0.035f, (bar & 1) ? 0.62f : -0.62f,
+            2500u + (unsigned)bar);
+  }
+  addMotif(b, SCALE_DORIAN, tonic + 12, 0.0f, 2.0f, 0, INST_KEYS, 0.15f, -0.18f,
+           2600u);
+  addMotif(b, SCALE_DORIAN, tonic + 12, 16.0f, 2.0f, -1, INST_KEYS, 0.16f,
+           0.18f, 2700u);
+  for (int bar = 1; bar < b->track->bars; bar += 2) {
+    float at = bar * 4.0f;
+    addNote(b, INST_MALLET, degreeMidi(SCALE_DORIAN, tonic + 24, bar % 7),
+            at + 1.5f, 0.55f, 0.09f, (bar & 2) ? 0.58f : -0.58f,
+            2800u + (unsigned)bar);
+  }
+}
+
+static void composeMaze(MusicBuild *b) {
+  static const signed char PROG[] = {0, 0, 3, 4, 0, 5, 3, 4, 0, 6, 3, 4};
+  static const float BASS_AT[] = {0.0f, 0.75f, 1.5f, 2.0f, 2.75f, 3.5f};
+  int tonic = b->track->rootMidi;
+  for (int bar = 0; bar < b->track->bars; bar++) {
+    float at = bar * 4.0f;
+    int degree = PROG[bar];
+    for (int i = 0; i < ARRAY_LEN(BASS_AT); i++) {
+      int d = degree + ((i == 2 || i == 5) ? 4 : 0);
+      addNote(b, INST_BASS, degreeMidi(SCALE_MINOR, tonic - 24, d),
+              at + BASS_AT[i], 0.42f, 0.2f, 0.0f,
+              2900u + (unsigned)(bar * 8 + i));
+    }
+    for (int i = 0; i < 4; i++) {
+      addChord(b, SCALE_MINOR, tonic, degree, at + 0.5f + i, 0.24f, INST_NEON,
+               0.065f, 3100u + (unsigned)(bar * 4 + i));
+    }
+    addElectroDrums(b, at, bar < 2 ? 0.78f : 1.0f, 3300u + (unsigned)bar * 29u);
+  }
+  addMotif(b, SCALE_MINOR, tonic + 12, 0.0f, 1.0f, 0, INST_NEON, 0.17f, -0.18f,
+           3500u);
+  addMotif(b, SCALE_MINOR, tonic + 12, 16.0f, 1.0f, 2, INST_NEON, 0.17f, 0.18f,
+           3600u);
+  addMotif(b, SCALE_MINOR, tonic + 12, 32.0f, 1.0f, 0, INST_NEON, 0.19f, 0.0f,
+           3700u);
+  for (int bar = 2; bar < b->track->bars; bar += 4) {
+    float at = bar * 4.0f;
+    for (int i = 0; i < 6; i++) {
+      addNote(b, INST_NEON,
+              degreeMidi(SCALE_MINOR, tonic + 24, (i * 2 + bar) % 7),
+              at + i * 0.25f, 0.16f, 0.08f, (i & 1) ? 0.6f : -0.6f,
+              3800u + (unsigned)(bar * 8 + i));
+    }
+  }
+}
+
+static void composeBlocks(MusicBuild *b) {
+  static const signed char PROG[] = {0, 5, 3, 4, 0, 6, 3, 4, 5, 3, 4, 0};
+  int tonic = b->track->rootMidi;
+  for (int bar = 0; bar < b->track->bars; bar++) {
+    float at = bar * 4.0f;
+    int degree = PROG[bar];
+    addChord(b, SCALE_HARMONIC_MINOR, tonic, degree, at + 0.25f, 0.45f,
+             INST_BLOCK, 0.075f, 3900u + (unsigned)bar);
+    addChord(b, SCALE_HARMONIC_MINOR, tonic, degree, at + 2.25f, 0.45f,
+             INST_BLOCK, 0.065f, 4000u + (unsigned)bar);
+    addNote(b, INST_BASS, degreeMidi(SCALE_HARMONIC_MINOR, tonic - 24, degree),
+            at, 0.7f, 0.22f, 0.0f, 4100u + (unsigned)bar);
+    addNote(b, INST_BASS,
+            degreeMidi(SCALE_HARMONIC_MINOR, tonic - 24, degree + 4), at + 2.0f,
+            0.7f, 0.2f, 0.0f, 4200u + (unsigned)bar);
+    for (int i = 0; i < 16; i++) {
+      int d = degree + ((i % 4) == 3 ? 6 : (i % 3) * 2);
+      addNote(b, INST_BLOCK, degreeMidi(SCALE_HARMONIC_MINOR, tonic + 12, d),
+              at + i * 0.25f, 0.14f, 0.042f, (i & 1) ? 0.52f : -0.52f,
+              4300u + (unsigned)(bar * 16 + i));
+    }
+    addBreakDrums(b, at, bar < 2 ? 0.8f : 1.0f, 4600u + (unsigned)bar * 37u);
+  }
+  addMotif(b, SCALE_HARMONIC_MINOR, tonic + 12, 0.0f, 0.75f, 0, INST_BLOCK,
+           0.15f, -0.16f, 4800u);
+  addMotif(b, SCALE_HARMONIC_MINOR, tonic + 12, 16.0f, 0.75f, 1, INST_BLOCK,
+           0.15f, 0.16f, 4900u);
+  addMotif(b, SCALE_HARMONIC_MINOR, tonic + 12, 32.0f, 0.75f, 0, INST_BLOCK,
+           0.17f, 0.0f, 5000u);
+}
+
+static void composeMenu(MusicBuild *b) {
+  static const signed char PROG[] = {0, 3, 5, 4, 0, 1, 3, 4};
+  int tonic = b->track->rootMidi;
+  for (int bar = 0; bar < b->track->bars; bar++) {
+    float at = bar * 4.0f;
+    int degree = PROG[bar];
+    addChord(b, SCALE_MAJOR, tonic, degree, at, 3.8f, INST_PAD, 0.065f,
+             5100u + (unsigned)bar);
+    addNote(b, INST_BASS, degreeMidi(SCALE_MAJOR, tonic - 24, degree), at,
+            1.75f, 0.17f, 0.0f, 5200u + (unsigned)bar);
+    addNote(b, INST_BASS, degreeMidi(SCALE_MAJOR, tonic - 24, degree + 4),
+            at + 2.0f, 1.7f, 0.14f, 0.0f, 5300u + (unsigned)bar);
+    addDrum(b, DRUM_KICK, at, 0.22f, 0.0f, 5400u + (unsigned)bar);
+    addDrum(b, DRUM_CLAP, at + 2.0f, 0.1f, 0.15f, 5500u + (unsigned)bar);
+    for (int i = 0; i < 4; i++) {
+      addDrum(b, DRUM_SHAKER, at + i + 0.5f, 0.045f, (i & 1) ? 0.5f : -0.5f,
+              5600u + (unsigned)(bar * 4 + i));
+    }
+  }
+  addMotif(b, SCALE_MAJOR, tonic, 0.0f, 1.0f, 0, INST_KEYS, 0.2f, -0.1f, 5700u);
+  addMotif(b, SCALE_MAJOR, tonic, 16.0f, 1.0f, 1, INST_KEYS, 0.19f, 0.1f,
+           5800u);
+  for (int bar = 2; bar < b->track->bars; bar += 4) {
+    float at = bar * 4.0f;
+    static const int ANSWER[] = {4, 3, 1, 0};
+    for (int i = 0; i < ARRAY_LEN(ANSWER); i++) {
+      addNote(b, INST_MALLET, degreeMidi(SCALE_MAJOR, tonic + 12, ANSWER[i]),
+              at + i * 0.75f, 0.48f, 0.09f, (i & 1) ? 0.42f : -0.42f,
+              5900u + (unsigned)(bar * 4 + i));
+    }
+  }
+}
+
+static void composeShop(MusicBuild *b) {
+  static const signed char PROG[] = {0, 3, 5, 4, 0, 1, 3, 4};
+  int tonic = b->track->rootMidi;
+  for (int bar = 0; bar < b->track->bars; bar++) {
+    float at = bar * 4.0f;
+    int degree = PROG[bar];
+    static const float STABS[] = {0.0f, 0.75f, 1.5f, 2.5f, 3.25f};
+    for (int i = 0; i < ARRAY_LEN(STABS); i++) {
+      addChord(b, SCALE_MAJOR, tonic, degree, at + STABS[i], 0.22f, INST_PLUCK,
+               0.07f, 6100u + (unsigned)(bar * 8 + i));
+    }
+    for (int i = 0; i < 4; i++) {
+      int d = degree + (i == 3 ? 6 : i * 2);
+      addNote(b, INST_BASS, degreeMidi(SCALE_MAJOR, tonic - 24, d), at + i,
+              0.62f, 0.15f, 0.0f, 6300u + (unsigned)(bar * 4 + i));
+      addDrum(b, DRUM_SHAKER, at + i + 0.5f, 0.06f, (i & 1) ? 0.58f : -0.58f,
+              6400u + (unsigned)(bar * 4 + i));
+    }
+    addDrum(b, DRUM_KICK, at, 0.2f, 0.0f, 6500u + (unsigned)bar);
+    addDrum(b, DRUM_CLAP, at + 2.0f, 0.13f, -0.12f, 6600u + (unsigned)bar);
+  }
+  addMotif(b, SCALE_MAJOR, tonic + 12, 0.0f, 1.0f, 0, INST_MALLET, 0.16f,
+           -0.16f, 6700u);
+  addMotif(b, SCALE_MAJOR, tonic + 12, 16.0f, 1.0f, 1, INST_MALLET, 0.16f,
+           0.16f, 6800u);
+  for (int bar = 2; bar < b->track->bars; bar += 2) {
+    float at = bar * 4.0f;
+    addNote(b, INST_MALLET, degreeMidi(SCALE_MAJOR, tonic + 24, bar % 7),
+            at + 3.5f, 0.22f, 0.075f, (bar & 2) ? 0.62f : -0.62f,
+            6900u + (unsigned)bar);
+  }
+}
+
+static void composeCredits(MusicBuild *b) {
+  static const signed char PROG[] = {0, 5, 3, 4, 1, 3, 4, 0};
+  int tonic = b->track->rootMidi;
+  for (int bar = 0; bar < b->track->bars; bar++) {
+    float at = bar * 4.0f;
+    int degree = PROG[bar];
+    addChord(b, SCALE_MAJOR, tonic, degree, at, 3.86f, INST_PAD, 0.082f,
+             7000u + (unsigned)bar);
+    addNote(b, INST_BASS, degreeMidi(SCALE_MAJOR, tonic - 24, degree), at, 3.5f,
+            0.12f, 0.0f, 7100u + (unsigned)bar);
+    addNote(b, INST_KEYS, degreeMidi(SCALE_MAJOR, tonic, degree), at, 1.6f,
+            0.105f, -0.25f, 7200u + (unsigned)bar);
+    addNote(b, INST_KEYS, degreeMidi(SCALE_MAJOR, tonic, degree + 4), at + 2.0f,
+            1.55f, 0.09f, 0.25f, 7300u + (unsigned)bar);
+    if (bar >= 4) {
+      addDrum(b, DRUM_SHAKER, at + 1.5f, 0.035f, -0.52f, 7400u + (unsigned)bar);
+      addDrum(b, DRUM_SHAKER, at + 3.5f, 0.035f, 0.52f, 7500u + (unsigned)bar);
+    }
+  }
+  addMotif(b, SCALE_MAJOR, tonic + 12, 0.0f, 1.5f, 0, INST_AIR, 0.15f, -0.18f,
+           7600u);
+  addMotif(b, SCALE_MAJOR, tonic + 12, 16.0f, 1.5f, -1, INST_AIR, 0.16f, 0.18f,
+           7700u);
+  addNote(b, INST_MALLET, degreeMidi(SCALE_MAJOR, tonic + 24, 0), 30.0f, 1.5f,
+          0.1f, 0.0f, 7800u);
+}
+
+static void composeResults(MusicBuild *b) {
+  static const signed char PROG[] = {0, 5, 3, 4};
+  int tonic = b->track->rootMidi;
+  for (int bar = 0; bar < b->track->bars; bar++) {
+    float at = bar * 4.0f;
+    int degree = PROG[bar];
+    addChord(b, SCALE_MINOR, tonic, degree, at, 3.86f, INST_PAD, 0.07f,
+             7900u + (unsigned)bar);
+    addNote(b, INST_BASS, degreeMidi(SCALE_MINOR, tonic - 24, degree), at,
+            3.45f, 0.1f, 0.0f, 8000u + (unsigned)bar);
+    static const int FALL[] = {4, 2, 1, 0};
+    for (int i = 0; i < ARRAY_LEN(FALL); i++) {
+      addNote(b, INST_KEYS,
+              degreeMidi(SCALE_MINOR, tonic + 12, FALL[i] + degree),
+              at + i * 0.75f, 0.48f, 0.085f, (i & 1) ? 0.25f : -0.25f,
+              8100u + (unsigned)(bar * 4 + i));
+    }
+  }
+}
+
+// Positional in MusicTrack order. MENU and SHOP deliberately share timing and
+// harmony so setTrack() can preserve their exact playhead during navigation.
+static const Track TRACKS[] = {
+    {116.0f, 12, 4, 62, STYLE_SUNNY, 0.1f, 0.1f, 0.125f, composeSunny},
+    {96.0f, 12, 3, 64, STYLE_SKIES, 0.18f, 0.2f, 0.105f, composeSkies},
+    {84.0f, 8, 4, 59, STYLE_NIGHT, 0.22f, 0.28f, 0.1f, composeNight},
+    {126.0f, 12, 4, 60, STYLE_MAZE, 0.08f, 0.08f, 0.13f, composeMaze},
+    {142.0f, 12, 4, 64, STYLE_BLOCKS, 0.06f, 0.06f, 0.135f, composeBlocks},
+    {104.0f, 8, 4, 67, STYLE_UI, 0.14f, 0.16f, 0.11f, composeMenu},
+    {104.0f, 8, 4, 67, STYLE_UI, 0.12f, 0.12f, 0.115f, composeShop},
+    {88.0f, 8, 4, 62, STYLE_CREDITS, 0.2f, 0.28f, 0.1f, composeCredits},
+    {72.0f, 4, 4, 57, STYLE_RESULTS, 0.2f, 0.24f, 0.09f, composeResults},
+};
+STATIC_ASSERT(ARRAY_LEN(TRACKS) == TRACK_COUNT, tracks_full);
+STATIC_ASSERT(THEME_COUNT == TRACK_MENU, theme_level_tracks_full);
+
+static const MusicTrack PRELOAD_ORDER[] = {
+    TRACK_MENU, TRACK_L1,   TRACK_L2,      TRACK_L3,      TRACK_L4,
+    TRACK_L5,   TRACK_SHOP, TRACK_CREDITS, TRACK_RESULTS,
+};
+STATIC_ASSERT(ARRAY_LEN(PRELOAD_ORDER) == TRACK_COUNT,
               audio_preload_order_full);
 
-// One precomputed loop buffer per track. Playback crossfades between the
-// currently-selected track and the one we're fading out of.
-static float *loopBuffer[TRACK_COUNT];
-static int loopSamples[TRACK_COUNT]; // per-track loop length in samples
-static int loopPos[TRACK_COUNT];     // per-track playback position
-static int curTrack = TRACK_MENU;    // track fading in / currently playing
-static int prevTrack = TRACK_MENU;   // track fading out
-static float fade = 1.0f; // 0..1 weight of curTrack (1 = crossfade complete)
-// Crossfade duration in samples (~2s).
-#define FADE_SAMPLES (2 * SAMPLE_RATE)
+static int16_t *loopBuffer[TRACK_COUNT];
+static int loopFrames[TRACK_COUNT];
+static int loopPos[TRACK_COUNT];
+static pthread_t preloadThread;
+static pthread_mutex_t preloadLock = PTHREAD_MUTEX_INITIALIZER;
+static bool preloadStarted;
+static bool preloadFinished;
+static bool preloadJoined;
 
-// Lightweight live layers follow the current track's beat (with one fallback
-// clock before it is baked). They are synthesized during streaming, so rising
-// combos, a dangerous fall, and the finale need no extra loop buffers or data.
-#define BEAT_SAMPLES (SAMPLE_RATE / 2) // 120 BPM quarter note
-#define HIT_SIMPLIFY_SAMPLES (SAMPLE_RATE * 6 / 5)
-#define HIT_RECOVER_SAMPLES (SAMPLE_RATE * 4 / 5)
-static unsigned dynamicsPos;
+static float dryAt(const float *buf, int frames, int frame, int channel) {
+  frame = wrapFrame(frame, frames);
+  return buf[frame * 2 + channel];
+}
+
+static void applySpace(float *buf, int frames, const Track *track) {
+  if (track->echo <= 0.0f && track->room <= 0.0f) {
+    return;
+  }
+  size_t bytes = (size_t)frames * CHANNELS * sizeof(float);
+  float *dry = malloc(bytes);
+  if (dry == NULL) {
+    return;
+  }
+  memcpy(dry, buf, bytes);
+  int beat = (int)(SAMPLE_RATE * 60.0f / track->bpm + 0.5f);
+  int echo1 = beat * 3 / 4;
+  int echo2 = beat * 3 / 2;
+  static const float ROOM_SEC[] = {0.043f, 0.071f, 0.113f, 0.173f};
+  static const float ROOM_GAIN[] = {0.2f, 0.15f, 0.11f, 0.08f};
+
+  for (int i = 0; i < frames; i++) {
+    float l = dry[i * 2], r = dry[i * 2 + 1];
+    l += track->echo * (0.42f * dryAt(dry, frames, i - echo1, 1) +
+                        0.22f * dryAt(dry, frames, i - echo2, 0));
+    r += track->echo * (0.42f * dryAt(dry, frames, i - echo1, 0) +
+                        0.22f * dryAt(dry, frames, i - echo2, 1));
+    for (int tap = 0; tap < ARRAY_LEN(ROOM_SEC); tap++) {
+      int delay = (int)(ROOM_SEC[tap] * SAMPLE_RATE);
+      float gl = dryAt(dry, frames, i - delay, tap & 1);
+      float gr = dryAt(dry, frames, i - delay, (tap & 1) ^ 1);
+      l += track->room * ROOM_GAIN[tap] * gl;
+      r += track->room * ROOM_GAIN[tap] * gr;
+    }
+    buf[i * 2] = l;
+    buf[i * 2 + 1] = r;
+  }
+  free(dry);
+}
+
+static void masterTrack(float *buf, int frames, const Track *track) {
+  float prevIn[2] = {0.0f, 0.0f};
+  float prevOut[2] = {0.0f, 0.0f};
+  double sum = 0.0;
+  const float driveScale = 1.0f / tanhf(1.15f);
+
+  for (int i = 0; i < frames; i++) {
+    for (int ch = 0; ch < 2; ch++) {
+      int at = i * 2 + ch;
+      float saturated = tanhf(buf[at] * 1.15f) * driveScale;
+      float highpassed = saturated - prevIn[ch] + 0.995f * prevOut[ch];
+      prevIn[ch] = saturated;
+      prevOut[ch] = highpassed;
+      buf[at] = highpassed;
+      sum += (double)highpassed * highpassed;
+    }
+  }
+
+  float rms = sqrtf((float)(sum / (frames * 2)));
+  if (rms < 0.00001f) {
+    return;
+  }
+  float gain = track->targetRms / rms;
+  // A soft-knee master catches isolated synth transients without turning one
+  // tall peak into a quieter whole song. Pulse-heavy eras need extra true-peak
+  // margin because reconstruction can overshoot their individual samples.
+  float ceiling = (track->style == STYLE_MAZE || track->style == STYLE_BLOCKS)
+                      ? 0.47f
+                      : (track->style == STYLE_SUNNY ? 0.56f : 0.64f);
+  float knee = ceiling - 0.16f;
+  for (int i = 0; i < frames * 2; i++) {
+    float sample = buf[i] * gain;
+    float mag = fabsf(sample);
+    if (mag > knee) {
+      mag = knee + (ceiling - knee) * tanhf((mag - knee) / (ceiling - knee));
+      sample = copysignf(mag, sample);
+    }
+    buf[i] = sample;
+  }
+}
+
+static void buildLoop(int track) {
+  if (track < 0 || track >= TRACK_COUNT || loopBuffer[track] != NULL ||
+      loopFrames[track] != 0) {
+    return;
+  }
+  const Track *def = &TRACKS[track];
+  float seconds = def->bars * def->beatsPerBar * 60.0f / def->bpm;
+  int frames = (int)(seconds * SAMPLE_RATE + 0.5f);
+  size_t count = (size_t)frames * CHANNELS;
+  float *mix = calloc(count, sizeof(float));
+  if (mix == NULL) {
+    loopFrames[track] = -1;
+    return;
+  }
+
+  MusicBuild build = {.buf = mix, .frames = frames, .track = def};
+  def->compose(&build);
+  applySpace(mix, frames, def);
+  masterTrack(mix, frames, def);
+
+  int16_t *out = malloc(count * sizeof(int16_t));
+  if (out == NULL) {
+    free(mix);
+    loopFrames[track] = -1;
+    return;
+  }
+  for (size_t i = 0; i < count; i++) {
+    float dither =
+        (noiseAt(0xD17E4u, (unsigned)i) - noiseAt(0xA11CEu, (unsigned)i)) /
+        65536.0f;
+    float sample = clampf(mix[i] + dither, -1.0f, 1.0f);
+    out[i] = (int16_t)lrintf(sample * 32767.0f);
+  }
+  free(mix);
+  loopBuffer[track] = out;
+  loopFrames[track] = frames;
+}
+
+static bool validTrack(int track) { return track >= 0 && track < TRACK_COUNT; }
+static bool levelTrack(int track) {
+  return track >= TRACK_L1 && track <= TRACK_L5;
+}
+static bool menuPair(int a, int b) {
+  return (a == TRACK_MENU || a == TRACK_SHOP) &&
+         (b == TRACK_MENU || b == TRACK_SHOP);
+}
+
+static int curTrack = TRACK_NONE;
+static int prevTrack = TRACK_NONE;
+static float crossfade = 1.0f;
+static int crossfadeFrames = 1;
+static float pauseTarget;
+static float pauseMix;
+static float musicVol = 1.0f;
+static float sfxVol = 1.0f;
+
+void setTrack(int track) {
+  if ((track != TRACK_NONE && !validTrack(track)) || track == curTrack) {
+    return;
+  }
+
+  int outgoing = curTrack;
+  prevTrack = outgoing;
+  curTrack = track;
+  crossfade = 0.0f;
+
+  if (validTrack(track)) {
+    if (menuPair(outgoing, track) && loopFrames[outgoing] > 0 &&
+        loopFrames[track] > 0) {
+      loopPos[track] = loopPos[outgoing] % loopFrames[track];
+    } else {
+      loopPos[track] = 0;
+    }
+    float seconds;
+    if (levelTrack(outgoing) && levelTrack(track)) {
+      seconds = TRACKS[track].beatsPerBar * 60.0f / TRACKS[track].bpm;
+    } else if (menuPair(outgoing, track)) {
+      seconds = 2.0f * 60.0f / TRACKS[track].bpm;
+    } else {
+      seconds = 0.65f;
+    }
+    crossfadeFrames = (int)(seconds * SAMPLE_RATE + 0.5f);
+  } else {
+    crossfadeFrames = (int)(0.35f * SAMPLE_RATE);
+  }
+  if (crossfadeFrames < 1) {
+    crossfadeFrames = 1;
+  }
+}
+
+void setMusicPaused(bool paused) { pauseTarget = paused ? 1.0f : 0.0f; }
+
+void setVolumes(float music, float sfxVolume) {
+  musicVol = clampf(music, 0.0f, 1.0f);
+  sfxVol = clampf(sfxVolume, 0.0f, 1.0f);
+}
+
+static Stereo trackSample(int track) {
+  if (!validTrack(track) || loopBuffer[track] == NULL ||
+      loopFrames[track] <= 0) {
+    return (Stereo){0.0f, 0.0f};
+  }
+  int at = loopPos[track] * 2;
+  return (Stereo){loopBuffer[track][at] / 32768.0f,
+                  loopBuffer[track][at + 1] / 32768.0f};
+}
+
+static void advanceTrack(int track) {
+  if (validTrack(track) && loopFrames[track] > 0) {
+    loopPos[track] = (loopPos[track] + 1) % loopFrames[track];
+  }
+}
+
+typedef struct {
+  float seconds;
+  float gain;
+  float duck;
+  unsigned char priority;
+} CueDef;
+
+static const CueDef CUES[] = {
+    {0.16f, 0.32f, 0.04f, 2}, // COIN
+    {0.22f, 0.38f, 0.08f, 3}, // BOUNCE
+    {0.48f, 0.42f, 0.2f, 5},  // CRUMBLE
+    {0.48f, 0.32f, 0.12f, 4}, // MAGNET
+    {0.58f, 0.34f, 0.16f, 5}, // ROCKET
+    {0.52f, 0.3f, 0.1f, 4},   // BALLOON
+    {0.62f, 0.34f, 0.14f, 5}, // SHIELD
+    {0.42f, 0.34f, 0.12f, 5}, // PELLET
+    {0.48f, 0.38f, 0.2f, 6},  // DEBUFF
+    {0.5f, 0.46f, 0.42f, 8},  // HIT
+    {0.3f, 0.4f, 0.2f, 6},    // SPLAT
+    {0.09f, 0.24f, 0.0f, 2},  // SELECT
+    {0.72f, 0.34f, 0.12f, 5}, // PURCHASE
+    {0.32f, 0.38f, 0.16f, 6}, // DENIED
+    {0.95f, 0.34f, 0.18f, 7}, // LEVELUP
+    {0.9f, 0.38f, 0.35f, 8},  // GAMEOVER
+    {1.35f, 0.38f, 0.3f, 9},  // NEWBEST
+    {0.5f, 0.23f, 0.14f, 7},  // STATIC
+    {1.0f, 0.3f, 0.0f, 9},    // LOGO
+};
+STATIC_ASSERT(ARRAY_LEN(CUES) == SFX_COUNT, cue_defs_full);
+
+typedef struct {
+  bool active;
+  SfxId type;
+  int pos;
+  int length;
+  float pitch;
+  float left;
+  float right;
+  float gain;
+  SoundStyle style;
+  int rootMidi;
+  unsigned seed;
+  bool musicBus;
+} Voice;
+
+static Voice voices[MAX_VOICES];
+static unsigned voiceSerial;
+static bool logoPlayed;
+
+static SoundStyle currentStyle(void) {
+  return validTrack(curTrack) ? TRACKS[curTrack].style : STYLE_UI;
+}
+
+static int currentRoot(void) {
+  return validTrack(curTrack) ? TRACKS[curTrack].rootMidi : 67;
+}
+
+static float stylePitch(SoundStyle style) { return STYLE_PITCH[style]; }
+
+static int findVoice(unsigned priority) {
+  int candidate = -1;
+  float oldest = -1.0f;
+  for (int i = 0; i < MAX_VOICES; i++) {
+    if (!voices[i].active) {
+      return i;
+    }
+    unsigned livePriority = CUES[voices[i].type].priority;
+    float age = (float)voices[i].pos / voices[i].length;
+    if (livePriority <= priority && age > oldest) {
+      candidate = i;
+      oldest = age;
+    }
+  }
+  return candidate;
+}
+
+static void triggerCue(SfxId id, float pitch, float pan, bool musicBus,
+                       SoundStyle style, int rootMidi) {
+  if (id < 0 || id >= SFX_COUNT || pitch <= 0.0f || !isfinite(pitch) ||
+      !isfinite(pan)) {
+    return;
+  }
+  int slot = findVoice(CUES[id].priority);
+  if (slot < 0) {
+    return;
+  }
+  unsigned seed = hash32(++voiceSerial * 0x9e3779b9u + (unsigned)id * 101u);
+  float randomPitch = id == SFX_COIN ? 0.004f : 0.012f;
+  pitch *= 1.0f + noiseAt(seed, 1u) * randomPitch;
+  pan =
+      clampf(pan + noiseAt(seed, 2u) * (musicBus ? 0.0f : 0.035f), -1.0f, 1.0f);
+  float angle = (pan + 1.0f) * PI * 0.25f;
+  voices[slot] = (Voice){
+      .active = true,
+      .type = id,
+      .pos = 0,
+      .length = (int)(CUES[id].seconds * SAMPLE_RATE + 0.5f),
+      .pitch = pitch,
+      .left = cosf(angle),
+      .right = sinf(angle),
+      .gain = CUES[id].gain * (0.96f + 0.08f * noiseAt(seed, 3u)),
+      .style = style,
+      .rootMidi = rootMidi,
+      .seed = seed,
+      .musicBus = musicBus,
+  };
+}
+
+void sfxAt(SfxId id, float pitch, float pan) {
+  triggerCue(id, pitch, pan, false, currentStyle(), currentRoot());
+}
+
+void sfxPitched(SfxId id, float pitch) { sfxAt(id, pitch, 0.0f); }
+void sfx(SfxId id) { sfxAt(id, 1.0f, 0.0f); }
+
+void musicLogoSting(void) {
+  if (!logoPlayed) {
+    logoPlayed = true;
+    triggerCue(SFX_LOGO, 1.0f, 0.0f, true, STYLE_UI,
+               TRACKS[TRACK_MENU].rootMidi);
+  }
+}
+
+void musicEraTransition(int era) {
+  if (era >= 0 && era < THEME_COUNT) {
+    triggerCue(SFX_LEVELUP, 1.0f, 0.0f, true, TRACKS[era].style,
+               TRACKS[era].rootMidi);
+  }
+}
+
+static float cueEnv(const Voice *v, float attackSeconds, float curve) {
+  float attack = attackSeconds * SAMPLE_RATE;
+  float in = v->pos < attack ? v->pos / attack : 1.0f;
+  float out = 1.0f - (float)v->pos / v->length;
+  return in * powf(fmaxf(out, 0.0f), curve);
+}
+
+static float steppedTone(const Voice *v, const int *semitones, int count,
+                         float x, int octave) {
+  int note = (int)(x * count);
+  if (note >= count) {
+    note = count - 1;
+  }
+  int start = v->length * note / count;
+  int end = v->length * (note + 1) / count;
+  int local = v->pos - start;
+  int attack = (int)(0.003f * SAMPLE_RATE);
+  int release = (int)(0.008f * SAMPLE_RATE);
+  float noteEnv = fminf((float)local / attack, 1.0f) *
+                  fminf((float)(end - v->pos) / release, 1.0f);
+  float hz = midiHz(v->rootMidi + octave + semitones[note]) * v->pitch *
+             stylePitch(v->style);
+  float t = (float)local / SAMPLE_RATE;
+  float cycles = vibratoCycles(hz, t, 5.0f, 0.0015f);
+  return noteEnv * styleWave(v->style, cycles, hz, local, v->seed);
+}
+
+static float chirpWave(const Voice *v, float startHz, float endHz) {
+  float t = (float)v->pos / SAMPLE_RATE;
+  float duration = (float)v->length / SAMPLE_RATE;
+  startHz *= v->pitch * stylePitch(v->style);
+  endHz *= v->pitch * stylePitch(v->style);
+  float cycles = sweepCycles(startHz, endHz, t, duration);
+  float hz = startHz + (endHz - startHz) * t / duration;
+  return styleWave(v->style, cycles, fabsf(hz), v->pos, v->seed);
+}
+
+static float renderCueMono(const Voice *v, unsigned seedOffset) {
+  float x = (float)v->pos / v->length;
+  float t = (float)v->pos / SAMPLE_RATE;
+  float env = cueEnv(v, 0.003f, 1.8f);
+  float n = noiseAt(v->seed + seedOffset, (unsigned)v->pos);
+  float smooth = smoothNoise(v->seed + seedOffset, (unsigned)v->pos, 43u);
+
+  switch (v->type) {
+  case SFX_COIN: {
+    static const int NOTES[] = {0, 4, 9};
+    return cueEnv(v, 0.002f, 2.4f) *
+           (0.82f * steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 24) +
+            0.18f * sinf(TAU * midiHz(v->rootMidi + 36) * v->pitch * t));
+  }
+  case SFX_BOUNCE:
+    return env * (0.82f * chirpWave(v, 360.0f, 92.0f) +
+                  0.18f * smooth * expf(-x * 8.0f));
+  case SFX_CRUMBLE: {
+    float chunks = sinf(
+        TAU * sweepCycles(145.0f, 48.0f, t, (float)v->length / SAMPLE_RATE));
+    float crack = (n - noiseAt(v->seed + seedOffset,
+                               (unsigned)(v->pos > 0 ? v->pos - 1 : 0)));
+    float pulse = 0.55f + 0.45f * fabsf(sinf(TAU * 13.0f * t));
+    return env * (0.48f * chunks + 0.52f * crack * pulse);
+  }
+  case SFX_MAGNET: {
+    static const int NOTES[] = {0, 7, 12, 16};
+    float hum = sinf(TAU * (90.0f * t + 5.0f * sinf(TAU * 7.0f * t)));
+    return env *
+           (0.8f * steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 12) + 0.2f * hum);
+  }
+  case SFX_ROCKET: {
+    float rise = chirpWave(v, 110.0f, 760.0f);
+    float whoosh = 0.55f * n + 0.45f * smooth;
+    return cueEnv(v, 0.006f, 1.25f) *
+           (0.42f * rise + 0.58f * whoosh * (0.4f + 0.6f * x));
+  }
+  case SFX_BALLOON: {
+    float wobble = 1.0f + 0.035f * sinf(TAU * 6.0f * t);
+    float hz = (310.0f + 390.0f * x) * v->pitch * stylePitch(v->style) * wobble;
+    float cycles =
+        sweepCycles(310.0f, 700.0f, t, (float)v->length / SAMPLE_RATE) *
+        v->pitch * stylePitch(v->style);
+    return cueEnv(v, 0.025f, 1.5f) *
+           (0.85f * styleWave(v->style, cycles, hz, v->pos, v->seed) +
+            0.15f * smooth);
+  }
+  case SFX_SHIELD: {
+    float root = midiHz(v->rootMidi + 12) * v->pitch * stylePitch(v->style);
+    float shimmer = sinf(TAU * root * t) + 0.7f * sinf(TAU * root * 1.5f * t) +
+                    0.5f * sinf(TAU * root * 2.0f * t);
+    return cueEnv(v, 0.008f, 1.35f) * shimmer * 0.48f;
+  }
+  case SFX_PELLET: {
+    float pulse = chirpWave(v, 95.0f, 280.0f);
+    float ring = sinf(TAU * midiHz(v->rootMidi + 24) * v->pitch * t);
+    return env * (0.72f * pulse + 0.28f * ring);
+  }
+  case SFX_DEBUFF: {
+    static const int NOTES[] = {6, 3, 0, -6};
+    return env *
+           (0.72f * steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 12) + 0.28f * n);
+  }
+  case SFX_HIT: {
+    float body = chirpWave(v, 210.0f, 46.0f);
+    float crack = n - noiseAt(v->seed + seedOffset,
+                              (unsigned)(v->pos > 0 ? v->pos - 1 : 0));
+    return cueEnv(v, 0.0015f, 2.0f) * (0.58f * body + 0.42f * crack);
+  }
+  case SFX_SPLAT: {
+    float body = chirpWave(v, 175.0f, 55.0f);
+    float wet = smoothNoise(v->seed + seedOffset, (unsigned)v->pos, 19u);
+    return env * (0.58f * body + 0.42f * wet);
+  }
+  case SFX_SELECT: {
+    static const int NOTES[] = {0, 7};
+    return cueEnv(v, 0.0015f, 2.8f) *
+           steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 24);
+  }
+  case SFX_PURCHASE: {
+    static const int NOTES[] = {0, 2, 4, 7, 9};
+    return cueEnv(v, 0.002f, 1.35f) *
+           steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 24);
+  }
+  case SFX_DENIED: {
+    static const int NOTES[] = {0, -6};
+    return env * steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 0);
+  }
+  case SFX_LEVELUP: {
+    static const int NOTES[] = {0, 4, 7, 12, 16};
+    return cueEnv(v, 0.004f, 1.2f) *
+           steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 12);
+  }
+  case SFX_GAMEOVER: {
+    static const int NOTES[] = {7, 3, 0, -5};
+    return cueEnv(v, 0.006f, 1.15f) *
+           steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 12);
+  }
+  case SFX_NEWBEST: {
+    static const int NOTES[] = {0, 4, 7, 11, 12, 16, 19};
+    float lead = steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 12);
+    float fifth = steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 19);
+    return cueEnv(v, 0.004f, 1.05f) * (0.68f * lead + 0.32f * fifth);
+  }
+  case SFX_STATIC: {
+    float fade = sinf(PI * clampf(x, 0.0f, 1.0f));
+    float hum = sinf(TAU * 60.0f * t) + 0.45f * sinf(TAU * 120.0f * t);
+    return fade * (0.78f * n + 0.14f * smooth + 0.08f * hum);
+  }
+  case SFX_LOGO: {
+    static const int NOTES[] = {0, 4, 7, 14};
+    float lead = steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 12);
+    float low = sinf(TAU * midiHz(v->rootMidi - 12) * t);
+    return cueEnv(v, 0.012f, 1.1f) * (0.78f * lead + 0.22f * low);
+  }
+  case SFX_COUNT:
+    break;
+  }
+  return 0.0f;
+}
+
+static Stereo renderVoice(const Voice *v) {
+  float mono = v->gain * renderCueMono(v, 0u);
+  float right =
+      v->type == SFX_STATIC ? v->gain * renderCueMono(v, 0x51A71Cu) : mono;
+  return (Stereo){mono * v->left, right * v->right};
+}
+
+static float voiceActivity(const Voice *v) {
+  float x = 1.0f - (float)v->pos / v->length;
+  return fmaxf(x, 0.0f);
+}
+
+#define HIT_HOLD_FRAMES (SAMPLE_RATE * 2 / 5)
+#define HIT_RECOVER_FRAMES (SAMPLE_RATE * 4 / 5)
+static int hitFrames;
 static int musicCombo;
 static float dangerTarget, dangerMix;
 static float finaleTarget, finaleMix;
-static int hitSimplifyLeft;
-static float simpleMusic;
+static Stereo simpleMusic;
+static Stereo pauseFilter;
+static float duckMix;
+static unsigned dynamicsPos;
 
 void setMusicDynamics(int combo, float danger, float finale) {
   musicCombo = combo > 0 ? combo : 0;
@@ -927,552 +1329,225 @@ void setMusicDynamics(int combo, float danger, float finale) {
   finaleTarget = clampf(finale, 0.0f, 1.0f);
 }
 
-void musicMonsterHit(void) { hitSimplifyLeft = HIT_SIMPLIFY_SAMPLES; }
+void musicMonsterHit(void) { hitFrames = HIT_HOLD_FRAMES + HIT_RECOVER_FRAMES; }
 
-// Independent channel levels (0..1); settings.c pushes these via setVolumes.
-static float musicVol = 1.0f, sfxVol = 1.0f;
-void setVolumes(float music, float sfx) {
-  musicVol = music;
-  sfxVol = sfx;
-}
-
-// Short attack / long release so notes don't click and have a soft tail.
-static float adsr(float local, float dur) {
-  float a = 0.008f, r = 0.08f;
-  if (local < a) {
-    return local / a;
-  }
-  if (local > dur - r) {
-    float e = (dur - local) / r;
-    return e < 0.0f ? 0.0f : e;
-  }
-  return 1.0f;
-}
-
-// A pulse wave of the given duty cycle from a (possibly >1) phase in cycles.
-static float pulseWave(float cycles, float duty) {
-  float f = cycles - floorf(cycles);
-  return f < duty ? 1.0f : -1.0f;
-}
-
-// Lead instrument voice (harmonic content selected by the track's Timbre).
-// Bass-register notes (< C3, 130Hz) always use the rounded warm shape so the
-// oom-pah bass never buzzes under a bright pulse/square lead.
-static float tone(float freq, float local, Timbre tb) {
-  if (freq < 130.0f) {
-    tb = TIMBRE_WARM;
-  }
-  switch (tb) {
-  case TIMBRE_SOFT: {
-    float vib = 1.0f + 0.003f * sinf(2.0f * PI * 4.0f * local);
-    float ph = 2.0f * PI * freq * vib * local;
-    return sinf(ph) + 0.15f * sinf(2.0f * ph);
-  }
-  case TIMBRE_PULSE: {
-    float vib = 1.0f + 0.004f * sinf(2.0f * PI * 5.5f * local);
-    float p = freq * vib * local;
-    return 0.85f * pulseWave(p, 0.30f) + 0.15f * sinf(2.0f * PI * p);
-  }
-  case TIMBRE_SQUARE: {
-    float vib = 1.0f + 0.004f * sinf(2.0f * PI * 5.5f * local);
-    float p = freq * vib * local;
-    return 0.8f * pulseWave(p, 0.5f) + 0.2f * sinf(2.0f * PI * p);
-  }
-  case TIMBRE_WARM:
-  default: {
-    float vib = 1.0f + 0.004f * sinf(2.0f * PI * 5.5f * local);
-    float ph = 2.0f * PI * freq * vib * local;
-    return sinf(ph) + 0.45f * sinf(2.0f * ph) + 0.2f * sinf(3.0f * ph);
-  }
-  }
-}
-
-// --- Baked percussion --------------------------------------------------------
-// Drum voices synthesized straight into the loop buffer (no note frequencies).
-static float sweep(float base, float depth, int pos, int len); // defined below
-typedef enum { DRUM_KICK, DRUM_SNARE, DRUM_HAT } DrumType;
-
-// White noise in [-1, 1], the raw material for snares/hats and the HIT/SPLAT
-// crackle.
-static float noise(void) { return GetRandomValue(-1000, 1000) / 1000.0f; }
-
-// Length of each drum voice in samples.
-static int drumLen(DrumType d) {
-  switch (d) {
-  case DRUM_KICK:
-    return (int)(0.12f * SAMPLE_RATE);
-  case DRUM_SNARE:
-    return (int)(0.12f * SAMPLE_RATE);
-  case DRUM_HAT:
-  default:
-    return (int)(0.03f * SAMPLE_RATE);
-  }
-}
-
-// Add one drum hit at `startSec` into buf, wrapping the tail past the loop seam
-// so a hit near the end stays seamless. Snappy exponential decay.
-static void addDrum(float *buf, int samples, DrumType d, float startSec,
-                    float gain) {
-  int start = (int)(startSec * SAMPLE_RATE);
-  int len = drumLen(d);
-  for (int i = 0; i < len; i++) {
-    float t = (float)i / SAMPLE_RATE;
-    float env = expf(-9.0f * (float)i / len);
-    float s = 0.0f;
-    switch (d) {
-    case DRUM_KICK: { // punchy pitch-swept sine
-      float f = sweep(150.0f, 100.0f, i, len);
-      s = sinf(2.0f * PI * f * t);
-      break;
-    }
-    case DRUM_SNARE: // noise crack + short tonal body
-      s = 0.7f * noise() + 0.3f * sinf(2.0f * PI * 200.0f * t);
-      break;
-    case DRUM_HAT: // bright noise tick
-      s = noise();
-      break;
-    }
-    buf[(start + i) % samples] += gain * env * s;
-  }
-}
-
-// Lay a track's beat pattern across the whole loop on a 0.5s grid (a whole
-// number of beats over every integer-second loop length, so the seam aligns).
-static void bakeDrums(float *buf, int samples, DrumStyle style,
-                      float duration) {
-  if (style == DRUMS_NONE) {
-    return;
-  }
-  const float beat = 0.5f;
-  int beats = (int)(duration / beat + 0.5f);
-  for (int b = 0; b < beats; b++) {
-    float ts = b * beat;
-    addDrum(buf, samples, DRUM_KICK, ts, 0.9f); // four-on-the-floor
-    addDrum(buf, samples, DRUM_HAT, ts + beat * 0.5f, 0.35f); // offbeat hat
-    if (b % 2 == 1) {
-      addDrum(buf, samples, DRUM_SNARE, ts, 0.6f); // backbeat (beats 2 & 4)
-    }
-    if (style == DRUMS_DRIVING) {
-      addDrum(buf, samples, DRUM_HAT, ts, 0.25f); // extra on-beat hat
-    }
-  }
-}
-
-// Seam-safe ambience: two fixed delay taps read from a dry copy with modulo
-// wrap, so the echo is continuous across the loop seam and can't blow up (no
-// feedback). `dry` is the buffer before this call; result written into `buf`.
-static void bakeEcho(float *buf, const float *dry, int samples, float mix) {
-  if (mix <= 0.0f) {
-    return;
-  }
-  int d = (int)(0.18f * SAMPLE_RATE);
-  for (int i = 0; i < samples; i++) {
-    float e1 = dry[((i - d) % samples + samples) % samples];
-    float e2 = dry[((i - 2 * d) % samples + samples) % samples];
-    buf[i] = dry[i] + mix * (0.6f * e1 + 0.35f * e2);
-  }
-}
-
-// Downbeat accent: notes on a whole beat hit hardest, half-beats medium, the
-// rest softer — so a flat grid of equal notes breathes with groove.
-static float accent(float start) {
-  float f = start - floorf(start / 0.5f) * 0.5f; // position within a 0.5s beat
-  if (fmodf(start, 1.0f) < 0.01f) {
-    return 1.15f; // strong beat
-  }
-  return f < 0.01f ? 0.95f : 0.8f; // half-beat vs offbeat
-}
-
-// Precompute one full loop of a track's arrangement. Called once per track at
-// startup. ponytail: all CPU cost is here at startup, one buffer per track.
-static void buildLoop(int track) {
-  if (loopBuffer[track] != NULL) {
-    return;
-  }
-  const Note *notes = TRACKS[track].notes;
-  int noteCount = TRACKS[track].count;
-  Timbre timbre = TRACKS[track].timbre;
-  int samples = (int)(TRACKS[track].duration * SAMPLE_RATE);
-  loopSamples[track] = samples;
-
-  loopBuffer[track] = calloc((size_t)samples, sizeof(float));
-  float *buf = loopBuffer[track];
-  if (buf == NULL) {
-    return; // out of memory: leave the slot NULL; updateAudio plays it silent
-  }
-  // Layered build: (a) notes + pedal, (b) drums, (c) echo, (d) normalize.
-  // Walk only each note's live span. The old sample-first loop tested every
-  // note against every sample, spending almost all startup time rejecting
-  // silent notes (especially in the 64-second track).
-  for (int n = 0; n < noteCount; n++) {
-    float gain = 0.5f * accent(notes[n].start);
-    int start = (int)(notes[n].start * SAMPLE_RATE);
-    for (int i = start; i < samples; i++) {
-      float local = (float)i / SAMPLE_RATE - notes[n].start;
-      if (local >= notes[n].duration) {
-        break;
-      }
-      if (local >= 0.0f) {
-        buf[i] += gain * adsr(local, notes[n].duration) *
-                  tone(notes[n].frequency, local, timbre);
-      }
-    }
-  }
-  for (int i = 0; i < samples; i++) {
-    float t = (float)i / SAMPLE_RATE;
-    // Soft tonic (A2) pedal pad under everything for warmth, with slow tremolo.
-    // A2=110Hz over an integer number of seconds is whole cycles, so the loop
-    // seam stays seamless for any track (32s -> 3520, 64s -> 7040).
-    float trem = 0.85f + 0.15f * sinf(2.0f * PI * 0.2f * t);
-    buf[i] +=
-        0.07f * trem *
-        (sinf(2.0f * PI * A2 * t) + 0.5f * sinf(2.0f * PI * A2 * 2.0f * t));
-  }
-
-  // (b) Percussion, baked straight into the buffer with seam-wrapping tails.
-  bakeDrums(buf, samples, TRACKS[track].drums, TRACKS[track].duration);
-
-  // (c) Ambience: 2-tap delay from a dry copy (seam-safe, no feedback).
-  if (TRACKS[track].echo > 0.0f) {
-    float *dry = malloc(samples * sizeof(float));
-    if (dry != NULL) {
-      memcpy(dry, buf, samples * sizeof(float));
-      bakeEcho(buf, dry, samples, TRACKS[track].echo);
-      free(dry);
-    }
-  }
-
-  // (d) Normalize to a safe headroom peak; the tanh limiter catches SFX on top.
-  float peak = 0.0001f;
-  for (int i = 0; i < samples; i++) {
-    float mag = fabsf(buf[i]);
-    if (mag > peak) {
-      peak = mag;
-    }
-  }
-  assert(isfinite(peak)); // synthesis must not produce NaN/Inf
-  float gain = 0.9f / peak;
-  for (int i = 0; i < samples; i++) {
-    buf[i] *= gain;
-  }
-}
-
-// The five level tracks crossfade at theme-band boundaries; menu and game over
-// are separate screens, so switching to/from them is a hard cut - no music
-// bleeds across a UI boundary.
-static bool isLevelTrack(int t) { return t >= TRACK_L1 && t <= TRACK_L5; }
-
-// Switch to `track` (no-op if already selected). Crossfades over FADE_SAMPLES
-// only between two level tracks; any switch involving menu/game over cuts
-// instantly. SFX pick up the new track's variant immediately.
-void setTrack(int track) {
-  if (track < 0 || track >= TRACK_COUNT || track == curTrack) {
-    return;
-  }
-  // ponytail: single 2-track crossfade — a rapid re-switch mid-fade snaps the
-  // outgoing track; add a proper fade stack only if that's ever audible.
-  prevTrack = curTrack;
-  curTrack = track;
-  fade = (isLevelTrack(track) && isLevelTrack(prevTrack)) ? 0.0f : 1.0f;
-  if (!isLevelTrack(track)) {
-    musicCombo = 0;
-    dangerTarget = dangerMix = 0.0f;
-    finaleTarget = finaleMix = 0.0f;
-    hitSimplifyLeft = 0;
-  }
-}
-
-// --- Procedural sound effects ------------------------------------------------
-// A small pool of voices synthesized on the fly and summed into the music
-// stream. No sample files: every effect is math over its sample index.
-
-// Effect lengths in samples (SfxId lives in sound.h).
-static const int sfxLen[] = {
-    (int)(0.12f * SAMPLE_RATE), // SFX_COIN
-    (int)(0.15f * SAMPLE_RATE), // SFX_BOUNCE
-    (int)(0.35f * SAMPLE_RATE), // SFX_POWERUP
-    (int)(0.40f * SAMPLE_RATE), // SFX_HIT
-    (int)(0.08f * SAMPLE_RATE), // SFX_SELECT
-    (int)(0.70f * SAMPLE_RATE), // SFX_LEVELUP
-    (int)(0.50f * SAMPLE_RATE), // SFX_GAMEOVER
-    (int)(0.18f * SAMPLE_RATE), // SFX_SPLAT
-    (int)(0.22f * SAMPLE_RATE), // SFX_PICKUP
-    (int)(1.10f * SAMPLE_RATE), // SFX_NEWBEST
-};
-// Every SfxId must have a length — a 0 slot divides by zero in renderVoice.
-STATIC_ASSERT(sizeof(sfxLen) / sizeof(sfxLen[0]) == SFX_COUNT,
-              sfx_lengths_full);
-
-// ponytail: fixed 8 voices; overlapping triggers past 8 drop silently — grow
-// the pool only if that's ever audible.
-#define MAX_VOICES 8
-typedef struct {
-  bool active;
-  int type;
-  int pos;     // samples elapsed since trigger
-  float pitch; // frequency scale (1.0 = normal)
-} Voice;
-static Voice voices[MAX_VOICES];
-
-void sfxPitched(SfxId id, float pitch) {
-  if (id < 0 || id >= SFX_COUNT || pitch <= 0.0f || !isfinite(pitch)) {
-    return;
-  }
-  for (int i = 0; i < MAX_VOICES; i++) {
-    if (!voices[i].active) {
-      voices[i] = (Voice){true, id, 0, pitch};
-      return;
-    }
-  }
-}
-
-void sfx(SfxId id) { sfxPitched(id, 1.0f); }
-
-// One compact fanfare, transposed per arriving era so each boundary has a
-// recognizable stinger without five more note lists. Roots: A, D, F, E, C.
-static const float ERA_STINGER_PITCH[] = {0.84f, 1.12f, 1.335f, 1.26f, 1.0f};
-STATIC_ASSERT(sizeof(ERA_STINGER_PITCH) / sizeof(ERA_STINGER_PITCH[0]) ==
-                  THEME_COUNT,
-              era_stinger_pitches_full);
-
-void musicEraTransition(int era) {
-  if (era >= 0 && era < THEME_COUNT) {
-    sfxPitched(SFX_LEVELUP, ERA_STINGER_PITCH[era]);
-  }
-}
-
-static float square(float freq, float t) {
-  return fmodf(freq * t, 1.0f) < 0.5f ? 1.0f : -1.0f;
-}
-
-// Linear frequency sweep: base at pos=0, falling by `depth` over the effect.
-static float sweep(float base, float depth, int pos, int len) {
-  return base - depth * (float)pos / len;
-}
-
-static float hitEnvelope(int phase, int len) {
-  if (phase < 0 || phase >= len) {
-    return 0.0f;
-  }
-  float env = 1.0f - (float)phase / len;
-  if (phase < 64) {
-    env *= (float)phase / 64.0f;
-  }
-  return env * env;
-}
-
-// Deterministic sample noise keeps the streamed percussion independent of
-// gameplay RNG while avoiding another precomputed buffer.
-static float layerNoise(unsigned sample) {
-  sample ^= sample >> 16;
-  sample *= 0x7feb352du;
-  sample ^= sample >> 15;
-  return (float)(sample & 0xffffu) / 32767.5f - 1.0f;
-}
-
-static float comboStage(int combo, int start) {
-  return clampf(((float)combo - start) / 4.0f, 0.0f, 1.0f);
-}
-
-static float renderComboPercussion(unsigned pos, int combo) {
-  if (combo <= 2) {
-    return 0.0f;
-  }
-
-  float out = 0.0f;
-  int hatPhase = (int)(pos % (BEAT_SAMPLES / 2));
-  out += 0.045f * comboStage(combo, 2) *
-         hitEnvelope(hatPhase, (int)(0.035f * SAMPLE_RATE)) * layerNoise(pos);
-
-  int kickPhase = (int)(pos % BEAT_SAMPLES);
-  int kickLen = (int)(0.14f * SAMPLE_RATE);
-  float kickEnv = hitEnvelope(kickPhase, kickLen);
-  if (kickEnv > 0.0f) {
-    float t = (float)kickPhase / SAMPLE_RATE;
-    float f = sweep(145.0f, 90.0f, kickPhase, kickLen);
-    out += 0.1f * comboStage(combo, 6) * kickEnv * sinf(2.0f * PI * f * t);
-  }
-
-  int snarePhase = (int)(pos % (BEAT_SAMPLES * 2)) - BEAT_SAMPLES;
-  int snareLen = (int)(0.11f * SAMPLE_RATE);
-  float snareEnv = hitEnvelope(snarePhase, snareLen);
-  if (snareEnv > 0.0f) {
-    float t = (float)snarePhase / SAMPLE_RATE;
-    float body = sinf(2.0f * PI * 190.0f * t);
-    out += 0.07f * comboStage(combo, 10) * snareEnv *
-           (0.75f * layerNoise(pos) + 0.25f * body);
-  }
-
-  return out;
-}
-
-static float dangerBeat(unsigned pos, unsigned offset) {
-  unsigned period = BEAT_SAMPLES * 2u;
-  int phase = (int)((pos + period - offset) % period);
-  int len = (int)(0.14f * SAMPLE_RATE);
-  float env = hitEnvelope(phase, len);
-  if (env <= 0.0f) {
-    return 0.0f;
-  }
-  float t = (float)phase / SAMPLE_RATE;
-  return env * sinf(2.0f * PI * sweep(78.0f, 28.0f, phase, len) * t);
-}
-
-static float renderDangerPulse(unsigned pos, float gain) {
-  if (gain <= 0.0f) {
-    return 0.0f;
-  }
-  unsigned second = (unsigned)(0.2f * SAMPLE_RATE);
-  return 0.13f * gain * (dangerBeat(pos, 0) + 0.72f * dangerBeat(pos, second));
-}
-
-// A new A-minor countermelody enters only for the final quarter of Falling
-// Blocks. Eight notes loop over four seconds and add almost no binary data.
-static const float FINALE_NOTES[] = {A5, C6, E6, B5, D6, F6, E6, GS6};
-static float renderFinaleMelody(unsigned pos, float gain) {
-  if (gain <= 0.0f) {
-    return 0.0f;
-  }
-  int phase = (int)(pos % BEAT_SAMPLES);
-  int len = (int)(0.43f * SAMPLE_RATE);
-  float env = hitEnvelope(phase, len);
-  if (env <= 0.0f) {
-    return 0.0f;
-  }
-  float t = (float)phase / SAMPLE_RATE;
-  int note = (int)(pos / BEAT_SAMPLES) %
-             (int)(sizeof(FINALE_NOTES) / sizeof(FINALE_NOTES[0]));
-  float freq = FINALE_NOTES[note];
-  float voice = 0.65f * square(freq, t) + 0.35f * sinf(2.0f * PI * freq * t);
-  return 0.09f * gain * env * voice;
-}
-
-static float smoothLayer(float current, float target) {
-  return current + (target - current) * 0.0005f;
+static float smoothToward(float current, float target, float rate) {
+  return current + (target - current) * rate;
 }
 
 static float hitRestore(void) {
-  if (hitSimplifyLeft <= 0) {
+  if (hitFrames <= 0) {
     return 1.0f;
   }
-  float restore = hitSimplifyLeft > HIT_RECOVER_SAMPLES
-                      ? 0.0f
-                      : 1.0f - (float)hitSimplifyLeft / HIT_RECOVER_SAMPLES;
-  hitSimplifyLeft--;
-  return restore;
+  int left = hitFrames--;
+  if (left > HIT_RECOVER_FRAMES) {
+    return 0.0f;
+  }
+  return 1.0f - (float)left / HIT_RECOVER_FRAMES;
 }
 
-// One sample for a voice, amplitude-scaled with a linear decay envelope.
-static float renderVoice(int type, int pos, float pitch) {
-  int len = sfxLen[type];
-  int atk = (int)(0.004f * SAMPLE_RATE); // ~4ms attack removes the click
-  float env = pos < atk ? (float)pos / atk : 1.0f - (float)pos / len;
-  if (env < 0.0f) {
-    env = 0.0f;
+static float liveHitEnv(int phase, int length) {
+  if (phase < 0 || phase >= length) {
+    return 0.0f;
   }
-  // Scaling t scales every oscillator frequency uniformly (env keys off pos, so
-  // duration is unchanged) — that's the whole pitch shift.
-  float t = (float)pos / SAMPLE_RATE * pitch;
-  float s = 0.0f;
-  // ponytail: the neon levels (Maze/Blocks) get a harsher, brighter 8-bit
-  // variant per effect — hand-tuned, not a data table like the music.
-  bool arc = (curTrack == TRACK_L4 || curTrack == TRACK_L5);
-  switch (type) {
-  case SFX_COIN: // rising two-note blip (brighter on arcade)
-    s = square(pos < len / 2 ? (arc ? D6 : B5) : (arc ? G6 : E6), t);
-    break;
-  case SFX_BOUNCE: { // downward pitch sweep "boing"
-    float f = sweep(400.0f, 280.0f, pos, len);
-    s = arc ? square(f, t) : sinf(2.0f * PI * f * t); // square = crunchier
-    break;
+  float attack = phase < 24 ? (float)phase / 24.0f : 1.0f;
+  float out = 1.0f - (float)phase / length;
+  return attack * out * out;
+}
+
+static float comboStage(int combo, int startsAt) {
+  return clampf((combo - startsAt) / 5.0f, 0.0f, 1.0f);
+}
+
+static Stereo renderComboLayer(unsigned pos, int combo) {
+  if (combo <= 2 || !validTrack(curTrack)) {
+    return (Stereo){0.0f, 0.0f};
   }
-  case SFX_POWERUP: { // rising arpeggio
-    static const float natNotes[3] = {C5, E5, G5};
-    static const float arcNotes[3] = {E5, B5, E6};
-    const float *notes = arc ? arcNotes : natNotes;
-    int k = pos * 3 / len;
-    s = square(notes[k > 2 ? 2 : k], t);
-    break;
+  const Track *track = &TRACKS[curTrack];
+  int beat = (int)(SAMPLE_RATE * 60.0f / track->bpm + 0.5f);
+  int half = beat / 2;
+  int hatPhase = (int)(pos % (unsigned)half);
+  int hatLen = (int)(0.055f * SAMPLE_RATE);
+  float hatEnv = liveHitEnv(hatPhase, hatLen);
+  float early = comboStage(combo, 2);
+  unsigned step = pos / (unsigned)half;
+  float panL = (step & 1u) ? 0.48f : 0.88f;
+  float panR = (step & 1u) ? 0.88f : 0.48f;
+
+  if (track->style == STYLE_SKIES) {
+    static const int NOTES[] = {0, 4, 7, 11, 7};
+    float t = (float)hatPhase / SAMPLE_RATE;
+    float chime =
+        hatEnv *
+        sinf(TAU *
+             midiHz(track->rootMidi + 24 + NOTES[step % ARRAY_LEN(NOTES)]) * t);
+    return (Stereo){0.075f * early * chime * panL,
+                    0.075f * early * chime * panR};
   }
-  case SFX_HIT: { // descending saw + noise (noisier on arcade)
-    float f = sweep(300.0f, 240.0f, pos, len);
-    float saw = 2.0f * (f * t - floorf(0.5f + f * t));
-    float n = noise();
-    s = arc ? 0.4f * saw + 0.6f * n : 0.7f * saw + 0.3f * n;
+
+  float raw = noiseAt(0xC0B0u, pos);
+  float hp = raw - noiseAt(0xC0B0u, pos > 0 ? pos - 1u : 0u);
+  float hat = raw;
+  float hatGain = 0.06f;
+  switch (track->style) {
+  case STYLE_SUNNY:
+    hat = 0.6f * hp + 0.4f * smoothNoise(0x51A4Eu, pos, 13u);
+    hatGain = 0.052f;
     break;
-  }
-  case SFX_SELECT:
-    s = square(arc ? 880.0f : 660.0f, t);
-    break;
-  case SFX_LEVELUP: { // triumphant rising fanfare, full major
-    static const float notes[4] = {C5, E5, G5, C6};
-    int k = pos * 4 / len;
-    s = square(notes[k > 3 ? 3 : k], t);
-    break;
-  }
-  case SFX_GAMEOVER: { // sad descending sweep
-    float f = sweep(400.0f, 320.0f, pos, len);
-    s = arc ? square(f, t) : sinf(2.0f * PI * f * t);
-    break;
-  }
-  case SFX_SPLAT: { // short wet squish: low saw + noise
-    float f = sweep(180.0f, 120.0f, pos, len);
-    float saw = 2.0f * (f * t - floorf(0.5f + f * t));
-    s = 0.5f * saw + 0.5f * noise();
+  case STYLE_NIGHT: {
+    static const int NOTES[] = {0, 4, 2, 6};
+    float hz = midiHz(track->rootMidi + 24 + NOTES[step % ARRAY_LEN(NOTES)]);
+    hat = styleWave(STYLE_NIGHT, hz * hatPhase / SAMPLE_RATE, hz, hatPhase,
+                    0xA1677u);
+    hatGain = 0.036f;
     break;
   }
-  case SFX_PICKUP: { // brighter/higher arpeggio (Balloon/Shield)
-    static const float natNotes[3] = {G5, C6, E6};
-    static const float arcNotes[3] = {B5, E6, B6};
-    const float *notes = arc ? arcNotes : natNotes;
-    int k = pos * 3 / len;
-    s = square(notes[k > 2 ? 2 : k], t);
+  case STYLE_MAZE:
+    hat = hp;
+    hatGain = 0.058f;
+    break;
+  case STYLE_BLOCKS:
+    hat = floorf(hp * 8.0f + 0.5f) / 8.0f;
+    hatGain = 0.05f;
+    break;
+  default:
     break;
   }
-  case SFX_NEWBEST: { // grand ascending run holding on the top note
-    static const float natNotes[6] = {C5, E5, G5, C6, E6, G6};
-    static const float arcNotes[6] = {E5, G5, B5, E6, G6, B6};
-    const float *notes = arc ? arcNotes : natNotes;
-    int k = pos * 6 / len; // step up over the first 5/6...
-    if (k > 5) {
-      k = 5; // ...then hold the top note for the last sixth (the fanfare peak)
+  hat *= hatEnv;
+  Stereo out = {hatGain * early * hat * panL, hatGain * early * hat * panR};
+
+  int kickPhase = (int)(pos % (unsigned)beat);
+  int kickLen = (int)(0.16f * SAMPLE_RATE);
+  float kickEnv = liveHitEnv(kickPhase, kickLen);
+  if (kickEnv > 0.0f) {
+    float start = 145.0f, end = 52.0f, gain = 0.095f;
+    if (track->style == STYLE_NIGHT) {
+      start = 112.0f;
+      end = 44.0f;
+      gain = 0.058f;
+    } else if (track->style == STYLE_MAZE) {
+      start = 158.0f;
+      end = 55.0f;
+      gain = 0.1f;
+    } else if (track->style == STYLE_BLOCKS) {
+      start = 176.0f;
+      end = 58.0f;
+      gain = 0.108f;
     }
-    // Layer a fifth above for a fuller, brighter chord than the plain level-up.
-    s = 0.6f * square(notes[k], t) + 0.4f * square(notes[k] * 1.5f, t);
-    break;
+    float t = (float)kickPhase / SAMPLE_RATE;
+    float phase = sweepCycles(start, end, t, (float)kickLen / SAMPLE_RATE);
+    float kick = kickEnv * sinf(TAU * phase) * gain * comboStage(combo, 6);
+    out.l += kick;
+    out.r += kick;
   }
+
+  int snarePhase = (int)(pos % (unsigned)(beat * 2)) - beat;
+  int snareLen = (int)(0.12f * SAMPLE_RATE);
+  float snareEnv = liveHitEnv(snarePhase, snareLen);
+  if (snareEnv > 0.0f) {
+    float texture = noiseAt(0x5A4E3u, pos);
+    float gain = 0.065f;
+    if (track->style == STYLE_NIGHT) {
+      texture = 0.55f * texture +
+                0.45f * sinf(TAU * 175.0f * snarePhase / SAMPLE_RATE);
+      gain = 0.038f;
+    } else if (track->style == STYLE_MAZE) {
+      texture -= noiseAt(0x5A4E3u, pos > 0 ? pos - 1u : 0u);
+    } else if (track->style == STYLE_BLOCKS) {
+      texture = floorf(texture * 10.0f + 0.5f) / 10.0f;
+      gain = 0.072f;
+    }
+    float snare = gain * comboStage(combo, 10) * snareEnv * texture;
+    out.l += snare * 0.8f;
+    out.r += snare;
   }
-  return 0.28f * env * s; // master SFX gain (music is unaffected)
+  return out;
+}
+
+static Stereo renderDanger(unsigned pos, float amount) {
+  if (amount <= 0.0f || !validTrack(curTrack)) {
+    return (Stereo){0.0f, 0.0f};
+  }
+  const Track *track = &TRACKS[curTrack];
+  int beat = (int)(SAMPLE_RATE * 60.0f / track->bpm + 0.5f);
+  int period = beat * 2;
+  int phase = (int)(pos % (unsigned)period);
+  int second = phase - (int)(0.28f * SAMPLE_RATE);
+  int len = (int)(0.17f * SAMPLE_RATE);
+  float e1 = liveHitEnv(phase, len);
+  float e2 = liveHitEnv(second, len) * 0.72f;
+  float t1 = (float)phase / SAMPLE_RATE;
+  float t2 = (float)(second > 0 ? second : 0) / SAMPLE_RATE;
+  float root = midiHz(track->rootMidi - 36);
+  float value =
+      0.12f * amount *
+      (e1 * sinf(TAU * root * t1) + e2 * sinf(TAU * root * 1.5f * t2));
+  return (Stereo){value, value};
+}
+
+static Stereo renderFinale(unsigned pos, float amount) {
+  if (amount <= 0.0f || curTrack != TRACK_L5) {
+    return (Stereo){0.0f, 0.0f};
+  }
+  int beat = (int)(SAMPLE_RATE * 60.0f / TRACKS[TRACK_L5].bpm + 0.5f);
+  int half = beat / 2;
+  int phase = (int)(pos % (unsigned)half);
+  int len = (int)(0.32f * SAMPLE_RATE);
+  float env = liveHitEnv(phase, len);
+  static const int NOTES[] = {0, 3, 7, 11, 12, 8, 7, 3};
+  int note = (int)(pos / (unsigned)half) % ARRAY_LEN(NOTES);
+  float hz = midiHz(TRACKS[TRACK_L5].rootMidi + 12 + NOTES[note]);
+  float t = (float)phase / SAMPLE_RATE;
+  float value = 0.085f * amount * env *
+                styleWave(STYLE_BLOCKS, hz * t, hz, phase, 0xF1A1Eu);
+  float pan = note & 1 ? 0.68f : 0.32f;
+  return (Stereo){value * pan, value * (1.0f - pan)};
 }
 
 void initAudio(AudioStream *stream) {
   *stream = (AudioStream){0};
   InitAudioDevice();
   if (!IsAudioDeviceReady()) {
-    return; // no device: the game continues silently
+    return;
   }
-  SetAudioStreamBufferSizeDefault(BUFFER_SIZE);
-
-  // Nothing is baked here: main.c feeds one track per frame through
-  // audioPreloadStep(), with menu music first. Until a track's buffer exists,
-  // updateAudio reads it as silence; the splash itself stays silent.
-  *stream = LoadAudioStream(SAMPLE_RATE, 32, 1);
+  SetAudioStreamBufferSizeDefault(BUFFER_FRAMES);
+  *stream = LoadAudioStream(SAMPLE_RATE, 32, CHANNELS);
   if (IsAudioStreamValid(*stream)) {
     PlayAudioStream(*stream);
   }
 }
 
-// Bake the next un-baked track. Menu goes first so the splash can start its
-// black dip immediately; main.c keeps calling this during the dip and beyond,
-// so gameplay tracks never hold the menu hostage. A failed malloc still counts
-// as attempted and is not retried forever.
-bool audioPreloadStep(void) {
-  static int next = 0;
-  if (next >= TRACK_COUNT) {
-    return true;
+static void *preloadWorker(void *unused) {
+  (void)unused;
+  for (int i = 0; i < TRACK_COUNT; i++) {
+    buildLoop(PRELOAD_ORDER[i]);
   }
-  buildLoop(PRELOAD_ORDER[next++]);
-  return next >= TRACK_COUNT;
+  pthread_mutex_lock(&preloadLock);
+  preloadFinished = true;
+  pthread_mutex_unlock(&preloadLock);
+  return NULL;
+}
+
+bool audioPreloadStep(void) {
+  if (!preloadStarted) {
+    preloadStarted = true;
+    if (pthread_create(&preloadThread, NULL, preloadWorker, NULL) != 0) {
+      // Thread creation is a rare platform failure. Finish synchronously so a
+      // missing worker cannot leave the splash waiting forever.
+      preloadWorker(NULL);
+      preloadJoined = true;
+      return true;
+    }
+  }
+
+  pthread_mutex_lock(&preloadLock);
+  bool finished = preloadFinished;
+  pthread_mutex_unlock(&preloadLock);
+  if (finished && !preloadJoined) {
+    pthread_join(preloadThread, NULL);
+    preloadJoined = true;
+  }
+  return finished;
 }
 
 void updateAudio(AudioStream *stream) {
@@ -1480,65 +1555,89 @@ void updateAudio(AudioStream *stream) {
     return;
   }
 
-  float buffer[BUFFER_SIZE];
-  for (int i = 0; i < BUFFER_SIZE; i++) {
-    // Crossfade the outgoing and incoming tracks (both share loopPos/length).
-    // A track whose loop failed to allocate is NULL — treat it as silence.
-    // A track not yet baked (splash still preloading) has loopSamples 0 — treat
-    // it as silence and skip its advance so the modulo below can't divide by 0.
-    float cur = (loopBuffer[curTrack] && loopSamples[curTrack])
-                    ? loopBuffer[curTrack][loopPos[curTrack]]
-                    : 0.0f;
-    float prev = (loopBuffer[prevTrack] && loopSamples[prevTrack])
-                     ? loopBuffer[prevTrack][loopPos[prevTrack]]
-                     : 0.0f;
-    float music = fade * cur + (1.0f - fade) * prev;
-    unsigned layerPos =
-        loopSamples[curTrack] ? (unsigned)loopPos[curTrack] : dynamicsPos;
-    if (loopSamples[curTrack]) {
-      loopPos[curTrack] = (loopPos[curTrack] + 1) % loopSamples[curTrack];
+  float output[BUFFER_FRAMES * CHANNELS];
+  for (int i = 0; i < BUFFER_FRAMES; i++) {
+    Stereo incoming = trackSample(curTrack);
+    Stereo outgoing = trackSample(prevTrack);
+    float inGain = sinf(crossfade * PI * 0.5f);
+    float outGain = cosf(crossfade * PI * 0.5f);
+    Stereo music = {incoming.l * inGain + outgoing.l * outGain,
+                    incoming.r * inGain + outgoing.r * outGain};
+    unsigned layerPos = validTrack(curTrack) && loopFrames[curTrack] > 0
+                            ? (unsigned)loopPos[curTrack]
+                            : dynamicsPos;
+    advanceTrack(curTrack);
+    if (prevTrack != curTrack) {
+      advanceTrack(prevTrack);
     }
-    if (prevTrack != curTrack && loopSamples[prevTrack]) {
-      loopPos[prevTrack] = (loopPos[prevTrack] + 1) % loopSamples[prevTrack];
-    }
-    if (fade < 1.0f) {
-      fade += 1.0f / FADE_SAMPLES;
-      if (fade > 1.0f) {
-        fade = 1.0f;
+    if (crossfade < 1.0f) {
+      crossfade += 1.0f / crossfadeFrames;
+      if (crossfade >= 1.0f) {
+        crossfade = 1.0f;
+        prevTrack = curTrack;
       }
     }
 
-    dangerMix = smoothLayer(dangerMix, dangerTarget);
-    finaleMix = smoothLayer(finaleMix, finaleTarget);
-    simpleMusic += 0.025f * (music - simpleMusic);
-    float layers = renderComboPercussion(layerPos, musicCombo) +
-                   renderFinaleMelody(layerPos, finaleMix);
+    dangerMix = smoothToward(dangerMix, dangerTarget, 0.0007f);
+    finaleMix = smoothToward(finaleMix, finaleTarget, 0.0007f);
+    pauseMix = smoothToward(pauseMix, pauseTarget, 0.0009f);
+    Stereo combo = renderComboLayer(layerPos, musicCombo);
+    Stereo danger = renderDanger(layerPos, dangerMix);
+    Stereo finale = renderFinale(layerPos, finaleMix);
+    music.l += combo.l + danger.l + finale.l;
+    music.r += combo.r + danger.r + finale.r;
+
+    simpleMusic.l += 0.025f * (music.l - simpleMusic.l);
+    simpleMusic.r += 0.025f * (music.r - simpleMusic.r);
     float restore = hitRestore();
-    float reduced = 0.7f * simpleMusic;
-    music = reduced + (music + layers - reduced) * restore;
-    music += renderDangerPulse(layerPos, dangerMix);
-    dynamicsPos++;
+    music.l =
+        0.65f * simpleMusic.l + (music.l - 0.65f * simpleMusic.l) * restore;
+    music.r =
+        0.65f * simpleMusic.r + (music.r - 0.65f * simpleMusic.r) * restore;
 
-    float s = 0.85f * music * musicVol; // headroom for SFX on top
+    pauseFilter.l += 0.075f * (music.l - pauseFilter.l);
+    pauseFilter.r += 0.075f * (music.r - pauseFilter.r);
+    music.l += (pauseFilter.l * 0.52f - music.l) * pauseMix;
+    music.r += (pauseFilter.r * 0.52f - music.r) * pauseMix;
 
-    float e = 0.0f; // SFX summed separately so its level scales independently
+    Stereo musicCue = {0.0f, 0.0f};
+    Stereo effects = {0.0f, 0.0f};
+    float duckTarget = 0.0f;
     for (int v = 0; v < MAX_VOICES; v++) {
       if (!voices[v].active) {
         continue;
       }
-      e += renderVoice(voices[v].type, voices[v].pos, voices[v].pitch);
-      if (++voices[v].pos >= sfxLen[voices[v].type]) {
+      Stereo voice = renderVoice(&voices[v]);
+      if (voices[v].musicBus) {
+        musicCue.l += voice.l;
+        musicCue.r += voice.r;
+      } else {
+        effects.l += voice.l;
+        effects.r += voice.r;
+        duckTarget = fmaxf(duckTarget, CUES[voices[v].type].duck *
+                                           voiceActivity(&voices[v]));
+      }
+      if (++voices[v].pos >= voices[v].length) {
         voices[v].active = false;
       }
     }
-
-    buffer[i] =
-        tanhf(s + e * sfxVol); // soft limiter — warmer than a hard clamp
+    float duckRate = duckTarget > duckMix ? 0.06f : 0.0012f;
+    duckMix = smoothToward(duckMix, duckTarget, duckRate);
+    float musicGain = musicVol * (1.0f - duckMix);
+    float left = (music.l + musicCue.l) * musicGain + effects.l * sfxVol;
+    float right = (music.r + musicCue.r) * musicGain + effects.r * sfxVol;
+    output[i * 2] = tanhf(left);
+    output[i * 2 + 1] = tanhf(right);
+    dynamicsPos++;
   }
-  UpdateAudioStream(*stream, buffer, BUFFER_SIZE);
+  UpdateAudioStream(*stream, output, BUFFER_FRAMES);
 }
 
 void deinitAudio(AudioStream *stream) {
+  if (preloadStarted && !preloadJoined) {
+    pthread_join(preloadThread, NULL);
+    preloadJoined = true;
+  }
   if (IsAudioStreamValid(*stream)) {
     UnloadAudioStream(*stream);
   }
@@ -1547,108 +1646,229 @@ void deinitAudio(AudioStream *stream) {
   }
   *stream = (AudioStream){0};
 
-  for (int t = 0; t < TRACK_COUNT; t++) {
-    free(loopBuffer[t]);
-    loopBuffer[t] = NULL;
-    loopPos[t] = 0;
+  for (int i = 0; i < TRACK_COUNT; i++) {
+    free(loopBuffer[i]);
+    loopBuffer[i] = NULL;
+    loopFrames[i] = 0;
+    loopPos[i] = 0;
   }
+  memset(voices, 0, sizeof(voices));
+  preloadStarted = false;
+  preloadFinished = false;
+  preloadJoined = false;
+  logoPlayed = false;
+  curTrack = prevTrack = TRACK_NONE;
 }
 
 #ifdef SOUND_SELFTEST
-// Headless check for authored definitions, preload order, finite normalized
-// loops, and non-silent dynamic layers. Build:
-//   cc -DSOUND_SELFTEST src/sound.c -Iinclude -Ilib/raylib/src \
-//      build/lib/raylib/raylib/libraylib.a -lm -framework Cocoa \
-//      -framework IOKit -framework CoreVideo -framework OpenGL \
-//      -o /tmp/soundtest && /tmp/soundtest
-#include <stdio.h>
-
-static void checkTrackDefs(void) {
-  for (int t = 0; t < TRACK_COUNT; t++) {
-    const Track *track = &TRACKS[t];
-    assert(track->notes != NULL && track->count > 0);
-    assert(track->duration > 0.0f &&
-           floorf(track->duration) == track->duration);
-    assert(track->timbre >= TIMBRE_WARM && track->timbre <= TIMBRE_SQUARE);
-    assert(track->drums >= DRUMS_NONE && track->drums <= DRUMS_DRIVING);
-    assert(track->echo >= 0.0f && track->echo <= 1.0f);
-    for (int n = 0; n < track->count; n++) {
-      const Note *note = &track->notes[n];
-      assert(note->frequency > 0.0f && note->start >= 0.0f &&
-             note->duration > 0.0f);
-      assert(note->start + note->duration <= track->duration);
-    }
+static void checkDefinitions(void) {
+  for (int i = 0; i < TRACK_COUNT; i++) {
+    const Track *track = &TRACKS[i];
+    assert(track->bpm >= 60.0f && track->bpm <= 180.0f);
+    assert(track->bars > 0 && track->beatsPerBar >= 3 &&
+           track->beatsPerBar <= 4);
+    assert(track->rootMidi >= 36 && track->rootMidi <= 84);
+    assert(track->style >= 0 && track->style < STYLE_COUNT);
+    assert(track->echo >= 0.0f && track->echo <= 0.5f);
+    assert(track->room >= 0.0f && track->room <= 0.5f);
+    assert(track->targetRms > 0.05f && track->targetRms < 0.2f);
+    assert(track->compose != NULL);
   }
+  assert(TRACKS[TRACK_MENU].bpm == TRACKS[TRACK_SHOP].bpm);
+  assert(TRACKS[TRACK_MENU].bars == TRACKS[TRACK_SHOP].bars);
   for (int i = 0; i < SFX_COUNT; i++) {
-    assert(sfxLen[i] > 0);
+    assert(CUES[i].seconds > 0.0f && CUES[i].gain > 0.0f);
+    assert(CUES[i].duck >= 0.0f && CUES[i].duck < 1.0f);
+    assert(CUES[i].priority > 0);
   }
 }
 
-int main(void) {
-  checkTrackDefs();
-  SetRandomSeed(1234);
-  assert(!audioPreloadStep());
-  assert(loopBuffer[TRACK_MENU] != NULL &&
-         "menu track was not preloaded first");
-  assert(loopBuffer[TRACK_L1] == NULL && "gameplay track preempted menu music");
-  while (!audioPreloadStep()) {
-  }
-
-  for (int t = 0; t < TRACK_COUNT; t++) {
-    assert(loopBuffer[t] != NULL && loopSamples[t] > 0);
+static void checkTracks(void) {
+  for (int track = 0; track < TRACK_COUNT; track++) {
+    assert(loopBuffer[track] != NULL && loopFrames[track] > 0);
+    double sum = 0.0, side = 0.0;
     float peak = 0.0f;
-    for (int i = 0; i < loopSamples[t]; i++) {
-      assert(isfinite(loopBuffer[t][i]));
-      float mag = fabsf(loopBuffer[t][i]);
-      peak = (mag > peak) ? mag : peak;
+    for (int i = 0; i < loopFrames[track]; i++) {
+      float l = loopBuffer[track][i * 2] / 32768.0f;
+      float r = loopBuffer[track][i * 2 + 1] / 32768.0f;
+      sum += ((double)l * l + (double)r * r) * 0.5;
+      side += fabs(l - r);
+      peak = fmaxf(peak, fmaxf(fabsf(l), fabsf(r)));
     }
-    assert(peak > 0.89f && peak < 0.91f && "track is silent or not normalized");
+    float rms = sqrtf((float)(sum / loopFrames[track]));
+    assert(rms > 0.07f && rms < 0.16f);
+    assert(peak > 0.3f && peak <= 0.645f);
+    if (TRACKS[track].style == STYLE_MAZE ||
+        TRACKS[track].style == STYLE_BLOCKS) {
+      assert(peak <= 0.475f);
+    }
+    assert(side > loopFrames[track] * 0.005 && "track collapsed to mono");
+    float seamL = fabsf((loopBuffer[track][0] -
+                         loopBuffer[track][(loopFrames[track] - 1) * 2]) /
+                        32768.0f);
+    float seamR = fabsf((loopBuffer[track][1] -
+                         loopBuffer[track][(loopFrames[track] - 1) * 2 + 1]) /
+                        32768.0f);
+    assert(seamL < 0.2f && seamR < 0.2f);
   }
+}
 
-  float lowDrumEnergy = 0.0f, drumEnergy = 0.0f, dangerEnergy = 0.0f;
-  float finaleEnergy = 0.0f;
-  for (unsigned i = 0; i < SAMPLE_RATE * 2u; i++) {
-    assert(renderComboPercussion(i, 0) == 0.0f);
-    assert(renderDangerPulse(i, 0.0f) == 0.0f);
-    assert(renderFinaleMelody(i, 0.0f) == 0.0f);
-    float drum = renderComboPercussion(i, 18);
-    float danger = renderDangerPulse(i, 1.0f);
-    float finale = renderFinaleMelody(i, 1.0f);
-    assert(isfinite(drum) && fabsf(drum) < 0.3f);
-    assert(isfinite(danger) && fabsf(danger) < 0.3f);
-    assert(isfinite(finale) && fabsf(finale) < 0.3f);
-    lowDrumEnergy += fabsf(renderComboPercussion(i, 4));
-    drumEnergy += fabsf(drum);
-    dangerEnergy += fabsf(danger);
-    finaleEnergy += fabsf(finale);
+static void checkCues(void) {
+  for (int style = 0; style < STYLE_COUNT; style++) {
+    for (int cue = 0; cue < SFX_COUNT; cue++) {
+      Voice v = {.active = true,
+                 .type = (SfxId)cue,
+                 .length = (int)(CUES[cue].seconds * SAMPLE_RATE),
+                 .pitch = 1.0f,
+                 .left = 0.707f,
+                 .right = 0.707f,
+                 .gain = CUES[cue].gain,
+                 .style = (SoundStyle)style,
+                 .rootMidi = 60,
+                 .seed = 1234u + (unsigned)(style * SFX_COUNT + cue)};
+      double energy = 0.0;
+      for (v.pos = 0; v.pos < v.length; v.pos++) {
+        float value = renderCueMono(&v, 0u);
+        assert(isfinite(value) && fabsf(value) < 4.0f);
+        energy += fabs(value);
+      }
+      assert(energy > 1.0 && "silent cue/style variant");
+    }
   }
-  assert(lowDrumEnergy > 1.0f && drumEnergy > lowDrumEnergy * 1.5f);
-  assert(dangerEnergy > 1.0f && finaleEnergy > 1.0f);
-
-  setMusicDynamics(-1, 2.0f, -1.0f);
-  assert(musicCombo == 0 && dangerTarget == 1.0f && finaleTarget == 0.0f);
-  musicMonsterHit();
-  assert(hitSimplifyLeft == HIT_SIMPLIFY_SAMPLES);
-  assert(hitRestore() == 0.0f);
-  hitSimplifyLeft = HIT_RECOVER_SAMPLES / 2;
-  assert(fabsf(hitRestore() - 0.5f) < 0.001f);
-  hitSimplifyLeft = 0;
 
   memset(voices, 0, sizeof(voices));
-  sfxPitched((SfxId)-1, 1.0f);
-  sfxPitched(SFX_COIN, 0.0f);
-  sfxPitched(SFX_COIN, NAN);
+  sfxAt((SfxId)-1, 1.0f, 0.0f);
+  sfxAt(SFX_COIN, 0.0f, 0.0f);
+  sfxAt(SFX_COIN, NAN, 0.0f);
+  sfxAt(SFX_COIN, 1.0f, NAN);
   for (int i = 0; i < MAX_VOICES; i++) {
-    assert(!voices[i].active && "invalid SFX request consumed a voice");
+    assert(!voices[i].active);
   }
+  for (int i = 0; i < MAX_VOICES; i++) {
+    sfx(SFX_COIN);
+  }
+  sfx(SFX_NEWBEST);
+  bool foundPriority = false;
+  for (int i = 0; i < MAX_VOICES; i++) {
+    foundPriority |= voices[i].type == SFX_NEWBEST;
+  }
+  assert(foundPriority && "high-priority cue was not voice-stolen in");
+
+  memset(voices, 0, sizeof(voices));
   for (int era = 0; era < THEME_COUNT; era++) {
     musicEraTransition(era);
     assert(voices[era].active && voices[era].type == SFX_LEVELUP);
-    assert(fabsf(voices[era].pitch - ERA_STINGER_PITCH[era]) < 0.001f);
+    assert(voices[era].style == TRACKS[era].style);
+    assert(voices[era].rootMidi == TRACKS[era].rootMidi);
   }
+}
 
-  printf("ok - %d tracks and dynamic layers are finite/non-silent\n",
-         TRACK_COUNT);
+static void checkDynamics(void) {
+  curTrack = prevTrack = TRACK_MENU;
+  loopPos[TRACK_MENU] = 1234;
+  setTrack(TRACK_SHOP);
+  assert(loopPos[TRACK_SHOP] == 1234 && crossfade == 0.0f);
+  setTrack(TRACK_L1);
+  setTrack(TRACK_L2);
+  assert(loopPos[TRACK_L2] == 0);
+  int barFrames = (int)(TRACKS[TRACK_L2].beatsPerBar * 60.0f /
+                            TRACKS[TRACK_L2].bpm * SAMPLE_RATE +
+                        0.5f);
+  assert(crossfadeFrames == barFrames);
+
+  setTrack(TRACK_L5);
+  crossfade = 1.0f;
+  float low = 0.0f, high = 0.0f, mono = 0.0f, danger = 0.0f;
+  float finale = 0.0f;
+  for (unsigned i = 0; i < SAMPLE_RATE * 2u; i++) {
+    Stereo silent = renderComboLayer(i, 0);
+    assert(silent.l == 0.0f && silent.r == 0.0f);
+    Stereo a = renderComboLayer(i, 4);
+    Stereo b = renderComboLayer(i, 18);
+    Stereo d = renderDanger(i, 1.0f);
+    Stereo f = renderFinale(i, 1.0f);
+    low += fabsf(a.l) + fabsf(a.r);
+    high += fabsf(b.l) + fabsf(b.r);
+    mono += fabsf(b.l + b.r);
+    danger += fabsf(d.l) + fabsf(d.r);
+    finale += fabsf(f.l) + fabsf(f.r);
+  }
+  assert(low > 1.0f && high > low * 1.5f);
+  assert(mono > high * 0.4f && "combo layer cancels when folded to mono");
+  assert(danger > 1.0f && finale > 1.0f);
+
+  setMusicDynamics(-1, 2.0f, -1.0f);
+  assert(musicCombo == 0 && dangerTarget == 1.0f && finaleTarget == 0.0f);
+  setMusicPaused(true);
+  assert(pauseTarget == 1.0f);
+  musicMonsterHit();
+  assert(hitFrames == HIT_HOLD_FRAMES + HIT_RECOVER_FRAMES);
+  assert(hitRestore() == 0.0f);
+}
+
+static void put16(FILE *file, unsigned value) {
+  fputc(value & 0xffu, file);
+  fputc((value >> 8) & 0xffu, file);
+}
+
+static void put32(FILE *file, unsigned value) {
+  put16(file, value & 0xffffu);
+  put16(file, value >> 16);
+}
+
+static void writeWavHeader(FILE *file, int frames) {
+  unsigned dataBytes = (unsigned)frames * CHANNELS * 2u;
+  fwrite("RIFF", 1, 4, file);
+  put32(file, 36u + dataBytes);
+  fwrite("WAVEfmt ", 1, 8, file);
+  put32(file, 16);
+  put16(file, 1);
+  put16(file, CHANNELS);
+  put32(file, SAMPLE_RATE);
+  put32(file, SAMPLE_RATE * CHANNELS * 2);
+  put16(file, CHANNELS * 2);
+  put16(file, 16);
+  fwrite("data", 1, 4, file);
+  put32(file, dataBytes);
+}
+
+static void writeTrack(const char *prefix, int track, const char *name) {
+  char path[1024];
+  snprintf(path, sizeof(path), "%s-%s.wav", prefix, name);
+  FILE *file = fopen(path, "wb");
+  assert(file != NULL);
+  writeWavHeader(file, loopFrames[track]);
+  for (int i = 0; i < loopFrames[track] * 2; i++) {
+    put16(file, (unsigned short)loopBuffer[track][i]);
+  }
+  fclose(file);
+}
+
+static void exportTracks(const char *prefix) {
+  static const char *NAMES[] = {"sunny", "skies", "night",   "maze",   "blocks",
+                                "menu",  "shop",  "credits", "results"};
+  assert(ARRAY_LEN(NAMES) == TRACK_COUNT);
+  for (int i = 0; i < TRACK_COUNT; i++) {
+    writeTrack(prefix, i, NAMES[i]);
+  }
+}
+
+int main(int argc, char **argv) {
+  checkDefinitions();
+  assert(PRELOAD_ORDER[0] == TRACK_MENU);
+  while (!audioPreloadStep()) {
+  }
+  assert(loopBuffer[TRACK_MENU] != NULL);
+  checkTracks();
+  checkCues();
+  checkDynamics();
+  if (argc > 1) {
+    exportTracks(argv[1]);
+  }
+  AudioStream stream = {0};
+  deinitAudio(&stream);
+  printf("ok - %d stereo cues, %d era-specific effects, adaptive layers\n",
+         TRACK_COUNT, SFX_COUNT);
   return 0;
 }
 #endif

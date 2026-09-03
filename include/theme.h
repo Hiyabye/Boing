@@ -60,8 +60,6 @@ void themeUpdate(float ascent);
 // The two neighbor theme indices and blend factor f (0..1) from the last
 // themeUpdate — used by the background to crossfade backdrop shapes.
 void themeBlend(int *lo, int *hi, float *f);
-// The music/SFX track for the current level (switches at the band boundary).
-int themeTrack(void);
 // Post-processing bloom weight (0..1) for the current blend - subtle in
 // daylight, full in the neon level, blended across the band like the palette.
 float themeGlow(void);

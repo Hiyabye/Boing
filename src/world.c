@@ -146,7 +146,7 @@ const PowerUpDef POWERUP_DEFS[] = {
     // spawnWeightOf, so it can only ever drop on the era that has ghosts.
     {360.0f, YELLOW, "PELLET", 0, SHAKE_LAUNCH, true,
      false}, // ~6s of frightened ghosts
-    // Debuffs: no boost, no immunity, SAD reaction + SFX_HIT on pickup. All ~3s
+    // Debuffs: no boost, no immunity, SAD reaction + SFX_DEBUFF. All ~3s
     // (short - Anchor/Dizzy are run-ending at 5s).
     {180.0f, DARKGRAY, "ANCHOR", 1, SHAKE_HIT, false, true}, // ~3s
     {180.0f, VIOLET, "DIZZY", 1, SHAKE_HIT, false, true},    // ~3s
@@ -157,6 +157,19 @@ const PowerUpDef POWERUP_DEFS[] = {
 // timer bar) — fail the build instead.
 STATIC_ASSERT(sizeof(POWERUP_DEFS) / sizeof(POWERUP_DEFS[0]) == POWERUP_COUNT,
               powerups_full);
+
+// One semantic pickup sound per power-up. The sound engine voices it with the
+// active era's own instrument palette.
+static const SfxId POWERUP_SFX[] = {
+    SFX_MAGNET, SFX_ROCKET, SFX_BALLOON, SFX_SHIELD, SFX_PELLET,
+    SFX_DEBUFF, SFX_DEBUFF, SFX_DEBUFF,  SFX_DEBUFF,
+};
+STATIC_ASSERT(sizeof(POWERUP_SFX) / sizeof(POWERUP_SFX[0]) == POWERUP_COUNT,
+              powerup_sfx_full);
+
+static float audioPan(float worldX) {
+  return clampf(worldX / SCREEN_WIDTH * 2.0f - 1.0f, -0.9f, 0.9f);
+}
 
 float worldCameraY(const World *world) { return world->cameraY; }
 float worldShake(const World *world) { return world->shake; }
@@ -489,7 +502,7 @@ static void collectCoins(World *world, Player *player) {
       player->velocity.y = COIN_BOOST;
       player->expression = EXPR_HAPPY;
       float pitch = 1.0f + fminf((float)world->combo, 20.0f) * 0.045f;
-      sfxPitched(SFX_COIN, pitch);
+      sfxAt(SFX_COIN, pitch, audioPan(world->coins[i].position.x));
     }
   }
 }
@@ -553,15 +566,13 @@ static void collectPowerups(World *world, Player *player) {
       world->powerTimer[t] = dur;
       world->shake = fmaxf(world->shake, POWERUP_DEFS[t].pickupShake);
       if (POWERUP_DEFS[t].debuff) {
-        // Bad pickup: no upward kick, sour face, same hit sting as a monster.
+        // Bad pickup: no upward kick, sour face, its own warning cue.
         player->expression = EXPR_SAD;
-        sfx(SFX_HIT);
       } else {
         player->velocity.y = COIN_BOOST;
         player->expression = EXPR_HAPPY;
-        sfx((t == POWERUP_BALLOON || t == POWERUP_SHIELD) ? SFX_PICKUP
-                                                          : SFX_POWERUP);
       }
+      sfxAt(POWERUP_SFX[t], 1.0f, audioPan(world->powerups[i].position.x));
     }
   }
 }
@@ -579,7 +590,7 @@ static void hitPlayer(World *world, Player *player) {
   world->combo = 0;              // hit broke the chain
   player->velocity.y = 12.0f;    // knocked downward
   player->expression = EXPR_SAD; // shakes off on the next coin/power-up
-  sfx(SFX_HIT);
+  sfxAt(SFX_HIT, 1.0f, audioPan(player->position.x));
 }
 
 // Plowing through a monster while invincible. Also the ghost-eat on Neon Maze:
@@ -602,7 +613,7 @@ static void splatMonster(World *world, Monster *m) {
     world->ghostChain++;
     pitch += 0.15f * (float)n;
   }
-  sfxPitched(SFX_SPLAT, pitch);
+  sfxAt(SFX_SPLAT, pitch, audioPan(m->position.x));
 }
 
 // Neon Maze steering: the drifting monster becomes a ghost that hunts the blob,
@@ -691,7 +702,7 @@ static void bounceOnPlatforms(World *world, Player *player) {
       player->velocity.y = PLATFORM_BOUNCE;
       spawnParticles(world, (Vector2){player->position.x, top}, CLOUD, 8,
                      false);
-      sfx(SFX_BOUNCE);
+      sfxAt(SFX_BOUNCE, 1.0f, audioPan(player->position.x));
       if (pl->fragile && pl->fuse <= 0.0f) {
         pl->fuse =
             CRUMBLE_FRAMES; // Night Blocks: it holds for a beat, then goes
@@ -723,7 +734,8 @@ static void updatePlatforms(World *world) {
                      (Vector2){pl->position.x + PLATFORM_WIDTH / 2.0f,
                                pl->position.y + PLATFORM_HEIGHT / 2.0f},
                      CLOUD, 10, false);
-      sfxPitched(SFX_BOUNCE, 0.55f); // pitched down, so it reads as a crunch
+      sfxAt(SFX_CRUMBLE, 1.0f,
+            audioPan(pl->position.x + PLATFORM_WIDTH / 2.0f));
       pl->active = false;
       continue;
     }
@@ -753,7 +765,7 @@ static void crushOnBlocks(World *world, Player *player) {
         pl->active = false;
         if (worldInvincible(world)) {
           world->shake = fmaxf(world->shake, SHAKE_SPLAT);
-          sfx(SFX_SPLAT);
+          sfxAt(SFX_SPLAT, 0.82f, audioPan(player->position.x));
         } else {
           hitPlayer(world, player);
         }
@@ -772,7 +784,7 @@ void updateWorld(World *world, Player *player) {
                    false);
     world->shake = SHAKE_LAUNCH;
     world->combo = 0; // fell all the way to the floor: chain broken
-    sfx(SFX_BOUNCE);
+    sfxAt(SFX_BOUNCE, 0.92f, audioPan(player->position.x));
   }
 
   updatePlatforms(world);

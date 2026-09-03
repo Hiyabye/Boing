@@ -122,9 +122,9 @@ static void selectCosmetic(Game *g, int category, int item) {
     p->selectedCosmetic[category] = (unsigned char)item;
     applyOutfit(g);
     saveProgress(p);
-    sfx(SFX_POWERUP);
+    sfx(SFX_PURCHASE);
   } else {
-    sfx(SFX_HIT);
+    sfx(SFX_DENIED);
   }
 }
 
@@ -166,9 +166,9 @@ void updateShop(Game *g) {
       } else if (tryBuy(p, upgCost(track, lvl))) {
         p->puLevel[track]++;
         saveProgress(p);
-        sfx(SFX_POWERUP);
+        sfx(SFX_PURCHASE);
       } else {
-        sfx(SFX_HIT);
+        sfx(SFX_DENIED);
       }
     }
   }

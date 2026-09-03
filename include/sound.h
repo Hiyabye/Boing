@@ -7,62 +7,72 @@ void initAudio(AudioStream *stream);
 void updateAudio(AudioStream *stream);
 void deinitAudio(AudioStream *stream);
 
-// Prerender one not-yet-baked music track per call (each is millions of
-// samples), with menu music first. main.c drives this every frame so remaining
-// tracks bake behind the splash-to-menu dip instead of delaying the menu. A
-// track not baked yet plays as silence (updateAudio guards it).
+// Start/poll the soundtrack bake worker. Splash calls this until all cues are
+// ready, keeping expensive synthesis off both the frame and audio stream paths.
 bool audioPreloadStep(void);
 
-// Music track ids (indices into TRACKS[] in sound.c). 0..4 are the five level
-// tracks (theme.c's THEMES[].track names those ids, one per climb band); menu
-// and game over are FSM-driven (main.c), not themes.
+// The first five ids stay parallel with THEMES[]. UI cues follow them.
 typedef enum {
-  TRACK_L1,       // 0 - Sunny Hills (day)
-  TRACK_L2,       // 1 - Birdsong Skies
-  TRACK_L3,       // 2 - Night Blocks
-  TRACK_L4,       // 3 - Neon Maze
-  TRACK_L5,       // 4 - Falling Blocks
-  TRACK_MENU,     // 5 - title + credits screens
-  TRACK_GAMEOVER, // 6 - game-over screen
+  TRACK_L1,      // Sunny Hills
+  TRACK_L2,      // Birdsong Skies
+  TRACK_L3,      // Night Blocks
+  TRACK_L4,      // Neon Maze
+  TRACK_L5,      // Falling Blocks
+  TRACK_MENU,    // title, help, missions, menu-opened settings
+  TRACK_SHOP,    // beat-synchronized variation of the menu theme
+  TRACK_CREDITS, // dedicated reflective finale
+  TRACK_RESULTS, // quiet game-over results bed
   TRACK_COUNT
 } MusicTrack;
+#define TRACK_NONE (-1)
 
-// Select the music track and its SFX variant. Level switches crossfade; menu
-// and game-over switches cut immediately. No-op if already set.
+// Select a cue. Gameplay cues enter on their composed downbeat; MENU and SHOP
+// preserve their shared timeline so navigation between them stays seamless.
 void setTrack(int track);
+// PAUSED and pause-opened settings keep the current era cue running, but strip
+// it to a quieter filtered bed instead of starting another song.
+void setMusicPaused(bool paused);
 
-// Live gameplay layers mixed over the baked theme track. `danger` and `finale`
-// are 0..1; combo progressively adds percussion. Non-playing states pass zero.
+// Live gameplay layers. Combo adds era-specific energy, danger adds a low
+// pulse, and finale raises the Falling Blocks countermelody. Inputs are
+// clamped.
 void setMusicDynamics(int combo, float danger, float finale);
-// Event accents kept separate from generic SFX so only a real monster hit
-// strips the arrangement, while each arriving era gets its own stinger pitch.
 void musicMonsterHit(void);
 void musicEraTransition(int era);
+void musicLogoSting(void);
 
-// Independent music / SFX levels (0..1), applied in the mix (settings.c drives
-// these instead of a single SetMasterVolume so the two channels split).
-void setVolumes(float music, float sfx);
+// Independent buses, both 0..1.
+void setVolumes(float music, float sfxVolume);
 
-// Procedural sound effects (synthesized in C, mixed into the music stream).
-// Adding one = a new SfxId + a length in sfxLen[] + a case in renderVoice().
+// Every gameplay/UI event has one semantic id. The renderer captures the active
+// era when triggered, then gives that event the era's own instrument palette.
 typedef enum {
   SFX_COIN,
   SFX_BOUNCE,
-  SFX_POWERUP,
+  SFX_CRUMBLE,
+  SFX_MAGNET,
+  SFX_ROCKET,
+  SFX_BALLOON,
+  SFX_SHIELD,
+  SFX_PELLET,
+  SFX_DEBUFF,
   SFX_HIT,
+  SFX_SPLAT,
   SFX_SELECT,
-  SFX_LEVELUP,  // arrival at a new level/theme band
-  SFX_GAMEOVER, // sad tone on a normal death
-  SFX_SPLAT,    // monster splattered (invincible plow-through)
-  SFX_PICKUP,   // Balloon/Shield pickup variant
-  SFX_NEWBEST,  // new high score jingle (game-over screen)
+  SFX_PURCHASE,
+  SFX_DENIED,
+  SFX_LEVELUP,
+  SFX_GAMEOVER,
+  SFX_NEWBEST,
+  SFX_STATIC,
+  SFX_LOGO,
   SFX_COUNT
 } SfxId;
 
-void sfx(SfxId id); // trigger a one-shot effect
-// Same, pitched: `pitch` scales every frequency (1.0 = normal). Drives the
-// rising coin-combo blip. Invalid ids and non-positive/non-finite pitches are
-// ignored.
+void sfx(SfxId id);
 void sfxPitched(SfxId id, float pitch);
+// `pan` is -1 left .. 1 right. World events use their screen x; UI stays
+// centered through sfx()/sfxPitched().
+void sfxAt(SfxId id, float pitch, float pan);
 
 #endif // SOUND_H

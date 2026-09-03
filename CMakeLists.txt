@@ -99,10 +99,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # -Wall -Wextra on our target only (not the raylib submodule). Deliberately
 # without -Wconversion: the code leans on raylib's int APIs, so implicit
 # float->int narrowing is expected and would flood the build (see .clang-tidy).
-# -Wno-unused-const-variable: sound.c keeps a full C0..B8 note-frequency table
-# as a reference; the pitches no melody uses are intentionally present.
 target_compile_options(${PROJECT_NAME} PRIVATE
-    -Wall -Wextra -Wno-unused-const-variable -ffunction-sections -fdata-sections)
+    -Wall -Wextra -ffunction-sections -fdata-sections)
 target_link_options(${PROJECT_NAME} PRIVATE -Wl,-dead_strip)
 
 # 4. Link static third-party code and macOS system frameworks.

@@ -55,8 +55,8 @@ typedef enum {
   POWERUP_COUNT
 } PowerUpType;
 
-// Per-type behaviour, in one place so adding a power-up (Balloon/Shield/…) is a
-// new enum value + one table row — no hunting across spawn/collect/HUD sites.
+// Per-type behaviour, in one place so adding a power-up is a new enum value +
+// one definition row + one POWERUP_SFX row, not a hunt across call sites.
 // The moment-to-moment *effect* (magnet pull, rocket thrust) is still coded
 // per-type in world.c; the table owns everything else.
 typedef struct PowerUpDef {

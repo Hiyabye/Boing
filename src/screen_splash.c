@@ -1,12 +1,13 @@
 // SPLASH — one-time startup logo (gold serif "H" on white + spinning loader).
 // Not cosmetic: everything in this game is generated rather than loaded from
-// disk. The cheap art queues drain immediately; the main loop bakes menu music
-// first and hides the remaining tracks behind the black dip.
+// disk. The cheap art queues drain immediately; a worker bakes the soundtrack
+// while the logo sting plays, then the black dip reveals the menu.
 #include "game.h"
 
 #include "core.h"
 #include "font.h"
 #include "raylib.h"
+#include "sound.h"
 #include "svg.h"
 #include "tex.h"
 #include "ui.h"
@@ -18,15 +19,18 @@
 #define LOGO_CY 378.5f
 
 void updateSplash(Game *g) {
-  // SVG and generated textures cost about 30ms each in total, but stepping one
-  // per rendered frame added 38 frames of idle wall time. Drain both cheap
-  // queues now; audio remains one heavy track per frame in main.c.
+  // Drain the cheap art in one shot. Music is materially heavier, so poll its
+  // background bake and keep showing the real loading work instead of risking
+  // an audio underrun after the menu has opened.
   while (!svgPreloadStep()) {
   }
   while (!texPreloadStep()) {
   }
   fontPreloadStep();
-  startTransition(g, GAMESTATE_MENU); // dip to black, then reveal the menu
+  musicLogoSting();
+  if (audioPreloadStep()) {
+    startTransition(g, GAMESTATE_MENU); // dip to black, then reveal the menu
+  }
 }
 
 void drawSplash(Game *g) {

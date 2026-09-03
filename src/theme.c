@@ -246,8 +246,6 @@ void themeBlend(int *lo, int *hi, float *f) {
   *f = bandF;
 }
 
-int themeTrack(void) { return gTheme.track; }
-
 // How much post-processing bloom this altitude wants. A separate table rather
 // than a Theme field because Theme's leading run must stay all-Color for the
 // generic lerp above; blended over the band by hand so the glow rises into the

@@ -21,22 +21,26 @@
 
 #define FADE_SPEED 3.0f // black-dip transition rate (~0.33s each direction)
 
-// Music follows the FSM state: menu/credits/settings/shop share the menu track,
-// game over has its own, and gameplay follows the current theme band.
-// setTrack cuts instantly across these UI boundaries and only crossfades
-// between gameplay tracks at a level boundary.
-static int trackForState(GameState state) {
-  switch (state) {
+// Full cues belong to durable contexts. Lightweight overlays keep their
+// underlying score, MENU/SHOP preserve one shared playhead, and pause filters
+// the live era instead of resetting it.
+static int trackForState(const Game *g) {
+  switch (g->state) {
   case GAMESTATE_SPLASH:
+    return TRACK_NONE;
   case GAMESTATE_MENU:
-  case GAMESTATE_CREDITS:
-  case GAMESTATE_SETTINGS:
-  case GAMESTATE_SHOP:
     return TRACK_MENU;
+  case GAMESTATE_SHOP:
+    return TRACK_SHOP;
+  case GAMESTATE_CREDITS:
+    return TRACK_CREDITS;
   case GAMESTATE_GAMEOVER:
-    return TRACK_GAMEOVER;
+    return TRACK_RESULTS;
+  case GAMESTATE_SETTINGS:
+    return g->prevState == GAMESTATE_PAUSED ? THEMES[worldEra(&g->world)].track
+                                            : TRACK_MENU;
   default:
-    return themeTrack();
+    return THEMES[worldEra(&g->world)].track;
   }
 }
 
@@ -131,15 +135,6 @@ int main(void) {
   }
 
   while (!WindowShouldClose() && !game.quit) {
-    // Menu music goes first, then one remaining track per frame. Keeping this
-    // outside SPLASH lets the black dip hide the rest of the audio bake instead
-    // of holding the menu behind tracks it does not use.
-    audioPreloadStep();
-    // Splash stays silent; audio begins with the first real screen.
-    updateMusicLayers(&game);
-    if (game.state != GAMESTATE_SPLASH) {
-      updateAudio(&stream);
-    }
     STATES[game.state].update(&game);
     // The screen's update() just re-registered its focusable rects via uiItem;
     // move the ring now so this frame's draw shows where it landed.
@@ -161,7 +156,15 @@ int main(void) {
       }
     }
 
-    setTrack(trackForState(game.state));
+    // Route music after gameplay/UI updates so state changes and one-shot
+    // events reach the next stream buffer with no extra frame of latency.
+    setTrack(trackForState(&game));
+    bool pausedScore =
+        game.state == GAMESTATE_PAUSED || (game.state == GAMESTATE_SETTINGS &&
+                                           game.prevState == GAMESTATE_PAUSED);
+    setMusicPaused(pausedScore);
+    updateMusicLayers(&game);
+    updateAudio(&stream);
 
     // Effects are opt-in per frame: the drawing screen raises what it wants
     // (bloom, fog, the credits CRT) into this mailbox, and postEnd consumes it.
