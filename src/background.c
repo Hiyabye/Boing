@@ -2,6 +2,7 @@
 
 #include "core.h"
 #include "raylib.h"
+#include "rlgl.h"
 #include "tex.h"
 #include "theme.h"
 
@@ -14,10 +15,23 @@
 #define SUN_Y (SCREEN_HEIGHT * 0.20f)
 #define SUN_R 46.0f
 
+#define FAR_START 0.76f
+#define FAR_END 0.94f
+#define MID_START 0.82f
+#define MID_END 0.98f
+#define NEAR_START 0.90f
+
 static float wrapf(float value, float range) {
   float r = fmodf(value, range);
   return r < 0.0f ? r + range : r;
 }
+
+static float easedWindow(float phase, float start, float end) {
+  float t = clampf((phase - start) / (end - start), 0.0f, 1.0f);
+  return t * t * (3.0f - 2.0f * t);
+}
+
+static float bridgeBell(float t) { return 4.0f * t * (1.0f - t); }
 
 // Parallax depth for decor element `i`: three quantized layers (near layers
 // drift and scroll more). Clouds and blocks share it so their crossfade lines
@@ -41,15 +55,27 @@ static void drawCloud(float x, float y, float s, Color c, float a) {
 
 // Sun/moon. The two hard-edged halo discs became one additive TEX_PUFF: a real
 // falloff instead of two visible steps, and additive so it reads as light cast
-// on the sky rather than paint laid over it.
-static void drawSun(float alpha) {
+// on the sky rather than paint laid over it. `detail` grows the moon craters.
+static void drawCelestial(float radius, float detail, float alpha) {
   BeginBlendMode(BLEND_ADDITIVE);
-  drawTex(TEX_PUFF, SUN_X, SUN_Y, SUN_R * 8.0f, SUN_R * 8.0f, 0.0f,
+  drawTex(TEX_PUFF, SUN_X, SUN_Y, radius * 8.0f, radius * 8.0f, 0.0f,
           Fade(SUN, 0.32f * alpha));
   EndBlendMode();
-  DrawCircle(SUN_X, SUN_Y, SUN_R, Fade(SUN, alpha));
-  DrawCircle(SUN_X, SUN_Y, SUN_R * 0.6f, Fade(SUN_CORE, alpha));
+  DrawCircle(SUN_X, SUN_Y, radius, Fade(SUN, alpha));
+  DrawCircle(SUN_X, SUN_Y, radius * 0.6f, Fade(SUN_CORE, alpha));
+  if (detail > 0.01f) {
+    Color cr = Fade(ColorBrightness(SUN_CORE, -0.18f), alpha * detail);
+    DrawCircle(SUN_X - radius * 0.3f, SUN_Y - radius * 0.2f, radius * 0.18f,
+               cr);
+    DrawCircle(SUN_X + radius * 0.25f, SUN_Y + radius * 0.15f, radius * 0.13f,
+               cr);
+    DrawCircle(SUN_X + radius * 0.05f, SUN_Y - radius * 0.35f, radius * 0.1f,
+               cr);
+  }
 }
+
+static void drawSun(float alpha) { drawCelestial(SUN_R, 0.0f, alpha); }
+static void drawMoon(float alpha) { drawCelestial(SUN_R, 1.0f, alpha); }
 
 // Sky haze for the three dark backdrops: one TEX_NEBULA quad wrapped
 // vertically as two stacked copies. Deliberately *not* tiled — perlin noise has
@@ -218,10 +244,8 @@ static void drawPollen(float cameraY, float alpha) {
   }
 }
 
-// L1 backdrop: a storybook valley with atmospheric mountain planes, patterned
-// meadow fields, a winding river, and textured trees. Close foliage lives in
-// the foreground pass so it can silhouette the world's outer edges.
-static void drawHillsBackdrop(float cameraY, float alpha) {
+// L1 far layer: day atmosphere, cloud depth, and the valley silhouette.
+static void drawHillsFar(float cameraY, float alpha, float sink) {
   drawTex(TEX_NEBULA, SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT * 0.32f,
           SCREEN_WIDTH * 1.35f, SCREEN_HEIGHT * 0.75f, 0.0f,
           Fade(SUN_CORE, 0.09f * alpha));
@@ -243,13 +267,22 @@ static void drawHillsBackdrop(float cameraY, float alpha) {
       ColorBrightness(ColorLerp(SKY_TOP, GRASS_DK, 0.18f), -0.18f);
   Color nearMountain =
       ColorBrightness(ColorLerp(CLOUD_SHADE, GRASS_DK, 0.58f), -0.1f);
+  rlPushMatrix();
+  rlTranslatef(0.0f, sink, 0.0f);
   drawLandscapeBand(455.0f, 110.0f, 90.0f, farMountain, 0.92f * alpha, 3.0f,
                     0.88f);
   drawLandscapeBand(510.0f, 105.0f, 310.0f, nearMountain, 0.9f * alpha, 4.0f,
                     0.78f);
   drawLandscapeBand(525.0f, 48.0f, 40.0f, ColorBrightness(GRASS, 0.04f),
                     0.98f * alpha, 5.0f, 0.0f);
+  rlPopMatrix();
+}
 
+// L1 mid layer: patterned fields, river, trees, cottage, and pollen. It can
+// sink as one plane during the cloudline bridge without moving the sky.
+static void drawHillsMid(float cameraY, float alpha, float sink) {
+  rlPushMatrix();
+  rlTranslatef(0.0f, sink, 0.0f);
   drawPatchwork(alpha);
   drawRiver(alpha);
   drawTex(TEX_CLOUD, 180.0f, 615.0f, 260.0f, 105.0f, -8.0f,
@@ -266,6 +299,7 @@ static void drawHillsBackdrop(float cameraY, float alpha) {
   drawCottage(610.0f, ridgeY(610.0f, 525.0f, 48.0f, 40.0f, 0.0f) + 8.0f, 0.88f,
               0.9f * alpha);
   drawPollen(cameraY, alpha);
+  rlPopMatrix();
 }
 
 // One bright sky bird, built from simple animated shapes so its wingbeat stays
@@ -289,15 +323,19 @@ static void drawSkyBird(float x, float y, float s, float phase, float alpha) {
              Fade(BLACK, alpha));
 }
 
-// L2 backdrop: open azure air, layered high cloud banks, wind ribbons and
-// migrating birds. There is deliberately no ground plane, so the climb feels
-// clear of Sunny Hills before Night Blocks closes in.
-static void drawSkiesBackdrop(float cameraY, float alpha) {
+// L2 far layer: clear air and the shared daylight disc.
+static void drawSkiesFar(float alpha, int omitDisc) {
   drawTex(TEX_NEBULA, SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT * 0.35f,
           SCREEN_WIDTH * 1.3f, SCREEN_HEIGHT * 0.8f, 0.0f,
           Fade(SUN_CORE, 0.1f * alpha));
-  drawSun(0.9f * alpha);
+  if (!omitDisc) {
+    drawSun(0.9f * alpha);
+  }
+}
 
+// L2 mid layer: high cloud banks, wind ribbons, and migrating birds. There is
+// deliberately no ground plane, so the climb feels clear of Sunny Hills.
+static void drawSkiesMid(float cameraY, float alpha) {
   for (int i = 0; i < 13; i++) {
     float depth = 0.1f + (i % 4) * 0.08f;
     float s = 22.0f + (i % 4) * 12.0f;
@@ -345,15 +383,6 @@ static void drawStar(float x, float y, float s, float tw, Color c) {
   } else {
     DrawRectangle(x, y, s, s, col);
   }
-}
-
-// The moon: the theme's glowing disc plus a few darker craters.
-static void drawMoon(float alpha) {
-  drawSun(alpha); // theme's `sun`/`sunCore` are a pale moon at night
-  Color cr = Fade(ColorBrightness(SUN_CORE, -0.18f), alpha);
-  DrawCircle(SUN_X - SUN_R * 0.3f, SUN_Y - SUN_R * 0.2f, SUN_R * 0.18f, cr);
-  DrawCircle(SUN_X + SUN_R * 0.25f, SUN_Y + SUN_R * 0.15f, SUN_R * 0.13f, cr);
-  DrawCircle(SUN_X + SUN_R * 0.05f, SUN_Y - SUN_R * 0.35f, SUN_R * 0.1f, cr);
 }
 
 // A floating voxel island: grass-topped dirt block tapering to a point, with
@@ -413,12 +442,13 @@ static void drawStarfield(float cameraY, float alpha) {
   }
 }
 
-// L3 backdrop: moon + craters, twinkling stars (some sparkling), a periodic
-// shooting star, and floating voxel islands.
-static void drawStarsBackdrop(float cameraY, float alpha) {
+// L3 far layer: night haze, stars, moon, and the occasional shooting star.
+static void drawStarsFar(float cameraY, float alpha, int omitDisc) {
   drawNebula(cameraY, alpha);
   drawStarfield(cameraY, alpha);
-  drawMoon(alpha * 0.95f);
+  if (!omitDisc) {
+    drawMoon(alpha * 0.95f);
+  }
   // Only the bright sparkles remain as primitives: the starfield texture is a
   // still image, so the twinkle has to be drawn. Same stride the old `i % 5`
   // size test used, so these land exactly where they always did.
@@ -437,6 +467,10 @@ static void drawStarsBackdrop(float cameraY, float alpha) {
     DrawLineEx((Vector2){sx, sy}, (Vector2){sx - 40.0f, sy - 22.0f}, 2.5f,
                Fade(SUN_CORE, (1.0f - p) * alpha));
   }
+}
+
+// L3 mid layer: floating square islands beneath the star field.
+static void drawStarsMid(float cameraY, float alpha) {
   for (int i = 0; i < BLOCK_COUNT / 3; i++) {
     float depth = 0.3f + (i % 2) * 0.15f;
     float s = 24.0f + (i % 3) * 12.0f;
@@ -475,9 +509,8 @@ static int hash2(int i, int j) {
   return (int)(h & 0x7fffffffu);
 }
 
-// L4 backdrop: a scrolling neon maze (broken corridors, not a full grid) with
-// pellets + pulsing power-pellets, drifting ghosts, and a chomping hero.
-static void drawMazeBackdrop(float cameraY, float alpha) {
+// L4 far layer: scrolling broken corridors and their signal pellets.
+static void drawMazeFar(float cameraY, float alpha) {
   drawNebula(cameraY, alpha);
   float sc = -cameraY * 0.4f;
   float off = wrapf(sc, MAZE_CELL);
@@ -525,6 +558,10 @@ static void drawMazeBackdrop(float cameraY, float alpha) {
     }
   }
   EndBlendMode();
+}
+
+// L4 mid layer: distant maze inhabitants moving between the corridors.
+static void drawMazeMid(float cameraY, float alpha) {
   for (int i = 0; i < 4; i++) { // drifting ghosts
     float x = wrapf((float)GetTime() * (14.0f + i * 4) + i * 220.0f,
                     SCREEN_WIDTH + 160.0f) -
@@ -543,14 +580,16 @@ static void drawMazeBackdrop(float cameraY, float alpha) {
   }
 }
 
-// L5 backdrop: a faint playfield "well" grid with ghosted tetrominoes. Their
-// muted color and low opacity keep them behind the brighter, outlined gameplay
-// pieces while preserving the falling-block atmosphere.
-static void drawBlocksBackdrop(float cameraY, float alpha) {
+// L5 far layer: the faint vertical lines of a playfield well.
+static void drawBlocksFar(float cameraY, float alpha) {
   drawNebula(cameraY, alpha);
   for (int i = 0; i * 44 <= SCREEN_WIDTH; i++) {
     DrawRectangle(i * 44, 0, 1, SCREEN_HEIGHT, Fade(CLOUD, 0.04f * alpha));
   }
+}
+
+// L5 mid layer: muted tetrominoes behind the brighter gameplay pieces.
+static void drawBlocksMid(float cameraY, float alpha) {
   for (int i = 0; i < BLOCK_COUNT; i++) {
     float depth = parallaxDepth(i);
     float cell = 14.0f + (i % 3) * 8.0f;
@@ -565,6 +604,180 @@ static void drawBlocksBackdrop(float cameraY, float alpha) {
         ColorLerp(SKY_TOP_HIGH, gTheme.confetti[i % CONFETTI_COUNT], 0.28f);
     drawTetromino(x, y, cell, i % TETRO_COUNT, ghost,
                   (0.42f - depth * 0.12f) * alpha);
+  }
+}
+
+// Hills -> Skies: the valley drops away while one river stroke straightens
+// into a wind ribbon. Pollen gains span and motion until it reads as tiny
+// birds.
+static void drawCloudlineBridge(float cameraY, float t) {
+  float alpha = bridgeBell(t);
+  if (alpha <= 0.01f) {
+    return;
+  }
+
+  float windY = wrapf(430.0f - cameraY * 0.18f, SCREEN_HEIGHT + 180.0f) - 90.0f;
+  const Vector2 river[] = {{450, 474}, {425, 520}, {475, 575}, {430, 640}};
+  const Vector2 wind[] = {{-70, 14}, {180, -18}, {510, 20}, {870, -8}};
+  Vector2 ribbon[4];
+  for (int i = 0; i < 4; i++) {
+    ribbon[i] = (Vector2){river[i].x + (wind[i].x - river[i].x) * t,
+                          river[i].y + (windY + wind[i].y - river[i].y) * t};
+  }
+  DrawSplineCatmullRom(ribbon, 4, 9.0f - 6.0f * t,
+                       Fade(ColorLerp(SKY_BOT, SUN_CORE, t), 0.38f * alpha));
+  DrawSplineCatmullRom(ribbon, 4, 2.5f, Fade(SUN_CORE, 0.65f * alpha));
+
+  for (int i = 0; i < 10; i++) {
+    float x = wrapf(i * 103.0f + (float)GetTime() * (5.0f + 20.0f * t),
+                    SCREEN_WIDTH + 60.0f) -
+              30.0f;
+    float y = wrapf(i * 79.0f - cameraY * (0.2f + i % 2 * 0.04f),
+                    SCREEN_HEIGHT + 100.0f) -
+              50.0f;
+    float span = 1.0f + 7.0f * t;
+    DrawCircle(x, y, 1.8f - 1.2f * t,
+               Fade(SUN_CORE, 0.45f * alpha * (1.0f - t)));
+    DrawLineEx((Vector2){x - span, y}, (Vector2){x, y - 2.5f * t}, 1.2f + t,
+               Fade(SUN_CORE, 0.48f * alpha * t));
+    DrawLineEx((Vector2){x, y - 2.5f * t}, (Vector2){x + span, y}, 1.2f + t,
+               Fade(SUN_CORE, 0.48f * alpha * t));
+  }
+}
+
+// Skies -> Night: the shared disc contracts through blue hour as moon detail
+// appears. Rounded cloud slivers square off and grow block undersides.
+static void drawTwilightDisc(float t) {
+  float pinch = bridgeBell(t);
+  drawCelestial(SUN_R * (1.0f - 0.22f * pinch), easedWindow(t, 0.28f, 0.88f),
+                0.9f + 0.05f * t);
+}
+
+static void drawTwilightIslands(float cameraY, float t) {
+  float alpha = bridgeBell(t);
+  if (alpha <= 0.01f) {
+    return;
+  }
+  for (int i = 0; i < 5; i++) {
+    float x = 60.0f + i * 180.0f;
+    float y = wrapf(i * 181.0f - cameraY * (0.24f + 0.03f * (i % 2)),
+                    SCREEN_HEIGHT + 240.0f) -
+              80.0f;
+    float w = 100.0f - 34.0f * t;
+    float h = 20.0f + 20.0f * t;
+    Color body = ColorLerp(CLOUD, GRASS_DK, t);
+    DrawRectangleRounded((Rectangle){x - w * 0.5f, y, w, h}, 1.0f - 0.9f * t, 8,
+                         Fade(body, 0.42f * alpha));
+    DrawRectangle(x - w * 0.5f, y - 4.0f * t, w, 5.0f * t,
+                  Fade(GRASS, 0.48f * alpha * t));
+    DrawRectangle(x - w * 0.27f, y + h, w * 0.54f, h * 0.55f * t,
+                  Fade(ColorBrightness(GRASS_DK, -0.18f), 0.38f * alpha * t));
+  }
+}
+
+// Night -> Maze: free stars settle onto signal rows, and each straight
+// constellation bends toward an orthogonal corridor. The moon contracts into
+// one pulsing node while island seams extend into the same line language.
+static void drawSignalFar(float cameraY, float t) {
+  drawCelestial(SUN_R * (1.0f - 0.72f * t), 1.0f - t, 0.95f * (1.0f - t));
+
+  float alpha = bridgeBell(t);
+  if (alpha <= 0.01f) {
+    return;
+  }
+  Vector2 node[12];
+  float off = wrapf(-cameraY * 0.4f, MAZE_CELL);
+  for (int i = 0; i < 12; i++) {
+    float depth = 0.2f + (i % 3) * 0.12f;
+    Vector2 star = {
+        wrapf(i * 71.0f, SCREEN_WIDTH),
+        wrapf(i * 137.0f - cameraY * depth, SCREEN_HEIGHT + 100.0f)};
+    Vector2 grid = {70.0f + (i % 4) * 220.0f,
+                    80.0f + (i / 4) * 260.0f + off * 0.35f};
+    node[i] = (Vector2){star.x + (grid.x - star.x) * t,
+                        star.y + (grid.y - star.y) * t};
+  }
+
+  BeginBlendMode(BLEND_ADDITIVE);
+  Color line = Fade(CLOUD, 0.28f * alpha);
+  for (int i = 0; i < 12; i++) {
+    drawTex(TEX_PUFF, node[i].x, node[i].y, 24.0f, 24.0f, 0.0f,
+            Fade(SUN_CORE, 0.22f * alpha));
+    DrawCircleV(node[i], 2.0f + 2.0f * t, Fade(SUN_CORE, 0.6f * alpha));
+    if (i % 4 != 3) {
+      Vector2 q = node[i + 1];
+      Vector2 mid = {(node[i].x + q.x) * 0.5f, (node[i].y + q.y) * 0.5f};
+      Vector2 elbow = {mid.x + (q.x - mid.x) * t,
+                       mid.y + (node[i].y - mid.y) * t};
+      DrawLineEx(node[i], elbow, 2.0f, line);
+      DrawLineEx(elbow, q, 2.0f, line);
+    }
+  }
+  float pulse = 0.65f + 0.35f * sinf((float)GetTime() * 4.0f);
+  drawTex(TEX_PUFF, SUN_X, SUN_Y, 150.0f, 150.0f, 0.0f,
+          Fade(CLOUD, 0.2f * alpha * pulse));
+  DrawRectangleLinesEx((Rectangle){SUN_X - 12.0f - 8.0f * t,
+                                   SUN_Y - 12.0f - 8.0f * t, 24.0f + 16.0f * t,
+                                   24.0f + 16.0f * t},
+                       2.0f, Fade(CLOUD, 0.52f * alpha));
+  EndBlendMode();
+}
+
+static void drawSignalMid(float cameraY, float t) {
+  float alpha = bridgeBell(t);
+  if (alpha <= 0.01f) {
+    return;
+  }
+  for (int i = 0; i < 4; i++) {
+    float x = 90.0f + i * 215.0f;
+    float y = wrapf(i * 211.0f - cameraY * (0.3f + 0.05f * (i % 2)),
+                    SCREEN_HEIGHT + 260.0f) -
+              80.0f;
+    float reach = 30.0f + 90.0f * t;
+    Color seam = Fade(CLOUD, 0.34f * alpha);
+    DrawLineEx((Vector2){x - reach, y}, (Vector2){x + reach, y}, 3.0f, seam);
+    DrawLineEx((Vector2){x + reach, y},
+               (Vector2){x + reach, y + 30.0f + 55.0f * t}, 3.0f, seam);
+  }
+}
+
+// Maze -> Blocks: junction lights spread into four cells, close into real
+// tetromino groups, and trade corridor scrolling for downward motion.
+static void drawFragmentBridge(float cameraY, float t) {
+  float alpha = bridgeBell(t);
+  if (alpha <= 0.01f) {
+    return;
+  }
+  static const signed char SPREAD[4][2] = {{-2, 0}, {0, -2}, {2, 0}, {0, 2}};
+  float group = easedWindow(t, 0.08f, 0.78f);
+  for (int i = 0; i < 6; i++) {
+    int shape = (i * 2 + 1) % TETRO_COUNT;
+    float depth = 0.25f + (i % 3) * 0.1f;
+    float motionDepth = 0.4f + (depth - 0.4f) * t;
+    float speed = 8.0f + 18.0f * t;
+    float cx = 85.0f + (i % 3) * 315.0f;
+    float cy =
+        wrapf(i * 173.0f + (float)GetTime() * speed - cameraY * motionDepth,
+              SCREEN_HEIGHT + 220.0f) -
+        110.0f;
+    float cell = 18.0f;
+    float size = 4.0f + 18.0f * group;
+    Color c = ColorLerp(COIN_HI, gTheme.confetti[i % CONFETTI_COUNT], group);
+    for (int k = 0; k < 4; k++) {
+      float sx = SPREAD[k][0] * cell, sy = SPREAD[k][1] * cell;
+      float tx = (TETRO[shape][k][0] - 1) * cell;
+      float ty = (TETRO[shape][k][1] - 0.5f) * cell;
+      float x = cx + sx + (tx - sx) * group;
+      float y = cy + sy + (ty - sy) * group;
+      drawTex(TEX_PUFF, x, y, 24.0f + 18.0f * t, 24.0f + 18.0f * t, 0.0f,
+              Fade(c, 0.18f * alpha));
+      DrawRectangleRounded(
+          (Rectangle){x - size * 0.5f, y - size * 0.5f, size, size},
+          1.0f - 0.9f * group, 5, Fade(c, 0.72f * alpha));
+      DrawRectangle(x - size * 0.34f, y - size * 0.34f, size * 0.68f,
+                    fmaxf(1.0f, size * 0.12f),
+                    Fade(ColorBrightness(c, 0.35f), 0.42f * alpha * t));
+    }
   }
 }
 
@@ -644,13 +857,65 @@ static void drawBlocksForeground(float cameraY, float alpha) {
   }
 }
 
-static void drawForeground(BackdropStyle style, float cameraY, float alpha) {
+static void drawBackdropFar(BackdropStyle style, float cameraY, float alpha,
+                            float sink, int omitDisc) {
   if (alpha <= 0.01f) {
     return;
   }
   switch (style) {
   case BACKDROP_HILLS:
+    drawHillsFar(cameraY, alpha, sink);
+    break;
+  case BACKDROP_SKIES:
+    drawSkiesFar(alpha, omitDisc);
+    break;
+  case BACKDROP_STARS:
+    drawStarsFar(cameraY, alpha, omitDisc);
+    break;
+  case BACKDROP_MAZE:
+    drawMazeFar(cameraY, alpha);
+    break;
+  case BACKDROP_BLOCKS:
+    drawBlocksFar(cameraY, alpha);
+    break;
+  }
+}
+
+static void drawBackdropMid(BackdropStyle style, float cameraY, float alpha,
+                            float sink) {
+  if (alpha <= 0.01f) {
+    return;
+  }
+  switch (style) {
+  case BACKDROP_HILLS:
+    drawHillsMid(cameraY, alpha, sink);
+    break;
+  case BACKDROP_SKIES:
+    drawSkiesMid(cameraY, alpha);
+    break;
+  case BACKDROP_STARS:
+    drawStarsMid(cameraY, alpha);
+    break;
+  case BACKDROP_MAZE:
+    drawMazeMid(cameraY, alpha);
+    break;
+  case BACKDROP_BLOCKS:
+    drawBlocksMid(cameraY, alpha);
+    break;
+  }
+}
+
+static void drawForeground(BackdropStyle style, float cameraY, float alpha,
+                           float sink) {
+  if (alpha <= 0.01f) {
+    return;
+  }
+  switch (style) {
+  case BACKDROP_HILLS:
+    rlPushMatrix();
+    rlTranslatef(0.0f, sink, 0.0f);
     drawForegroundFoliage(cameraY, alpha);
+    rlPopMatrix();
     break;
   case BACKDROP_SKIES:
     drawSkiesForeground(cameraY, alpha);
@@ -667,26 +932,23 @@ static void drawForeground(BackdropStyle style, float cameraY, float alpha) {
   }
 }
 
-static void drawBackdrop(BackdropStyle style, float cameraY, float alpha) {
-  if (alpha <= 0.01f) {
-    return;
+static void drawBridgeFar(BridgeStyle bridge, float cameraY, float t) {
+  if (bridge == BRIDGE_TWILIGHT) {
+    drawTwilightDisc(t);
+  } else if (bridge == BRIDGE_SIGNAL) {
+    drawSignalFar(cameraY, t);
   }
-  switch (style) {
-  case BACKDROP_SKIES:
-    drawSkiesBackdrop(cameraY, alpha);
-    break;
-  case BACKDROP_STARS:
-    drawStarsBackdrop(cameraY, alpha);
-    break;
-  case BACKDROP_MAZE:
-    drawMazeBackdrop(cameraY, alpha);
-    break;
-  case BACKDROP_BLOCKS:
-    drawBlocksBackdrop(cameraY, alpha);
-    break;
-  case BACKDROP_HILLS:
-    drawHillsBackdrop(cameraY, alpha);
-    break;
+}
+
+static void drawBridgeMid(BridgeStyle bridge, float cameraY, float t) {
+  if (bridge == BRIDGE_CLOUDLINE) {
+    drawCloudlineBridge(cameraY, t);
+  } else if (bridge == BRIDGE_TWILIGHT) {
+    drawTwilightIslands(cameraY, t);
+  } else if (bridge == BRIDGE_SIGNAL) {
+    drawSignalMid(cameraY, t);
+  } else if (bridge == BRIDGE_FRAGMENTATION) {
+    drawFragmentBridge(cameraY, t);
   }
 }
 
@@ -705,40 +967,51 @@ void drawMenuBackground(void) {
   }
 }
 
-// Fraction of the eased exit transition over which the incoming backdrop's
-// shapes crossfade in. They stay behind the palette handoff until its end.
-#define BACKDROP_XFADE_START 0.85f
-
-static float backdropCrossfade(float f) {
-  return f <= BACKDROP_XFADE_START
-             ? 0.0f
-             : (f - BACKDROP_XFADE_START) / (1.0f - BACKDROP_XFADE_START);
-}
-
-// The sky follows the sample's eased palette handoff. The neighboring
-// backdrop shapes wait until its final 15% before crossfading.
+// Far silhouettes hand off first, then midground decor, then the close edge
+// layer. Every pair is complementary, so additive scenes never stack at full
+// strength. The cloudline sink applies only to outgoing Hills geometry.
 void drawGameBackground(float cameraY) {
   ThemeSample sample = themeSampleAtWorldY(cameraY + SCREEN_HEIGHT / 2.0f);
+  ThemeSample top = themeSampleAtWorldY(cameraY);
+  ThemeSample bottom = themeSampleAtWorldY(cameraY + SCREEN_HEIGHT);
+  themeUpdate(top);
+  Color skyTop = SKY_TOP;
+  themeUpdate(bottom);
+  Color skyBottom = SKY_BOT;
   themeUpdate(sample);
 
-  DrawRectangleGradientV(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SKY_TOP, SKY_BOT);
+  DrawRectangleGradientV(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, skyTop, skyBottom);
 
-  float fx = backdropCrossfade(sample.blend);
-  drawBackdrop(THEMES[sample.era].backdrop, cameraY, 1.0f - fx);
-  drawBackdrop(THEMES[sample.next].backdrop, cameraY, fx);
+  float far = easedWindow(sample.phase, FAR_START, FAR_END);
+  float mid = easedWindow(sample.phase, MID_START, MID_END);
+  BridgeStyle bridge = THEMES[sample.era].bridge;
+  int omitDisc = bridge == BRIDGE_TWILIGHT || bridge == BRIDGE_SIGNAL;
+  float farSink = bridge == BRIDGE_CLOUDLINE ? far * 170.0f : 0.0f;
+  float midSink = bridge == BRIDGE_CLOUDLINE ? mid * 230.0f : 0.0f;
+
+  drawBackdropFar(THEMES[sample.era].backdrop, cameraY, 1.0f - far, farSink,
+                  omitDisc);
+  drawBackdropFar(THEMES[sample.next].backdrop, cameraY, far, 0.0f, omitDisc);
+  drawBridgeFar(bridge, cameraY, far);
+
+  drawBackdropMid(THEMES[sample.era].backdrop, cameraY, 1.0f - mid, midSink);
+  drawBackdropMid(THEMES[sample.next].backdrop, cameraY, mid, 0.0f);
+  drawBridgeMid(bridge, cameraY, mid);
 }
 
 void drawGameForeground(float cameraY) {
   ThemeSample sample = themeSampleAtWorldY(cameraY + SCREEN_HEIGHT / 2.0f);
   themeUpdate(sample);
-  float fx = backdropCrossfade(sample.blend);
-  drawForeground(THEMES[sample.era].backdrop, cameraY, 1.0f - fx);
-  drawForeground(THEMES[sample.next].backdrop, cameraY, fx);
+  float near = easedWindow(sample.phase, NEAR_START, 1.0f);
+  BridgeStyle bridge = THEMES[sample.era].bridge;
+  float sink = bridge == BRIDGE_CLOUDLINE ? near * 170.0f : 0.0f;
+  drawForeground(THEMES[sample.era].backdrop, cameraY, 1.0f - near, sink);
+  drawForeground(THEMES[sample.next].backdrop, cameraY, near, 0.0f);
 }
 
 #ifdef BG_SELFTEST
 // Transition contact matrix of every outgoing edge, including Blocks -> Hills.
-// Rows follow THEMES[] order. Columns are pure era start, then outgoing phases
+// Rows follow THEMES[] order. Columns are the phase-zero boundary, then phases
 // .70, .78, .84, .90, .96, .995, and finally the next era at phase .005.
 // Every cell includes the foreground depth pass. This needs a real GL context
 // because it renders the actual draw path.
@@ -758,6 +1031,29 @@ void drawGameForeground(float cameraY) {
 static const float SAMPLE_PHASES[] = {0.0f,  0.70f, 0.78f,  0.84f,
                                       0.90f, 0.96f, 0.995f, 1.005f};
 #define SAMPLE_COUNT ((int)(sizeof(SAMPLE_PHASES) / sizeof(SAMPLE_PHASES[0])))
+
+static void transitionSelfTest(void) {
+  assert(bridgeBell(0.0f) == 0.0f && bridgeBell(0.5f) == 1.0f &&
+         bridgeBell(1.0f) == 0.0f);
+  float far = easedWindow(0.84f, FAR_START, FAR_END);
+  float mid = easedWindow(0.84f, MID_START, MID_END);
+  float near = easedWindow(0.84f, NEAR_START, 1.0f);
+  assert(far > mid && mid > near);
+  far = easedWindow(0.96f, FAR_START, FAR_END);
+  mid = easedWindow(0.96f, MID_START, MID_END);
+  near = easedWindow(0.96f, NEAR_START, 1.0f);
+  assert(far > mid && mid > near);
+  assert(easedWindow(1.0f, FAR_START, FAR_END) == 1.0f &&
+         easedWindow(1.0f, MID_START, MID_END) == 1.0f &&
+         easedWindow(1.0f, NEAR_START, 1.0f) == 1.0f);
+
+  // At a center-view boundary, the screen top has entered the new era while
+  // the bottom still carries the old sky. Both remain camera-relative.
+  ThemeSample top = themeSampleAtWorldY(-BAND);
+  ThemeSample bottom = themeSampleAtWorldY(-BAND + SCREEN_HEIGHT);
+  assert(top.level == 1 && bottom.level == 0 && top.era == ERA_SKIES &&
+         bottom.era == ERA_HILLS);
+}
 
 static Image renderSample(RenderTexture rt, float cameraY) {
   BeginTextureMode(rt);
@@ -806,6 +1102,7 @@ static Image renderSample(RenderTexture rt, float cameraY) {
 
 int main(int argc, char **argv) {
   themeSampleSelfTest();
+  transitionSelfTest();
   SetTraceLogLevel(LOG_WARNING);
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "bgtest");
   while (!texPreloadStep()) {
@@ -813,7 +1110,7 @@ int main(int argc, char **argv) {
   RenderTexture rt = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
   Image sheet = GenImageColor(CELL * SAMPLE_COUNT, CELL * THEME_COUNT, BLACK);
 
-  printf("columns: start .000 | .700 | .780 | .840 | .900 | .960 | "
+  printf("columns: edge .000 | stable .700 | .780 | .840 | .900 | .960 | "
          ".995 | next .005\n");
   for (int edge = 0; edge < THEME_COUNT; edge++) {
     int next = themeSampleAt(edge * BAND).next;

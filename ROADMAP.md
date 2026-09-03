@@ -2,7 +2,7 @@
 
 ## Status
 
-- Execution tracker; Phase 4 completed on 2026-09-03.
+- Execution tracker; Phase 5 completed on 2026-09-03.
 - Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
 - Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> a rebuilt Sunny Hills.
@@ -588,11 +588,11 @@ Files:
 
 Steps:
 
-- [ ] Identify sky/atmosphere, far silhouette, midground decor, and near foreground content in every backdrop.
-- [ ] Keep implementations in `background.c` initially so helpers can remain static.
-- [ ] Do not split files merely because `background.c` is long.
-- [ ] Give far, mid, and near passes independently eased transition weights.
-- [ ] Ensure complementary outgoing/incoming weights do not over-brighten additive art.
+- [x] Identify sky/atmosphere, far silhouette, midground decor, and near foreground content in every backdrop.
+- [x] Keep implementations in `background.c` initially so helpers can remain static.
+- [x] Do not split files merely because `background.c` is long.
+- [x] Give far, mid, and near passes independently eased transition weights.
+- [x] Ensure complementary outgoing/incoming weights do not over-brighten additive art.
 
 Acceptance:
 
@@ -603,11 +603,11 @@ Acceptance:
 
 Steps:
 
-- [ ] Sample the palette at the screen-top world Y.
-- [ ] Sample the palette at the screen-bottom world Y.
-- [ ] Use the appropriate top and bottom sky colors for the gradient.
-- [ ] Confirm the top of the viewport enters the next era before the bottom.
-- [ ] Preserve camera fall behavior without changing monotonic level events.
+- [x] Sample the palette at the screen-top world Y.
+- [x] Sample the palette at the screen-bottom world Y.
+- [x] Use the appropriate top and bottom sky colors for the gradient.
+- [x] Confirm the top of the viewport enters the next era before the bottom.
+- [x] Preserve camera fall behavior without changing monotonic level events.
 
 Acceptance:
 
@@ -619,33 +619,33 @@ Implement one edge at a time. Reuse existing primitives and textures.
 
 #### Hills -> Skies
 
-- [ ] Sink terrain and trees toward the lower view.
-- [ ] Let the river line detach into a wind ribbon.
-- [ ] Increase cloud dominance gradually.
-- [ ] Let pollen become distant airborne specks or birds.
+- [x] Sink terrain and trees toward the lower view.
+- [x] Let the river line detach into a wind ribbon.
+- [x] Increase cloud dominance gradually.
+- [x] Let pollen become distant airborne specks or birds.
 
 #### Skies -> Night
 
-- [ ] Introduce twilight before deep night.
-- [ ] Fade first stars in before the sky is fully dark.
-- [ ] Transform the celestial disc from sun to moon through size, value, and detail, not tint alone.
-- [ ] Thin clouds into the first floating square islands.
+- [x] Introduce twilight before deep night.
+- [x] Fade first stars in before the sky is fully dark.
+- [x] Transform the celestial disc from sun to moon through size, value, and detail, not tint alone.
+- [x] Thin clouds into the first floating square islands.
 
 #### Night -> Neon Maze
 
-- [ ] Align stars into rows or constellations.
-- [ ] Straighten constellation lines into orthogonal signal corridors.
-- [ ] Extend island seams into maze geometry.
-- [ ] Turn the celestial node into an original pulsing signal motif.
+- [x] Align stars into rows or constellations.
+- [x] Straighten constellation lines into orthogonal signal corridors.
+- [x] Extend island seams into maze geometry.
+- [x] Turn the celestial node into an original pulsing signal motif.
 
 #### Neon Maze -> Falling Blocks
 
-- [ ] Separate maze junctions into cells.
-- [ ] Group cells into four-cell clusters.
-- [ ] Change scrolling motion gradually into falling motion.
-- [ ] Turn pellet highlights into block highlights.
+- [x] Separate maze junctions into cells.
+- [x] Group cells into four-cell clusters.
+- [x] Change scrolling motion gradually into falling motion.
+- [x] Turn pellet highlights into block highlights.
 
-Do not implement the final reboot in this phase. Give it its own cross-system phase later.
+The final reboot was deliberately left without geometry choreography for its later cross-system phase.
 
 Acceptance for each edge:
 
@@ -655,9 +655,19 @@ Acceptance for each edge:
 
 Phase 5 gate:
 
-- [ ] Four non-wrap visual edges pass the transition matrix review.
-- [ ] Foreground assertions still prove zero central-playfield changes.
-- [ ] No new render target or transition shader was required.
+- [x] Four non-wrap visual edges pass the transition matrix review.
+- [x] Foreground assertions still prove zero central-playfield changes.
+- [x] No new render target or transition shader was required.
+
+Backdrop art now hands off in three cubic-eased raw-phase windows: far at
+0.76-0.94, mid at 0.82-0.98, and near at 0.90-1.00. The sky independently
+samples its top and bottom world Y, so the upper view crosses first. Four
+compact bridge drawings conserve each edge's shapes and motion; the wrap only
+receives the generic depth staging, leaving its authored reboot for Phase 9.
+The full-color and grayscale matrices passed luma, contrast, additive, and
+edge-only foreground review. `BG_SELFTEST` and `WORLD_SELFTEST` pass, all pure
+world scenes retain their identity, and the Universal 2 bundle is 1,405,459
+bytes with 69,101 bytes free.
 
 Suggested future commit boundaries if explicitly requested:
 
@@ -1262,7 +1272,7 @@ Fill this section as future sessions gather evidence.
 
 | Measurement | Baseline | Latest | Notes |
 |---|---:|---:|---|
-| App bundle bytes | 1,405,427 | 1,389,043 | Clean Universal 2 MinSizeRel bundle; one 16,384-byte Mach-O page smaller |
+| App bundle bytes | 1,405,427 | 1,405,459 | Clean Universal 2 MinSizeRel bundle; staged bridge art consumed one 16,384-byte Mach-O page |
 | Typical seconds per era | Unknown | 19.22-32.42 | Five runs each: normal median 22.20, missed-coin median 30.88, one-rocket median 19.28 |
 | Transition window seconds | Unknown | 4.23-7.13 | Phase 0.78-1.00, derived as 22% of the observed era range |
 | Audio preload duration | Unknown | Unknown | Re-measure after adding tracks or bridges |
