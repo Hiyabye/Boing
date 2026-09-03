@@ -1289,7 +1289,7 @@ void musicLogoSting(void) {
   }
 }
 
-static void musicEraTransition(int handoff, int seamFrames) {
+static void startHandoffCue(int handoff, int seamFrames) {
   if (handoff < 0 || handoff >= ARRAY_LEN(HANDOFFS)) {
     return;
   }
@@ -1855,7 +1855,7 @@ static void pendingMix(float *filter, float *fade) {
     return;
   }
   if (!pendingCueStarted && pendingFrames <= pendingFadeFrames) {
-    musicEraTransition(pendingHandoff, pendingFadeFrames);
+    startHandoffCue(pendingHandoff, pendingFadeFrames);
     pendingCueStarted = true;
   }
   if (pendingFrames < pendingFadeFrames) {
@@ -2124,8 +2124,8 @@ static void checkCues(void) {
   assert(foundPriority && "high-priority cue was not voice-stolen in");
 
   memset(voices, 0, sizeof(voices));
-  musicEraTransition(-1, 1);
-  musicEraTransition(ARRAY_LEN(HANDOFFS), 1);
+  startHandoffCue(-1, 1);
+  startHandoffCue(ARRAY_LEN(HANDOFFS), 1);
   for (int i = 0; i < MAX_VOICES; i++) {
     assert(!voices[i].active);
   }
@@ -2133,7 +2133,7 @@ static void checkCues(void) {
     memset(voices, 0, sizeof(voices));
     int seam =
         framesForBeats(HANDOFFS[handoff].from, HANDOFFS[handoff].outBeats);
-    musicEraTransition(handoff, seam);
+    startHandoffCue(handoff, seam);
     int to = HANDOFFS[handoff].to;
     assert(voices[0].active && voices[0].type == SFX_HANDOFF);
     assert(voices[0].musicBus && voices[0].handoff == handoff);

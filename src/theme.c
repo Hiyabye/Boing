@@ -9,9 +9,8 @@
 #include <math.h>
 #endif
 
-// Ascent (world-units of climb) that one theme spans before it has fully
-// morphed into the next - a full level band. The measured 19-32 second band
-// keeps its identity until the final roughly 4-7 seconds.
+// Ascent (world units of climb) occupied by one era. The measured 19-32
+// second era keeps its palette stable until the final roughly 4-7 seconds.
 #define BAND_HEIGHT 20000.0f
 #define TRANSITION_START 0.78f
 
@@ -351,10 +350,6 @@ float themeGlow(ThemeSample sample) {
   return lo + (hi - lo) * sample.blend;
 }
 
-int themeLevelAt(float ascent) { return themeSampleAt(ascent).level; }
-
-float themeBandProgressAt(float ascent) { return themeSampleAt(ascent).phase; }
-
 #ifdef BG_SELFTEST
 void themeSampleSelfTest(void) {
   ThemeSample s = themeSampleAt(-1.0f);
@@ -417,9 +412,6 @@ void themeSampleSelfTest(void) {
 
   s = themeSampleAtWorldY(SCREEN_HEIGHT / 2.0f - edge);
   assert(s.level == 1 && s.era == ERA_SKIES && s.phase == 0.0f);
-  assert(themeLevelAt(wrap) == ERA_COUNT);
-  assert(themeBandProgressAt(edge) == 0.0f);
-
   float midpoint = (TRANSITION_START + 1.0f) * 0.5f;
   s = themeSampleAt(BAND_HEIGHT * (ERA_SKIES + midpoint));
   assert(s.level == ERA_SKIES && s.cycle == 0 && s.era == ERA_SKIES &&

@@ -35,8 +35,8 @@ static float easedWindow(float phase, float start, float end) {
 static float bridgeBell(float t) { return 4.0f * t * (1.0f - t); }
 
 // Parallax depth for decor element `i`: three quantized layers (near layers
-// drift and scroll more). Clouds and blocks share it so their crossfade lines
-// up during a theme transition.
+// drift and scroll more). Clouds and blocks share it so their motion lines up
+// during a bridge.
 static float parallaxDepth(int i) { return 0.25f + (i % 3) * 0.2f; }
 
 // Fluffy cloud: one shaded underpaint plus three TEX_CLOUD body stamps. One
@@ -103,7 +103,7 @@ static void drawBlockC(float x, float y, float s, Color c, float a) {
 }
 
 // The seven tetromino footprints as (dx,dy) cells; drawTetromino stamps four
-// beveled cells so the L5 backdrop rains real shapes, not lone squares.
+// beveled cells so the Falling Blocks backdrop rains shapes, not lone squares.
 // Kept non-negative so world.c can use the same offsets as collision boxes.
 const signed char TETRO[][4][2] = {
     {{0, 0}, {1, 0}, {2, 0}, {3, 0}}, // I
@@ -255,7 +255,7 @@ static void drawPollen(float cameraY, float alpha) {
   }
 }
 
-// L1 far layer: day atmosphere, cloud depth, and the valley silhouette.
+// Sunny Hills far layer: day atmosphere, cloud depth, and valley silhouettes.
 static void drawHillsFar(float cameraY, float alpha, float sink, int omitDisc) {
   drawTex(TEX_NEBULA, SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT * 0.32f,
           SCREEN_WIDTH * 1.35f, SCREEN_HEIGHT * 0.75f, 0.0f,
@@ -291,8 +291,8 @@ static void drawHillsFar(float cameraY, float alpha, float sink, int omitDisc) {
   rlPopMatrix();
 }
 
-// L1 mid layer: patterned fields, river, trees, cottage, and pollen. It can
-// sink as one plane during the cloudline bridge without moving the sky.
+// Sunny Hills mid layer: patterned fields, river, trees, cottage, and pollen.
+// It can sink as one plane during the cloudline bridge without moving the sky.
 static void drawHillsMid(float cameraY, float alpha, float sink) {
   rlPushMatrix();
   rlTranslatef(0.0f, sink, 0.0f);
@@ -336,7 +336,7 @@ static void drawSkyBird(float x, float y, float s, float phase, float alpha) {
              Fade(BLACK, alpha));
 }
 
-// L2 far layer: clear air and the shared daylight disc.
+// Birdsong Skies far layer: clear air and the shared daylight disc.
 static void drawSkiesFar(float alpha, int omitDisc) {
   drawTex(TEX_NEBULA, SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT * 0.35f,
           SCREEN_WIDTH * 1.3f, SCREEN_HEIGHT * 0.8f, 0.0f,
@@ -346,8 +346,8 @@ static void drawSkiesFar(float alpha, int omitDisc) {
   }
 }
 
-// L2 mid layer: high cloud banks, wind ribbons, and migrating birds. There is
-// deliberately no ground plane, so the climb feels clear of Sunny Hills.
+// Birdsong Skies mid layer: high clouds, wind ribbons, and migrating birds.
+// There is no ground plane, so the climb feels clear of Sunny Hills.
 static void drawSkiesMid(float cameraY, float alpha) {
   for (int i = 0; i < 13; i++) {
     float depth = 0.1f + (i % 4) * 0.08f;
@@ -455,7 +455,7 @@ static void drawStarfield(float cameraY, float alpha) {
   }
 }
 
-// L3 far layer: night haze, stars, moon, and the occasional shooting star.
+// Night Blocks far layer: night haze, stars, moon, and shooting stars.
 static void drawStarsFar(float cameraY, float alpha, int omitDisc) {
   drawNebula(cameraY, alpha);
   drawStarfield(cameraY, alpha);
@@ -482,7 +482,7 @@ static void drawStarsFar(float cameraY, float alpha, int omitDisc) {
   }
 }
 
-// L3 mid layer: floating square islands beneath the star field.
+// Night Blocks mid layer: floating square islands beneath the star field.
 static void drawStarsMid(float cameraY, float alpha) {
   for (int i = 0; i < BLOCK_COUNT / 3; i++) {
     float depth = 0.3f + (i % 2) * 0.15f;
@@ -522,7 +522,7 @@ static int hash2(int i, int j) {
   return (int)(h & 0x7fffffffu);
 }
 
-// L4 far layer: scrolling broken corridors and their signal pellets.
+// Neon Maze far layer: scrolling broken corridors and signal pellets.
 static void drawMazeFar(float cameraY, float alpha) {
   drawNebula(cameraY, alpha);
   float sc = -cameraY * 0.4f;
@@ -573,7 +573,7 @@ static void drawMazeFar(float cameraY, float alpha) {
   EndBlendMode();
 }
 
-// L4 mid layer: distant maze inhabitants moving between the corridors.
+// Neon Maze mid layer: distant inhabitants moving between the corridors.
 static void drawMazeMid(float cameraY, float alpha) {
   for (int i = 0; i < 4; i++) { // drifting ghosts
     float x = wrapf((float)GetTime() * (14.0f + i * 4) + i * 220.0f,
@@ -593,7 +593,7 @@ static void drawMazeMid(float cameraY, float alpha) {
   }
 }
 
-// L5 far layer: the faint vertical lines of a playfield well.
+// Falling Blocks far layer: faint vertical lines of a playfield well.
 static void drawBlocksFar(float cameraY, float alpha) {
   drawNebula(cameraY, alpha);
   for (int i = 0; i * 44 <= SCREEN_WIDTH; i++) {
@@ -601,7 +601,7 @@ static void drawBlocksFar(float cameraY, float alpha) {
   }
 }
 
-// L5 mid layer: muted tetrominoes behind the brighter gameplay pieces.
+// Falling Blocks mid layer: muted shapes behind brighter gameplay pieces.
 static void drawBlocksMid(float cameraY, float alpha) {
   for (int i = 0; i < BLOCK_COUNT; i++) {
     float depth = parallaxDepth(i);
@@ -1218,7 +1218,7 @@ static void drawBridgeMid(BridgeStyle bridge, float cameraY, float t) {
 }
 
 void drawMenuBackground(void) {
-  themeUpdate(themeSampleAt(0.0f)); // menu is always the first theme
+  themeUpdate(themeSampleAt(0.0f)); // the menu always uses Sunny Hills
   DrawRectangleGradientV(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SKY_TOP, SKY_BOT);
   drawSun(1.0f);
   // Big lazy drifting clouds.
@@ -1375,11 +1375,11 @@ int main(int argc, char **argv) {
   while (!texPreloadStep()) {
   }
   RenderTexture rt = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
-  Image sheet = GenImageColor(CELL * SAMPLE_COUNT, CELL * THEME_COUNT, BLACK);
+  Image sheet = GenImageColor(CELL * SAMPLE_COUNT, CELL * ERA_COUNT, BLACK);
 
   printf("columns: edge .000 | stable .700 | .780 | .840 | .900 | .960 | "
          ".995 | next .005\n");
-  for (int edge = 0; edge < THEME_COUNT; edge++) {
+  for (int edge = 0; edge < ERA_COUNT; edge++) {
     int next = themeSampleAt(edge * BAND).next;
     for (int col = 0; col < SAMPLE_COUNT; col++) {
       float phase = SAMPLE_PHASES[col];
@@ -1410,7 +1410,7 @@ int main(int argc, char **argv) {
     }
   }
   ExportImage(sheet, argc > 1 ? argv[1] : "bgstrip.png");
-  printf("ok - %d edges x %d samples\n", THEME_COUNT, SAMPLE_COUNT);
+  printf("ok - %d edges x %d samples\n", ERA_COUNT, SAMPLE_COUNT);
   CloseWindow();
   return 0;
 }

@@ -150,8 +150,8 @@ const PowerUpDef POWERUP_DEFS[] = {
     // HUD timer-bar colors are fixed (not themed): the table is static config.
     // spawnWeight only distributes picks *within* a category — pickPowerup(bad)
     // weighted-picks among the good rows or among the debuff rows. The good-vs-
-    // bad ratio itself is the altitude roll in spawnPowerups (0/5 bad at L0, up
-    // to 3/5 at L3+), not these weights. Tune knob.
+    // bad ratio itself is the altitude roll in spawnPowerups (0/5 at level 0,
+    // up to 3/5 at level 3+), not these weights. Tune knob.
     {480.0f, SKYBLUE, "MAGNET", 3, 0.0f, false, false},       // ~8s
     {150.0f, ORANGE, "ROCKET", 3, SHAKE_LAUNCH, true, false}, // ~2.5s
     {360.0f, LIME, "BALLOON", 3, 0.0f, false, false},         // ~6s
@@ -413,8 +413,8 @@ static void spawnMonsters(World *world) {
     float pressure = encounterPressure(sample.phase);
     int chance = (int)(pressure * (d + 1) * 100.0f);
     bool preview = e == ERA_MAZE && sample.phase < GHOST_PREVIEW_END;
-    // At full pressure this is the old L0:1/5 .. L3+:4/5 density. Arrival and
-    // relief scale that same capped difficulty down; one docile Maze preview
+    // At full pressure density rises from 1/5 at level 0 to 4/5 at level 3.
+    // Arrival and relief scale that capped difficulty down; one docile preview
     // band is guaranteed before the ordinary roll takes over.
     if (preview || GetRandomValue(0, 499) < chance) {
       FIND_FREE(s, monsters, MAX_MONSTERS);
@@ -493,9 +493,9 @@ static PowerUpType pickPowerup(bool debuff, EraId era) {
 }
 
 static void spawnPowerups(World *world) {
-  // At full pressure the debuff chance remains L0:0/5 .. L3+:3/5. Arrival and
-  // relief scale it toward zero, while Fewer Debuffs still subtracts from the
-  // same capped global difficulty.
+  // At full pressure debuff chance rises from 0/5 at level 0 to 3/5 at level
+  // 3. Arrival and relief scale it toward zero; Fewer Debuffs still subtracts
+  // from the same capped global difficulty.
   int d = difficulty(world) - gPuUpg[PU_DEBUFF_SUPPRESS];
   while (world->powerupSpawnY > world->cameraY - SCREEN_HEIGHT) {
     ThemeSample sample = themeSampleAtWorldY(world->powerupSpawnY);
@@ -2347,7 +2347,7 @@ static void checkEras(void) {
     assert(pl->active && w.hitstop == hitstop &&
            "rooted Garden piece still crushed");
   }
-  printf("ok — era mechanics\n");
+  printf("ok - era mechanics\n");
 }
 
 int main(int argc, char **argv) {
@@ -2359,7 +2359,7 @@ int main(int argc, char **argv) {
   while (!svgPreloadStep()) {
   }
   RenderTexture rt = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
-  Image sheet = GenImageColor(CELL * THEME_COUNT, CELL, BLACK);
+  Image sheet = GenImageColor(CELL * ERA_COUNT, CELL, BLACK);
 
   // The scene is built by assignment rather than by running the spawner, so
   // the strip shows the same picture every run and a change to the spawn
@@ -2393,7 +2393,7 @@ int main(int argc, char **argv) {
   w.powerTimer[POWERUP_MAGNET] = 100.0f; // layered aura colors around the blob
   w.powerTimer[POWERUP_ROCKET] = 100.0f;
 
-  for (int i = 0; i < THEME_COUNT; i++) {
+  for (int i = 0; i < ERA_COUNT; i++) {
     float cameraY = -(i * BAND + BAND * 0.05f);
     w.cameraY = cameraY;
     w.bestY = SCREEN_HEIGHT / 2.0f + cameraY;
@@ -2524,7 +2524,7 @@ int main(int argc, char **argv) {
     UnloadImage(im);
   }
   ExportImage(sheet, argc > 1 ? argv[1] : "worldstrip.png");
-  printf("ok — %d eras\n", THEME_COUNT);
+  printf("ok - %d eras\n", ERA_COUNT);
   CloseWindow();
   return 0;
 }

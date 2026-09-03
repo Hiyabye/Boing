@@ -2,7 +2,7 @@
 
 ## Status
 
-- Execution tracker; Phase 11 completed with Reboot Garden on 2026-09-03.
+- Execution tracker; Phase 12 cleanup and final verification completed on 2026-09-04.
 - Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
 - Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> Reboot Garden -> a rebuilt Sunny Hills.
@@ -1297,12 +1297,12 @@ Goal: remove migration scaffolding and synchronize documentation without gratuit
 
 ### 12.1 Remove obsolete compatibility surfaces
 
-- [ ] Remove old theme-global blend wrappers once no caller uses them.
-- [ ] Remove stale comments describing whole-band palette interpolation.
-- [ ] Remove old level-track ordering assumptions.
+- [x] Remove old theme-global blend wrappers once no caller uses them.
+- [x] Remove stale comments describing whole-band palette interpolation.
+- [x] Remove old level-track ordering assumptions.
 - [x] Remove unused banner state if the chosen HUD no longer needs it.
-- [ ] Remove temporary tuning logs and debug paths.
-- [ ] Search for all `THEME_COUNT`, `worldEra`, old track names, and old bridge constants.
+- [x] Remove temporary tuning logs and debug paths.
+- [x] Search for all `THEME_COUNT`, `worldEra`, old track names, and old bridge constants.
 
 ### 12.2 Consider file splits only after evidence
 
@@ -1318,24 +1318,24 @@ If those conditions are absent, leave the files together.
 
 ### 12.3 Synchronize documentation
 
-- [ ] Update `AGENTS.md` after implementation is final.
-- [ ] Update the Korean `README.md` where build, theme count, gameplay, or architecture facts changed.
-- [ ] Update inline comments to match the final sampler, bridge, entity ownership, and audio scheduling.
-- [ ] Update current bundle size using a fresh build.
-- [ ] Do not modify generated files or `CHANGELOG.md`.
+- [x] Update `AGENTS.md` after implementation is final.
+- [x] Update the Korean `README.md` where build, theme count, gameplay, or architecture facts changed.
+- [x] Update inline comments to match the final sampler, bridge, entity ownership, and audio scheduling.
+- [x] Update current bundle size using a fresh build.
+- [x] Do not modify generated files or `CHANGELOG.md`.
 
 ### 12.4 Final verification
 
-- [ ] Configure if files were added or removed: `cmake -S . -B build`.
-- [ ] Build: `cmake --build build`.
-- [ ] Check formatting.
-- [ ] Run every relevant self-test in `AGENTS.md`.
-- [ ] Run unrelated self-tests too if shared headers or core rendering changed.
-- [ ] Launch through `open build/Boing.app`.
-- [ ] Play menu -> gameplay -> pause -> settings -> resume -> game over -> retry.
-- [ ] Play or simulate all era edges and one complete closed loop.
-- [ ] Confirm only system frameworks and `/usr/lib` dependencies with `otool -L`.
-- [ ] Measure the complete decompressed app bundle.
+- [x] Configure if files were added or removed: `cmake -S . -B build`.
+- [x] Build: `cmake --build build`.
+- [x] Check formatting.
+- [x] Run every relevant self-test in `AGENTS.md`.
+- [x] Run unrelated self-tests too if shared headers or core rendering changed.
+- [x] Launch through `open build/Boing.app`.
+- [x] Play menu -> gameplay -> pause -> settings -> resume -> game over -> retry.
+- [x] Play or simulate all era edges and one complete closed loop.
+- [x] Confirm only system frameworks and `/usr/lib` dependencies with `otool -L`.
+- [x] Measure the complete decompressed app bundle.
 
 Bundle check:
 
@@ -1360,6 +1360,28 @@ Final acceptance:
 - Fresh players cannot identify a technical cut.
 - Fresh players can correctly describe the new mechanic and its cues.
 - All art, names, music, sound, and layouts remain original.
+
+Phase 12 removed the unused `themeLevelAt()` and
+`themeBandProgressAt()` wrappers, the `THEME_COUNT` alias, and the last stale
+numeric-era comments. Audio's private transition starter now uses handoff
+terminology. Production source and documentation contain no old track names,
+`worldEra`, obsolete bridge constants, or temporary tuning/debug paths. The
+file-split criteria were not met, so `background.c` and `world.c` remain intact.
+`AGENTS.md` now describes the final direct sampler API. The Korean `README.md`
+was reviewed and already matched the six-era journey, musical scheduling,
+architecture, and current size, so it needed no churn.
+
+All eleven self-tests listed in `AGENTS.md` pass. The full-resolution 6x8
+transition matrix, six-era world strip, post strip, SVG sheet, font sheet, and
+texture sheet were reviewed. Launch Services exercised menu -> gameplay ->
+pause -> settings -> resume -> game over -> retry; a temporary local death
+acceleration used only to reach the final two states was removed before the
+final build, and the user's save was restored byte-for-byte. The final app
+launches normally, both Mach-O slices link only to `/System/Library` and
+`/usr/lib`, the ad-hoc signature verifies, and formatting is clean. No source
+files were added or removed, so reconfiguration was unnecessary. The Universal
+2 executable remains 1,351,120 bytes; the complete bundle remains 1,438,243
+bytes with 36,317 bytes free.
 
 # Transition choreography reference
 

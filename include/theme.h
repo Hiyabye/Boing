@@ -47,16 +47,14 @@ typedef enum {
 } BridgeStyle;
 
 typedef enum {
-  BACKDROP_HILLS,  // L1: day sky, clouds + rolling green hills/bushes
-  BACKDROP_SKIES,  // L2: open blue sky, high clouds + flying birds
-  BACKDROP_STARS,  // L3: night sky, moon + pixel stars + blocky terrain
-  BACKDROP_MAZE,   // L4: neon maze lattice + pellet dots on a dark ground
-  BACKDROP_BLOCKS, // L5: falling neon tetromino cells
-  BACKDROP_GARDEN  // L6: rooted cells, terraced fields, and predawn growth
+  BACKDROP_HILLS,  // day sky, clouds, and rolling green hills
+  BACKDROP_SKIES,  // open blue sky, high clouds, and flying birds
+  BACKDROP_STARS,  // night sky, moon, pixel stars, and blocky terrain
+  BACKDROP_MAZE,   // neon maze lattice and pellet dots on dark ground
+  BACKDROP_BLOCKS, // falling neon tetromino cells
+  BACKDROP_GARDEN  // rooted cells, terraced fields, and predawn growth
 } BackdropStyle;
 
-// Compatibility name for tables and loops that count gameplay eras.
-#define THEME_COUNT ERA_COUNT
 #define CONFETTI_COUNT 6
 
 // One theme. Every Color must come before `backdrop` - themeUpdate() blends the
@@ -90,7 +88,7 @@ typedef struct {
 extern Theme gTheme;
 extern Color gUiAccent, gUiAccentDark;
 
-// The theme table (defined in theme.c; THEME_COUNT rows).
+// The theme table (defined in theme.c; ERA_COUNT rows).
 extern const Theme THEMES[];
 
 // Pure journey samplers. World Y follows the shared convention:
@@ -102,10 +100,6 @@ ThemeSample themeSampleAtWorldY(float worldY);
 void themeUpdate(ThemeSample sample);
 // Post-processing/additive glow weight for the sample's era pair and blend.
 float themeGlow(ThemeSample sample);
-
-// Compatibility wrappers for callers that only need one scalar.
-int themeLevelAt(float ascent);
-float themeBandProgressAt(float ascent);
 
 #ifdef BG_SELFTEST
 // Boundary checks run as part of the existing background self-test.
