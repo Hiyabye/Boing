@@ -219,9 +219,6 @@ static Theme lerpTheme(const Theme *a, const Theme *b, float f) {
   // Keep a discrete fallback backdrop value, though background.c reads
   // themeBlend() directly to crossfade the two shapes.
   r.backdrop = f < 0.5f ? a->backdrop : b->backdrop;
-  // Hold the current-level (low) track for the whole band so the song only
-  // crossfades at the level boundary, in step with the LEVEL indicator.
-  r.track = a->track;
   return r;
 }
 

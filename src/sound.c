@@ -71,6 +71,10 @@ struct MusicBuild {
   const Track *track;
 };
 
+static int trackBeatFrames(const Track *track) {
+  return (int)(SAMPLE_RATE * 60.0f / track->bpm + 0.5f);
+}
+
 static float fractf(float x) { return x - floorf(x); }
 
 static unsigned hash32(unsigned x) {
@@ -96,15 +100,22 @@ static float smoothNoise(unsigned seed, unsigned sample, unsigned period) {
   return a + (b - a) * f;
 }
 
+#define SEMITONES_PER_OCTAVE 12
+static const float SEMITONE_RATIO[] = {
+    1.0f,       1.0594631f, 1.1224620f, 1.1892071f, 1.2599211f, 1.3348398f,
+    1.4142136f, 1.4983071f, 1.5874011f, 1.6817928f, 1.7817974f, 1.8877486f,
+};
+STATIC_ASSERT(ARRAY_LEN(SEMITONE_RATIO) == SEMITONES_PER_OCTAVE,
+              semitone_ratios_full);
+
 static float midiHz(int midi) {
-  static const float SEMITONE[] = {
-      1.0f,       1.0594631f, 1.1224620f, 1.1892071f, 1.2599211f, 1.3348398f,
-      1.4142136f, 1.4983071f, 1.5874011f, 1.6817928f, 1.7817974f, 1.8877486f,
-  };
   int delta = midi - 69;
-  int octave = delta >= 0 ? delta / 12 : -((-delta + 11) / 12);
-  int note = delta - octave * 12;
-  return ldexpf(440.0f * SEMITONE[note], octave);
+  int octave =
+      delta >= 0
+          ? delta / SEMITONES_PER_OCTAVE
+          : -((-delta + SEMITONES_PER_OCTAVE - 1) / SEMITONES_PER_OCTAVE);
+  int note = delta - octave * SEMITONES_PER_OCTAVE;
+  return ldexpf(440.0f * SEMITONE_RATIO[note], octave);
 }
 
 static float polyBlep(float phase, float step) {
@@ -173,10 +184,12 @@ static float styleWave(SoundStyle style, float cycles, float hz, int sample,
   case STYLE_RESULTS:
     return 0.82f * sine + 0.18f * triangleWave(cycles);
   case STYLE_UI:
-  default:
     return 0.62f * sine + 0.28f * triangleWave(cycles) +
            0.1f * sinf(TAU * cycles * 2.0f);
+  case STYLE_COUNT:
+    break;
   }
+  return 0.0f;
 }
 
 static float heldEnvelope(float t, float attack, float decay, float sustain) {
@@ -325,21 +338,41 @@ static void addNote(MusicBuild *b, Instrument inst, int midi, float beat,
   }
 }
 
+#define SCALE_DEGREES 7
 static const int SCALE_MAJOR[] = {0, 2, 4, 5, 7, 9, 11};
 static const int SCALE_LYDIAN[] = {0, 2, 4, 6, 7, 9, 11};
 static const int SCALE_MINOR[] = {0, 2, 3, 5, 7, 8, 10};
 static const int SCALE_DORIAN[] = {0, 2, 3, 5, 7, 9, 10};
 static const int SCALE_HARMONIC_MINOR[] = {0, 2, 3, 5, 7, 8, 11};
+STATIC_ASSERT(ARRAY_LEN(SCALE_MAJOR) == SCALE_DEGREES, major_scale_full);
+STATIC_ASSERT(ARRAY_LEN(SCALE_LYDIAN) == SCALE_DEGREES, lydian_scale_full);
+STATIC_ASSERT(ARRAY_LEN(SCALE_MINOR) == SCALE_DEGREES, minor_scale_full);
+STATIC_ASSERT(ARRAY_LEN(SCALE_DORIAN) == SCALE_DEGREES, dorian_scale_full);
+STATIC_ASSERT(ARRAY_LEN(SCALE_HARMONIC_MINOR) == SCALE_DEGREES,
+              harmonic_minor_scale_full);
+
+// Harmonic plans are shared config rather than hidden inside each composer.
+// TRACKS derives each loop's bar count from these arrays, so score length and
+// progression indexing cannot drift apart. MENU and SHOP intentionally reuse
+// one plan to keep their synchronized playheads harmonically aligned.
+static const signed char PROG_SUNNY[] = {0, 4, 5, 3, 0, 2, 3, 4, 5, 3, 4, 0};
+static const signed char PROG_SKIES[] = {0, 1, 3, 0, 5, 1, 4, 0, 3, 1, 4, 0};
+static const signed char PROG_NIGHT[] = {0, 3, 6, 4, 0, 5, 3, 4};
+static const signed char PROG_MAZE[] = {0, 0, 3, 4, 0, 5, 3, 4, 0, 6, 3, 4};
+static const signed char PROG_BLOCKS[] = {0, 5, 3, 4, 0, 6, 3, 4, 5, 3, 4, 0};
+static const signed char PROG_MENU[] = {0, 3, 5, 4, 0, 1, 3, 4};
+static const signed char PROG_CREDITS[] = {0, 5, 3, 4, 1, 3, 4, 0};
+static const signed char PROG_RESULTS[] = {0, 5, 3, 4};
 
 static int degreeMidi(const int *scale, int tonic, int degree) {
   int octave;
   if (degree >= 0) {
-    octave = degree / 7;
+    octave = degree / SCALE_DEGREES;
   } else {
-    octave = -((-degree + 6) / 7);
+    octave = -((-degree + SCALE_DEGREES - 1) / SCALE_DEGREES);
   }
-  int index = degree - octave * 7;
-  return tonic + octave * 12 + scale[index];
+  int index = degree - octave * SCALE_DEGREES;
+  return tonic + octave * SEMITONES_PER_OCTAVE + scale[index];
 }
 
 static void addChord(MusicBuild *b, const int *scale, int tonic, int degree,
@@ -504,11 +537,10 @@ static void addBreakDrums(MusicBuild *b, float beat, float amount,
 }
 
 static void composeSunny(MusicBuild *b) {
-  static const signed char PROG[] = {0, 4, 5, 3, 0, 2, 3, 4, 5, 3, 4, 0};
   int tonic = b->track->rootMidi;
   for (int bar = 0; bar < b->track->bars; bar++) {
     float at = bar * 4.0f;
-    int degree = PROG[bar];
+    int degree = PROG_SUNNY[bar];
     addChord(b, SCALE_MAJOR, tonic, degree, at, 3.72f, INST_PAD, 0.055f,
              100u + (unsigned)bar);
     for (int i = 0; i < 8; i++) {
@@ -541,11 +573,10 @@ static void composeSunny(MusicBuild *b) {
 }
 
 static void composeSkies(MusicBuild *b) {
-  static const signed char PROG[] = {0, 1, 3, 0, 5, 1, 4, 0, 3, 1, 4, 0};
   int tonic = b->track->rootMidi;
   for (int bar = 0; bar < b->track->bars; bar++) {
     float at = bar * 3.0f;
-    int degree = PROG[bar];
+    int degree = PROG_SKIES[bar];
     addChord(b, SCALE_LYDIAN, tonic, degree, at, 2.78f, INST_PAD, 0.065f,
              1300u + (unsigned)bar);
     addNote(b, INST_BASS, degreeMidi(SCALE_LYDIAN, tonic - 24, degree), at,
@@ -576,11 +607,10 @@ static void composeSkies(MusicBuild *b) {
 }
 
 static void composeNight(MusicBuild *b) {
-  static const signed char PROG[] = {0, 3, 6, 4, 0, 5, 3, 4};
   int tonic = b->track->rootMidi;
   for (int bar = 0; bar < b->track->bars; bar++) {
     float at = bar * 4.0f;
-    int degree = PROG[bar];
+    int degree = PROG_NIGHT[bar];
     addChord(b, SCALE_DORIAN, tonic, degree, at, 3.82f, INST_PAD, 0.075f,
              2100u + (unsigned)bar);
     addNote(b, INST_BASS, degreeMidi(SCALE_DORIAN, tonic - 24, degree), at,
@@ -607,12 +637,11 @@ static void composeNight(MusicBuild *b) {
 }
 
 static void composeMaze(MusicBuild *b) {
-  static const signed char PROG[] = {0, 0, 3, 4, 0, 5, 3, 4, 0, 6, 3, 4};
   static const float BASS_AT[] = {0.0f, 0.75f, 1.5f, 2.0f, 2.75f, 3.5f};
   int tonic = b->track->rootMidi;
   for (int bar = 0; bar < b->track->bars; bar++) {
     float at = bar * 4.0f;
-    int degree = PROG[bar];
+    int degree = PROG_MAZE[bar];
     for (int i = 0; i < ARRAY_LEN(BASS_AT); i++) {
       int d = degree + ((i == 2 || i == 5) ? 4 : 0);
       addNote(b, INST_BASS, degreeMidi(SCALE_MINOR, tonic - 24, d),
@@ -643,11 +672,10 @@ static void composeMaze(MusicBuild *b) {
 }
 
 static void composeBlocks(MusicBuild *b) {
-  static const signed char PROG[] = {0, 5, 3, 4, 0, 6, 3, 4, 5, 3, 4, 0};
   int tonic = b->track->rootMidi;
   for (int bar = 0; bar < b->track->bars; bar++) {
     float at = bar * 4.0f;
-    int degree = PROG[bar];
+    int degree = PROG_BLOCKS[bar];
     addChord(b, SCALE_HARMONIC_MINOR, tonic, degree, at + 0.25f, 0.45f,
              INST_BLOCK, 0.075f, 3900u + (unsigned)bar);
     addChord(b, SCALE_HARMONIC_MINOR, tonic, degree, at + 2.25f, 0.45f,
@@ -674,11 +702,10 @@ static void composeBlocks(MusicBuild *b) {
 }
 
 static void composeMenu(MusicBuild *b) {
-  static const signed char PROG[] = {0, 3, 5, 4, 0, 1, 3, 4};
   int tonic = b->track->rootMidi;
   for (int bar = 0; bar < b->track->bars; bar++) {
     float at = bar * 4.0f;
-    int degree = PROG[bar];
+    int degree = PROG_MENU[bar];
     addChord(b, SCALE_MAJOR, tonic, degree, at, 3.8f, INST_PAD, 0.065f,
              5100u + (unsigned)bar);
     addNote(b, INST_BASS, degreeMidi(SCALE_MAJOR, tonic - 24, degree), at,
@@ -707,11 +734,10 @@ static void composeMenu(MusicBuild *b) {
 }
 
 static void composeShop(MusicBuild *b) {
-  static const signed char PROG[] = {0, 3, 5, 4, 0, 1, 3, 4};
   int tonic = b->track->rootMidi;
   for (int bar = 0; bar < b->track->bars; bar++) {
     float at = bar * 4.0f;
-    int degree = PROG[bar];
+    int degree = PROG_MENU[bar];
     static const float STABS[] = {0.0f, 0.75f, 1.5f, 2.5f, 3.25f};
     for (int i = 0; i < ARRAY_LEN(STABS); i++) {
       addChord(b, SCALE_MAJOR, tonic, degree, at + STABS[i], 0.22f, INST_PLUCK,
@@ -740,11 +766,10 @@ static void composeShop(MusicBuild *b) {
 }
 
 static void composeCredits(MusicBuild *b) {
-  static const signed char PROG[] = {0, 5, 3, 4, 1, 3, 4, 0};
   int tonic = b->track->rootMidi;
   for (int bar = 0; bar < b->track->bars; bar++) {
     float at = bar * 4.0f;
-    int degree = PROG[bar];
+    int degree = PROG_CREDITS[bar];
     addChord(b, SCALE_MAJOR, tonic, degree, at, 3.86f, INST_PAD, 0.082f,
              7000u + (unsigned)bar);
     addNote(b, INST_BASS, degreeMidi(SCALE_MAJOR, tonic - 24, degree), at, 3.5f,
@@ -767,11 +792,10 @@ static void composeCredits(MusicBuild *b) {
 }
 
 static void composeResults(MusicBuild *b) {
-  static const signed char PROG[] = {0, 5, 3, 4};
   int tonic = b->track->rootMidi;
   for (int bar = 0; bar < b->track->bars; bar++) {
     float at = bar * 4.0f;
-    int degree = PROG[bar];
+    int degree = PROG_RESULTS[bar];
     addChord(b, SCALE_MINOR, tonic, degree, at, 3.86f, INST_PAD, 0.07f,
              7900u + (unsigned)bar);
     addNote(b, INST_BASS, degreeMidi(SCALE_MINOR, tonic - 24, degree), at,
@@ -789,15 +813,24 @@ static void composeResults(MusicBuild *b) {
 // Positional in MusicTrack order. MENU and SHOP deliberately share timing and
 // harmony so setTrack() can preserve their exact playhead during navigation.
 static const Track TRACKS[] = {
-    {116.0f, 12, 4, 62, STYLE_SUNNY, 0.1f, 0.1f, 0.125f, composeSunny},
-    {96.0f, 12, 3, 64, STYLE_SKIES, 0.18f, 0.2f, 0.105f, composeSkies},
-    {84.0f, 8, 4, 59, STYLE_NIGHT, 0.22f, 0.28f, 0.1f, composeNight},
-    {126.0f, 12, 4, 60, STYLE_MAZE, 0.08f, 0.08f, 0.13f, composeMaze},
-    {142.0f, 12, 4, 64, STYLE_BLOCKS, 0.06f, 0.06f, 0.135f, composeBlocks},
-    {104.0f, 8, 4, 67, STYLE_UI, 0.14f, 0.16f, 0.11f, composeMenu},
-    {104.0f, 8, 4, 67, STYLE_UI, 0.12f, 0.12f, 0.115f, composeShop},
-    {88.0f, 8, 4, 62, STYLE_CREDITS, 0.2f, 0.28f, 0.1f, composeCredits},
-    {72.0f, 4, 4, 57, STYLE_RESULTS, 0.2f, 0.24f, 0.09f, composeResults},
+    {116.0f, ARRAY_LEN(PROG_SUNNY), 4, 62, STYLE_SUNNY, 0.1f, 0.1f, 0.125f,
+     composeSunny},
+    {96.0f, ARRAY_LEN(PROG_SKIES), 3, 64, STYLE_SKIES, 0.18f, 0.2f, 0.105f,
+     composeSkies},
+    {84.0f, ARRAY_LEN(PROG_NIGHT), 4, 59, STYLE_NIGHT, 0.22f, 0.28f, 0.1f,
+     composeNight},
+    {126.0f, ARRAY_LEN(PROG_MAZE), 4, 60, STYLE_MAZE, 0.08f, 0.08f, 0.13f,
+     composeMaze},
+    {142.0f, ARRAY_LEN(PROG_BLOCKS), 4, 64, STYLE_BLOCKS, 0.06f, 0.06f, 0.135f,
+     composeBlocks},
+    {104.0f, ARRAY_LEN(PROG_MENU), 4, 67, STYLE_UI, 0.14f, 0.16f, 0.11f,
+     composeMenu},
+    {104.0f, ARRAY_LEN(PROG_MENU), 4, 67, STYLE_UI, 0.12f, 0.12f, 0.115f,
+     composeShop},
+    {88.0f, ARRAY_LEN(PROG_CREDITS), 4, 62, STYLE_CREDITS, 0.2f, 0.28f, 0.1f,
+     composeCredits},
+    {72.0f, ARRAY_LEN(PROG_RESULTS), 4, 57, STYLE_RESULTS, 0.2f, 0.24f, 0.09f,
+     composeResults},
 };
 STATIC_ASSERT(ARRAY_LEN(TRACKS) == TRACK_COUNT, tracks_full);
 STATIC_ASSERT(THEME_COUNT == TRACK_MENU, theme_level_tracks_full);
@@ -823,6 +856,10 @@ static float dryAt(const float *buf, int frames, int frame, int channel) {
   return buf[frame * 2 + channel];
 }
 
+static const float ROOM_SEC[] = {0.043f, 0.071f, 0.113f, 0.173f};
+static const float ROOM_GAIN[] = {0.2f, 0.15f, 0.11f, 0.08f};
+STATIC_ASSERT(ARRAY_LEN(ROOM_SEC) == ARRAY_LEN(ROOM_GAIN), room_taps_aligned);
+
 static void applySpace(float *buf, int frames, const Track *track) {
   if (track->echo <= 0.0f && track->room <= 0.0f) {
     return;
@@ -833,11 +870,9 @@ static void applySpace(float *buf, int frames, const Track *track) {
     return;
   }
   memcpy(dry, buf, bytes);
-  int beat = (int)(SAMPLE_RATE * 60.0f / track->bpm + 0.5f);
+  int beat = trackBeatFrames(track);
   int echo1 = beat * 3 / 4;
   int echo2 = beat * 3 / 2;
-  static const float ROOM_SEC[] = {0.043f, 0.071f, 0.113f, 0.173f};
-  static const float ROOM_GAIN[] = {0.2f, 0.15f, 0.11f, 0.08f};
 
   for (int i = 0; i < frames; i++) {
     float l = dry[i * 2], r = dry[i * 2 + 1];
@@ -1364,7 +1399,7 @@ static Stereo renderComboLayer(unsigned pos, int combo) {
     return (Stereo){0.0f, 0.0f};
   }
   const Track *track = &TRACKS[curTrack];
-  int beat = (int)(SAMPLE_RATE * 60.0f / track->bpm + 0.5f);
+  int beat = trackBeatFrames(track);
   int half = beat / 2;
   int hatPhase = (int)(pos % (unsigned)half);
   int hatLen = (int)(0.055f * SAMPLE_RATE);
@@ -1469,7 +1504,7 @@ static Stereo renderDanger(unsigned pos, float amount) {
     return (Stereo){0.0f, 0.0f};
   }
   const Track *track = &TRACKS[curTrack];
-  int beat = (int)(SAMPLE_RATE * 60.0f / track->bpm + 0.5f);
+  int beat = trackBeatFrames(track);
   int period = beat * 2;
   int phase = (int)(pos % (unsigned)period);
   int second = phase - (int)(0.28f * SAMPLE_RATE);
@@ -1676,6 +1711,12 @@ static void checkDefinitions(void) {
   }
   assert(TRACKS[TRACK_MENU].bpm == TRACKS[TRACK_SHOP].bpm);
   assert(TRACKS[TRACK_MENU].bars == TRACKS[TRACK_SHOP].bars);
+  bool seen[TRACK_COUNT] = {false};
+  for (int i = 0; i < TRACK_COUNT; i++) {
+    int track = PRELOAD_ORDER[i];
+    assert(validTrack(track) && !seen[track]);
+    seen[track] = true;
+  }
   for (int i = 0; i < SFX_COUNT; i++) {
     assert(CUES[i].seconds > 0.0f && CUES[i].gain > 0.0f);
     assert(CUES[i].duck >= 0.0f && CUES[i].duck < 1.0f);

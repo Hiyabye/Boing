@@ -39,9 +39,13 @@ static int trackForState(const Game *g) {
   case GAMESTATE_SETTINGS:
     return g->prevState == GAMESTATE_PAUSED ? THEMES[worldEra(&g->world)].track
                                             : TRACK_MENU;
-  default:
+  case GAMESTATE_PLAYING:
+  case GAMESTATE_PAUSED:
     return THEMES[worldEra(&g->world)].track;
+  case GAMESTATE_COUNT:
+    return TRACK_NONE;
   }
+  return TRACK_NONE;
 }
 
 static void updateMusicLayers(const Game *g) {

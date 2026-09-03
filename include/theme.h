@@ -44,7 +44,7 @@ typedef struct {
   Color confetti[CONFETTI_COUNT];
   // --- non-Color fields must stay after every Color above ---
   BackdropStyle backdrop;
-  int track; // music/SFX track id for this theme
+  int track; // music cue id; the active cue also selects the SFX palette
 } Theme;
 
 // The blended palette for the current frame, plus the selected outfit colors

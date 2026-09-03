@@ -46,7 +46,8 @@ void uiFocusStep(void);
 // Draws the focus ring and the key-hint line. main.c calls it after the
 // screen's draw(), so it lands on top of any overlay.
 void uiFocusDraw(void);
-// Focus back to the first item — game.c calls this on every state change.
+// Focus back to the first item. Routed state entries and modal list changes
+// call this; SETTINGS' direct return starts with an empty list already.
 void uiFocusReset(void);
 
 // The candy-comet pointer and its trail/click burst, in window points. Drawn by

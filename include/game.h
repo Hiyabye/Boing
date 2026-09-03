@@ -51,8 +51,9 @@ typedef struct {
 // ---------------------------------------------------------------------------
 // Transitions (game.c)
 // ---------------------------------------------------------------------------
-// Every state change goes through gotoState so `prevState` is always the screen
-// we came from — that's what SETTINGS returns to.
+// Screen entries go through gotoState so `prevState` records their origin.
+// SETTINGS is the deliberate exception: its helper assigns the saved return
+// state directly, preserving that origin while it closes the overlay.
 void gotoState(Game *g, GameState next);
 // Fade to black, swap to `next` at the bottom of the dip, fade back in. The dip
 // itself is driven by the main loop.
