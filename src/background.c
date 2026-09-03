@@ -744,26 +744,72 @@ void drawGameForeground(float cameraY) {
 }
 
 #ifdef BG_SELFTEST
-// Contact strip of all five backdrops plus their foreground depth layers, so
-// the later eras can be eyeballed without climbing 80,000 units. Same reason
-// the `post` selftest exists. Needs
-// a real GL context (unlike the svg/tex ones) because it renders the actual
-// draw path.
+// Transition contact matrix of every outgoing edge, including Blocks -> Hills.
+// Rows follow THEMES[] order. Columns are pure era start, then outgoing phases
+// .70, .78, .84, .90, .96, .995, and finally the next era at phase .005.
+// Every cell includes the foreground depth pass. This needs a real GL context
+// because it renders the actual draw path.
 //   cc -DBG_SELFTEST src/background.c src/theme.c src/tex.c \
 //      -Iinclude -Ilib/raylib/src build/lib/raylib/raylib/libraylib.a -lm \
-//      -framework Cocoa -framework IOKit -framework CoreVideo -framework OpenGL
-//      \ -o /tmp/bgtest && /tmp/bgtest /tmp/bgstrip.png
+//      -framework Cocoa -framework IOKit -framework CoreVideo \
+//      -framework OpenGL -o /tmp/bgtest && /tmp/bgtest /tmp/bgstrip.png
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-// Only has to land *inside* each band, so a change to BAND_HEIGHT in theme.c
-// degrades the strip rather than breaking it. Sampled just past each band's
-// *start*, not its midpoint: the palette lerps continuously across the whole
-// band, so a midpoint sample shows every theme half-morphed into the next one
-// (grey clouds on the day level) and tells you nothing about the art.
+// This mirrors theme.c's private band height only for sampling. If that tuning
+// changes, the matrix degrades visibly instead of affecting shipped behavior.
 #define BAND 20000.0f
 #define CELL 300
+
+static const float SAMPLE_PHASES[] = {0.0f,  0.70f, 0.78f,  0.84f,
+                                      0.90f, 0.96f, 0.995f, 1.005f};
+#define SAMPLE_COUNT ((int)(sizeof(SAMPLE_PHASES) / sizeof(SAMPLE_PHASES[0])))
+
+static Image renderSample(RenderTexture rt, float cameraY) {
+  BeginTextureMode(rt);
+  ClearBackground(BLACK);
+  drawGameBackground(cameraY);
+  EndTextureMode();
+  Image base = LoadImageFromTexture(rt.texture);
+
+  // Add the near layer to the same target so each cell proves both that the
+  // foreground draws and that it remains outside the central playfield.
+  BeginTextureMode(rt);
+  drawGameForeground(cameraY);
+  EndTextureMode();
+  Image im = LoadImageFromTexture(rt.texture);
+  ImageFlipVertical(&base);
+  ImageFlipVertical(&im); // framebuffer textures are bottom-up
+
+  const Color *bp = base.data, *fp = im.data;
+  int edgeChanged = 0, centerChanged = 0;
+  for (int y = 0; y < im.height; y++) {
+    for (int x = 0; x < im.width; x++) {
+      int k = y * im.width + x;
+      int d = abs(fp[k].r - bp[k].r) + abs(fp[k].g - bp[k].g) +
+              abs(fp[k].b - bp[k].b);
+      if (d > 6) {
+        if (x < 100 || x >= im.width - 100) {
+          edgeChanged++;
+        } else {
+          centerChanged++;
+        }
+      }
+    }
+  }
+  assert(edgeChanged > 100 && "theme foreground drew no visible edge ink");
+  assert(centerChanged == 0 && "theme foreground obscures the playfield");
+  UnloadImage(base);
+
+  // Translucent draws leave useful RGB but junk framebuffer alpha. Stomp it
+  // before sheet composition or ImageDrawImage darkens the rendered cell.
+  Color *p = im.data;
+  for (int k = 0, n = im.width * im.height; k < n; k++) {
+    p[k].a = 255;
+  }
+  return im;
+}
 
 int main(int argc, char **argv) {
   SetTraceLogLevel(LOG_WARNING);
@@ -771,78 +817,42 @@ int main(int argc, char **argv) {
   while (!texPreloadStep()) {
   }
   RenderTexture rt = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
-  Image sheet = GenImageColor(CELL * THEME_COUNT, CELL, BLACK);
+  Image sheet = GenImageColor(CELL * SAMPLE_COUNT, CELL * THEME_COUNT, BLACK);
 
-  for (int i = 0; i < THEME_COUNT; i++) {
-    BeginTextureMode(rt);
-    ClearBackground(BLACK);
-    float cameraY = -(i * BAND + BAND * 0.05f);
-    drawGameBackground(cameraY); // just inside the band
-    EndTextureMode();
-    Image base = LoadImageFromTexture(rt.texture);
+  printf("columns: start .000 | .700 | .780 | .840 | .900 | .960 | "
+         ".995 | next .005\n");
+  for (int edge = 0; edge < THEME_COUNT; edge++) {
+    int next = (edge + 1) % THEME_COUNT;
+    for (int col = 0; col < SAMPLE_COUNT; col++) {
+      float phase = SAMPLE_PHASES[col];
+      float cameraY = -(edge + phase) * BAND;
+      Image im = renderSample(rt, cameraY);
 
-    // Add the near layer to the same target so the image pair proves two things
-    // the contact strip alone cannot: every theme contributes foreground ink,
-    // and none of it leaks into the central playfield.
-    BeginTextureMode(rt);
-    drawGameForeground(cameraY);
-    EndTextureMode();
-    Image im = LoadImageFromTexture(rt.texture);
-    ImageFlipVertical(&base);
-    ImageFlipVertical(&im); // framebuffer textures are bottom-up
-    const Color *bp = base.data, *fp = im.data;
-    int edgeChanged = 0, centerChanged = 0;
-    for (int y = 0; y < im.height; y++) {
-      for (int x = 0; x < im.width; x++) {
-        int k = y * im.width + x;
-        int d = abs(fp[k].r - bp[k].r) + abs(fp[k].g - bp[k].g) +
-                abs(fp[k].b - bp[k].b);
-        if (d > 6) {
-          if (x < 100 || x >= im.width - 100) {
-            edgeChanged++;
-          } else {
-            centerChanged++;
-          }
-        }
+      // Weighted luma plus its range gives a compact grayscale readability
+      // report. Keep the existing flat-frame and blown-frame failure gates.
+      const Color *p = im.data;
+      long sum = 0;
+      int lo = 255, hi = 0;
+      for (int k = 0, n = im.width * im.height; k < n; k++) {
+        int l = (54 * p[k].r + 183 * p[k].g + 19 * p[k].b) / 256;
+        sum += l;
+        lo = (l < lo) ? l : lo;
+        hi = (l > hi) ? l : hi;
       }
-    }
-    assert(edgeChanged > 100 && "theme foreground drew no visible edge ink");
-    assert(centerChanged == 0 && "theme foreground obscures the playfield");
-    UnloadImage(base);
+      int mean = (int)(sum / (im.width * im.height));
+      printf("edge %d->%d phase %5.3f: luma %3d..%3d mean %3d contrast %3d\n",
+             edge, next, phase > 1.0f ? phase - 1.0f : phase, lo, hi, mean,
+             hi - lo);
+      assert(hi - lo > 32 && "backdrop came out flat");
+      assert(mean > 8 && mean < 247 && "backdrop blown to black or white");
 
-    // Every translucent draw blends the target's *alpha* channel down as well
-    // as its color, so the readback is a correct picture carrying junk alpha.
-    // Left alone, ImageDrawImage would then blend the cell onto the black
-    // sheet and every cloud would read as a dark smudge — an artifact of this
-    // strip, not of the game.
-    Color *q = im.data;
-    for (int k = 0, n = im.width * im.height; k < n; k++) {
-      q[k].a = 255;
+      ImageResize(&im, CELL, CELL);
+      ImageDrawImage(&sheet, im, col * CELL, edge * CELL, WHITE);
+      UnloadImage(im);
     }
-
-    // Two failure modes this pass can actually produce, neither of which
-    // crashes: a texture that never baked leaves the backdrop blank, and an
-    // additive pass left un-ended blows the whole frame to white.
-    const Color *p = im.data;
-    long sum = 0;
-    int lo = 255, hi = 0;
-    for (int k = 0, n = im.width * im.height; k < n; k++) {
-      int l = (p[k].r + p[k].g + p[k].b) / 3;
-      sum += l;
-      lo = (l < lo) ? l : lo;
-      hi = (l > hi) ? l : hi;
-    }
-    int mean = (int)(sum / (im.width * im.height));
-    printf("theme %d: luma %3d..%3d  mean %3d\n", i, lo, hi, mean);
-    assert(hi - lo > 32 && "backdrop came out flat");
-    assert(mean > 8 && mean < 247 && "backdrop blown to black or white");
-
-    ImageResize(&im, CELL, CELL);
-    ImageDrawImage(&sheet, im, i * CELL, 0, WHITE);
-    UnloadImage(im);
   }
   ExportImage(sheet, argc > 1 ? argv[1] : "bgstrip.png");
-  printf("ok — %d backdrops\n", THEME_COUNT);
+  printf("ok - %d edges x %d samples\n", THEME_COUNT, SAMPLE_COUNT);
   CloseWindow();
   return 0;
 }
