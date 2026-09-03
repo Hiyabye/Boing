@@ -2,7 +2,7 @@
 
 ## Status
 
-- Execution tracker; Phase 2 completed on 2026-09-03.
+- Execution tracker; Phase 3 completed on 2026-09-03.
 - Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
 - Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> a rebuilt Sunny Hills.
@@ -423,11 +423,11 @@ Files:
 
 Steps:
 
-- [ ] Seed content on both sides of a band boundary.
-- [ ] Demonstrate that the current spawner can stamp a platform using the player's global era rather than the platform's Y.
-- [ ] Demonstrate that an existing monster changes steering when the global era changes.
-- [ ] Add assertions for the desired immutable behavior.
-- [ ] Keep the failing check and fix in the same session.
+- [x] Seed content on both sides of a band boundary.
+- [x] Demonstrate that the current spawner can stamp a platform using the player's global era rather than the platform's Y.
+- [x] Demonstrate that an existing monster changes steering when the global era changes.
+- [x] Add assertions for the desired immutable behavior.
+- [x] Keep the failing check and fix in the same session.
 
 Acceptance:
 
@@ -442,11 +442,11 @@ Files:
 
 Steps:
 
-- [ ] Add a compact era field to `Coin`, `Platform`, `Monster`, and `PowerUp` where needed.
-- [ ] Verify actual struct sizes before and after. Prefer existing padding rather than reorganizing unrelated fields.
-- [ ] Compute era from each spawn cursor's world Y inside each spawner loop.
-- [ ] Do not compute one era before a loop that can cross a boundary.
-- [ ] Preserve existing platform flags and velocities as the final authority for platform behavior.
+- [x] Add a compact era field to `Coin`, `Platform`, `Monster`, and `PowerUp` where needed.
+- [x] Verify actual struct sizes before and after. Prefer existing padding rather than reorganizing unrelated fields.
+- [x] Compute era from each spawn cursor's world Y inside each spawner loop.
+- [x] Do not compute one era before a loop that can cross a boundary.
+- [x] Preserve existing platform flags and velocities as the final authority for platform behavior.
 
 Acceptance:
 
@@ -457,11 +457,11 @@ Acceptance:
 
 Steps:
 
-- [ ] Change maze steering to check the monster's stamped era.
-- [ ] Existing non-maze monsters remain ordinary after the global level changes.
-- [ ] Existing maze monsters remain maze creatures while alive, even if they cross the boundary spatially.
-- [ ] Restrict pellet flee and doubling bonuses to maze-stamped monsters.
-- [ ] Preserve velocity caps and survivability tuning.
+- [x] Change maze steering to check the monster's stamped era.
+- [x] Existing non-maze monsters remain ordinary after the global level changes.
+- [x] Existing maze monsters remain maze creatures while alive, even if they cross the boundary spatially.
+- [x] Restrict pellet flee and doubling bonuses to maze-stamped monsters.
+- [x] Preserve velocity caps and survivability tuning.
 
 Acceptance:
 
@@ -472,9 +472,9 @@ Acceptance:
 
 Steps:
 
-- [ ] Draw pellet-lane art from each coin's stamped era.
-- [ ] Do not globally restyle all live coins through `worldEra()`.
-- [ ] Keep collection radius, score, combo, and motion unchanged.
+- [x] Draw pellet-lane art from each coin's stamped era.
+- [x] Do not globally restyle all live coins through `worldEra()`.
+- [x] Keep collection radius, score, combo, and motion unchanged.
 
 Acceptance:
 
@@ -484,9 +484,9 @@ Acceptance:
 
 Steps:
 
-- [ ] Replace the implicit `world->level < THEME_COUNT` condition with an explicit first-cycle rule.
-- [ ] Preserve current first-cycle double-coin behavior.
-- [ ] Ensure adding a visual-only bridge cannot alter economy.
+- [x] Replace the implicit `world->level < THEME_COUNT` condition with an explicit first-cycle rule.
+- [x] Preserve current first-cycle double-coin behavior.
+- [x] Ensure adding a visual-only bridge cannot alter economy.
 
 Acceptance:
 
@@ -494,10 +494,18 @@ Acceptance:
 
 Phase 3 gate:
 
-- [ ] `WORLD_SELFTEST` covers a boundary and the wrap.
-- [ ] No live object's collision or rule changes at a boundary.
-- [ ] Manual play across at least two boundaries feels continuous.
-- [ ] Build and size checks pass.
+- [x] `WORLD_SELFTEST` covers a boundary and the wrap.
+- [x] No live object's collision or rule changes at a boundary.
+- [x] Manual play across at least two boundaries feels continuous.
+- [x] Build and size checks pass.
+
+The new assertions failed against the old code at Hills -> Skies, Blocks ->
+Hills, and when a Hills monster survived into Maze. All four entity era tags
+fit existing padding: `Coin` 20, `Platform` 28, `Monster` 24, `PowerUp` 16,
+and `World` 3,640 bytes before and after. A temporary long Rocket, removed
+before the final build, drove a Launch Services run through Hills, Skies,
+Night, and into Maze; static and drifting platforms visibly coexisted near the
+first boundary. The clean bundle remains 1,389,043 bytes.
 
 Suggested future commit boundary if explicitly requested:
 
@@ -864,7 +872,7 @@ Files:
 Steps:
 
 - [ ] Trigger finale intensity from the explicit reboot edge or bridge metadata.
-- [ ] Remove `worldEra() == THEME_COUNT - 1` as the semantic test.
+- [ ] Remove `journey.era == THEME_COUNT - 1` as the semantic test.
 - [ ] Keep the Falling Blocks finale layer tied to its semantic track or style.
 
 Acceptance:

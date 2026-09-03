@@ -16,14 +16,17 @@
 typedef struct Coin {
   Vector2 position;
   bool active;
-  Vector2 velocity; // usually {0}; set when knocked off by a monster hit
+  unsigned char era; // immutable EraId sampled from spawn world Y
+  Vector2 velocity;  // usually {0}; set when knocked off by a monster hit
 } Coin;
 
 typedef struct Platform {
   Vector2 position; // top-left cell's corner
   bool active;
-  // Per-era behaviour, stamped at spawn from the peak journey sample:
-  bool fragile; // Night Blocks: crumbles a beat after it is landed on
+  // Per-era behavior is stamped once from spawn world Y. The compact era tag
+  // identifies the source chapter; these concrete fields remain authoritative.
+  bool fragile;      // Night Blocks: crumbles after it is landed on
+  unsigned char era; // immutable EraId
   float fuse; // frames left before a landed-on fragile pad breaks (0 = intact)
   float vx;   // Birdsong Skies: horizontal cloud drift, reflected at the edges
   float vy;   // Falling Blocks: downward drift; > 0 also makes the pad crush
@@ -36,6 +39,7 @@ typedef struct Monster {
   Vector2 position;
   float vx; // horizontal drift
   bool active;
+  unsigned char era; // immutable EraId sampled from spawn world Y
   float vy;      // vertical drift — 0 except while ghost-chasing on Neon Maze
   unsigned seed; // spawn-time look (horns/eyes/mouth/legs). A field, not a hash
                  // of the live position like entSeed: a ghost *moves*, and a
@@ -80,6 +84,7 @@ typedef struct PowerUp {
   Vector2 position;
   PowerUpType type;
   bool active;
+  unsigned char era; // immutable EraId sampled from spawn world Y
 } PowerUp;
 
 typedef struct Particle {
@@ -142,8 +147,6 @@ float worldPeakAscent(const World *world);
 float worldViewAscent(const World *world);
 float worldShake(const World *world);
 int worldLevel(const World *world); // 0-based monotonic peak-sample level
-// Which era's mechanics are live, sampled from monotonic peak ascent.
-EraId worldEra(const World *world);
 float worldPowerTimer(const World *world, PowerUpType type);
 bool worldInvincible(const World *world); // active immunity-granting power-up
 float worldInputDir(

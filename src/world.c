@@ -44,8 +44,6 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define COIN_RADIUS 12.0f
 #define COIN_SPACING 55.0f // vertical distance between spawned coins
 #define COIN_WANDER 150.0f // max horizontal step between consecutive coins
-#define COIN_DOUBLE_CAP                                                        \
-  THEME_COUNT // first full theme cycle gets 2 coins/row; later cycles single
 #define COMBO_TIMEOUT                                                          \
   150.0f                    // frames (~2.5s) w/o a coin before the chain resets
 #define COIN_PAIR_GAP 90.0f // horizontal gap of the bonus second coin
@@ -54,8 +52,8 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define PLATFORM_SPACING 300.0f // vertical distance between platforms
 #define PLATFORM_WIDTH 100.0f
 #define PLATFORM_HEIGHT 16.0f
-// Per-era platform mechanics (stamped at spawn, see worldEra). Hills uses
-// neither, so the baseline jumper is exactly what it always was.
+// Per-era platform mechanics, stamped from each platform's spawn world Y.
+// Hills uses none, so the baseline jumper is exactly what it always was.
 #define CLOUD_DRIFT 1.15f    // Birdsong Skies: horizontal platform speed
 #define CRUMBLE_FRAMES 24.0f // Night Blocks: frames from landing to break
 #define CRUMBLE_JITTER 2.0f  // px of death-rattle shake while it crumbles
@@ -107,6 +105,8 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
   140.0f // keep the player this far above the screen bottom (see below it)
 #define TWO_PI (2.0f * PI) // raylib defines PI
 
+STATIC_ASSERT(ERA_COUNT <= 256, entity_era_fits_byte);
+
 // Power-up table (indexed by PowerUpType). Ordered exactly as the enum.
 //              duration color       label     weight shake        invincible
 //              debuff
@@ -133,8 +133,8 @@ const PowerUpDef POWERUP_DEFS[] = {
              // HUD bar stays full)
     // Neon Maze's power pellet. Weight 0 here and overridden per-era in
     // spawnWeightOf, so it can only ever drop on the era that has ghosts.
-    {360.0f, YELLOW, "PELLET", 0, SHAKE_LAUNCH, true,
-     false}, // ~6s of frightened ghosts
+    {360.0f, YELLOW, "PELLET", 0, SHAKE_LAUNCH, false,
+     false}, // ~6s of frightened ghosts; immunity is Maze-local
     // Debuffs: no boost, no immunity, SAD reaction + SFX_DEBUFF. All ~3s
     // (short - Anchor/Dizzy are run-ending at 5s).
     {180.0f, DARKGRAY, "ANCHOR", 1, SHAKE_HIT, false, true}, // ~3s
@@ -173,12 +173,6 @@ float worldViewAscent(const World *world) {
 float worldShake(const World *world) { return world->shake; }
 int worldLevel(const World *world) {
   return themeSampleAt(worldPeakAscent(world)).level;
-}
-
-// Mechanics follow the monotonic peak sample. Entity-local ownership comes in
-// Phase 3; until then this preserves the existing global era gate.
-EraId worldEra(const World *world) {
-  return themeSampleAt(worldPeakAscent(world)).era;
 }
 
 float worldPowerTimer(const World *world, PowerUpType type) {
@@ -271,21 +265,24 @@ World createWorld(void) {
 static void spawnCoins(World *world) {
   // Keep one screen of coins pre-generated above the view.
   while (world->spawnY > world->cameraY - SCREEN_HEIGHT) {
+    ThemeSample sample = themeSampleAtWorldY(world->spawnY);
     FIND_FREE(s, coins, MAX_COINS);
     if (s >= 0) {
       float x = world->lastSpawnX + GetRandomValue(-COIN_WANDER, COIN_WANDER);
       x = clampf(x, SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
-      world->coins[s] = (Coin){{x, world->spawnY}, true, {0, 0}}; // at rest
+      world->coins[s] =
+          (Coin){{x, world->spawnY}, true, sample.era, {0, 0}}; // at rest
       world->lastSpawnX = x;
-      // Low levels are richer: drop a bonus coin beside the trail coin on the
-      // same row. lastSpawnX stays the trail coin so the followable line holds.
-      if (worldLevel(world) < COIN_DOUBLE_CAP) {
+      // The first complete cycle is richer: drop a bonus coin beside the trail
+      // coin on the same row. Visual-only bridges do not affect cycle count.
+      if (sample.cycle == 0) {
         FIND_FREE(s2, coins, MAX_COINS);
         if (s2 >= 0) {
           float x2 = clampf(
               x + (GetRandomValue(0, 1) ? COIN_PAIR_GAP : -COIN_PAIR_GAP),
               SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
-          world->coins[s2] = (Coin){{x2, world->spawnY}, true, {0, 0}};
+          world->coins[s2] =
+              (Coin){{x2, world->spawnY}, true, sample.era, {0, 0}};
         }
       }
     }
@@ -294,11 +291,10 @@ static void spawnCoins(World *world) {
 }
 
 static void spawnPlatforms(World *world) {
-  // The era is stamped on the pad at birth rather than read at landing time, so
-  // a Night Blocks pad can *look* cracked before you commit to it and a pad
-  // never changes the rules underfoot as the band boundary passes.
-  EraId e = worldEra(world);
+  // A pad samples its own Y once at birth, so a fill crossing a boundary may
+  // contain both mechanics and no live pad changes rules underfoot.
   while (world->platformSpawnY > world->cameraY - SCREEN_HEIGHT) {
+    EraId e = themeSampleAtWorldY(world->platformSpawnY).era;
     FIND_FREE(s, platforms, MAX_PLATFORMS);
     if (s >= 0) {
       // Every piece is drawn, so the clamp has to use *its* width — an I spans
@@ -309,9 +305,14 @@ static void spawnPlatforms(World *world) {
       float vx = e == ERA_SKIES
                      ? (GetRandomValue(0, 1) ? CLOUD_DRIFT : -CLOUD_DRIFT)
                      : 0.0f;
-      world->platforms[s] = (Platform){
-          {x, world->platformSpawnY},          true, e == ERA_NIGHT, 0.0f, vx,
-          e == ERA_BLOCKS ? BLOCK_FALL : 0.0f, shape};
+      world->platforms[s] = (Platform){{x, world->platformSpawnY},
+                                       true,
+                                       e == ERA_NIGHT,
+                                       e,
+                                       0.0f,
+                                       vx,
+                                       e == ERA_BLOCKS ? BLOCK_FALL : 0.0f,
+                                       shape};
     }
     world->platformSpawnY -= PLATFORM_SPACING;
   }
@@ -328,6 +329,7 @@ static int difficulty(const World *world) {
 static void spawnMonsters(World *world) {
   int d = difficulty(world);
   while (world->monsterSpawnY > world->cameraY - SCREEN_HEIGHT) {
+    EraId e = themeSampleAtWorldY(world->monsterSpawnY).era;
     // Higher levels: more bands carry a monster (L0:1/5 .. L3+:4/5).
     if (GetRandomValue(0, 4) <= d) {
       FIND_FREE(s, monsters, MAX_MONSTERS);
@@ -338,7 +340,7 @@ static void spawnMonsters(World *world) {
         // vy stays 0: only a Neon Maze ghost ever leaves its spawn row, and
         // steerGhost is what gives it one.
         Vector2 at = {x, world->monsterSpawnY};
-        world->monsters[s] = (Monster){at, vx, true, 0.0f, entSeed(at)};
+        world->monsters[s] = (Monster){at, vx, true, e, 0.0f, entSeed(at)};
       }
     }
     float step = MONSTER_SPACING - DIFFICULTY_TIGHTEN * d;
@@ -406,13 +408,13 @@ static void spawnPowerups(World *world) {
   // higher levels make bad pickups rarer (and clear them entirely once the
   // level reaches d).
   int d = difficulty(world) - gPuUpg[PU_DEBUFF_SUPPRESS];
-  EraId e = worldEra(world);
   while (world->powerupSpawnY > world->cameraY - SCREEN_HEIGHT) {
+    EraId e = themeSampleAtWorldY(world->powerupSpawnY).era;
     FIND_FREE(s, powerups, MAX_POWERUPS);
     if (s >= 0) {
       float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
       PowerUpType t = pickPowerup(GetRandomValue(0, 4) < d, e);
-      world->powerups[s] = (PowerUp){{x, world->powerupSpawnY}, t, true};
+      world->powerups[s] = (PowerUp){{x, world->powerupSpawnY}, t, true, e};
     }
     world->powerupSpawnY -= POWERUP_SPACING;
   }
@@ -446,9 +448,12 @@ static void scatterCoins(World *world, Vector2 at, int count) {
     }
     float a = (float)made / (float)count * TWO_PI; // even wedge per coin
     Vector2 dir = {cosf(a), sinf(a)};
+    Vector2 position = {at.x + dir.x * COIN_SCATTER_R,
+                        at.y + dir.y * COIN_SCATTER_R};
     world->coins[i] =
-        (Coin){{at.x + dir.x * COIN_SCATTER_R, at.y + dir.y * COIN_SCATTER_R},
+        (Coin){position,
                true,
+               themeSampleAtWorldY(position.y).era,
                {dir.x * COIN_SCATTER_SPEED, dir.y * COIN_SCATTER_SPEED}};
     made++;
   }
@@ -608,7 +613,7 @@ static void splatMonster(World *world, Monster *m) {
     world->powerTimer[POWERUP_SHIELD] = 0.0f;
   }
   float pitch = 1.0f;
-  if (world->powerTimer[POWERUP_PELLET] > 0.0f) {
+  if (m->era == ERA_MAZE && world->powerTimer[POWERUP_PELLET] > 0.0f) {
     int n = world->ghostChain < 3 ? world->ghostChain : 3; // 25/50/100/200
     world->comboBonus += GHOST_EAT_BONUS << n;
     world->ghostChain++;
@@ -630,11 +635,12 @@ static void steerGhost(Monster *m, const Player *player, bool frightened) {
 }
 
 static void updateMonsters(World *world, Player *player) {
-  bool ghosts = worldEra(world) == ERA_MAZE;
-  bool frightened = world->powerTimer[POWERUP_PELLET] > 0.0f;
+  bool pellet = world->powerTimer[POWERUP_PELLET] > 0.0f;
   FOREACH_ACTIVE(monsters, MAX_MONSTERS, i) {
     Monster *m = &world->monsters[i];
-    if (ghosts) {
+    bool ghost = m->era == ERA_MAZE;
+    bool frightened = ghost && pellet;
+    if (ghost) {
       steerGhost(m, player, frightened);
     }
     m->position.x += m->vx;
@@ -645,7 +651,7 @@ static void updateMonsters(World *world, Player *player) {
     }
     if (CheckCollisionCircles(player->position, player->radius, m->position,
                               MONSTER_RADIUS)) {
-      if (worldInvincible(world)) {
+      if (worldInvincible(world) || frightened) {
         splatMonster(world, m);
       } else {
         m->active = false;
@@ -1405,21 +1411,18 @@ void drawWorld(const World *world) {
 
   drawGround();
 
-  // Two era looks are read off world state rather than the entity: coins are a
-  // pellet lane on Neon Maze, and its monsters turn frightened while a pellet
-  // is lit. Everything else about an entity's look rides its own fields.
-  bool pelletLane = worldEra(world) == ERA_MAZE;
-  float fright = world->powerTimer[POWERUP_PELLET];
+  float pellet = world->powerTimer[POWERUP_PELLET];
 
   FOREACH_ACTIVE(platforms, MAX_PLATFORMS, i)
   drawCloudPad(&world->platforms[i], glow);
   FOREACH_ACTIVE(coins, MAX_COINS, i)
-  drawCoin(world->coins[i].position, t, pelletLane, glow);
+  drawCoin(world->coins[i].position, t, world->coins[i].era == ERA_MAZE, glow);
   FOREACH_ACTIVE(powerups, MAX_POWERUPS, i)
   drawPowerUp(&world->powerups[i], t, glow);
   FOREACH_ACTIVE(monsters, MAX_MONSTERS, i)
-  drawMonster(world->monsters[i].position, t, fright, world->monsters[i].seed,
-              glow);
+  drawMonster(world->monsters[i].position, t,
+              world->monsters[i].era == ERA_MAZE ? pellet : 0.0f,
+              world->monsters[i].seed, glow);
 
   drawParticles(world, glow);
   drawFlash(world, glow);
@@ -1517,6 +1520,128 @@ static void checkEras(void) {
     assert(themeSampleAt(worldViewAscent(&w)).phase == 0.25f);
   }
 
+  // A fill straddling Hills -> Skies must stamp each platform from its own Y,
+  // not stamp both from the player's Skies era.
+  {
+    World w = worldAtLevel(ERA_SKIES);
+    float edgeY = SCREEN_HEIGHT / 2.0f - BAND;
+    w.platformSpawnY = edgeY + PLATFORM_SPACING / 2.0f;
+    w.cameraY = edgeY + SCREEN_HEIGHT - PLATFORM_SPACING;
+    spawnPlatforms(&w);
+    assert(w.platforms[0].active && w.platforms[1].active &&
+           w.platforms[0].position.y > edgeY &&
+           w.platforms[1].position.y < edgeY &&
+           w.platforms[0].era == ERA_HILLS && w.platforms[1].era == ERA_SKIES &&
+           w.platforms[0].vx == 0.0f && w.platforms[1].vx != 0.0f &&
+           "platforms used the player's era instead of world Y");
+  }
+
+  // Coins, monsters, and power-ups use the same per-cursor sampling. The peak
+  // is deliberately in Blocks while these test spawns straddle Hills -> Skies.
+  {
+    float edgeY = SCREEN_HEIGHT / 2.0f - BAND;
+    World w = worldAtLevel(ERA_BLOCKS);
+
+    w.spawnY = edgeY + COIN_SPACING / 2.0f;
+    w.cameraY = edgeY + SCREEN_HEIGHT - COIN_SPACING;
+    spawnCoins(&w);
+    assert(w.coins[0].era == ERA_HILLS && w.coins[2].era == ERA_SKIES &&
+           "coin fill did not straddle the boundary");
+
+    w.powerupSpawnY = edgeY + POWERUP_SPACING / 2.0f;
+    w.cameraY = edgeY + SCREEN_HEIGHT - POWERUP_SPACING;
+    spawnPowerups(&w);
+    assert(w.powerups[0].era == ERA_HILLS && w.powerups[1].era == ERA_SKIES &&
+           "power-up fill did not straddle the boundary");
+
+    float monsterStep = MONSTER_SPACING - DIFFICULTY_TIGHTEN * DIFFICULTY_CAP;
+    w.monsterSpawnY = edgeY + monsterStep / 2.0f;
+    w.cameraY = edgeY + SCREEN_HEIGHT - monsterStep;
+    SetRandomSeed(0); // both deterministic 4/5 spawn rolls succeed
+    spawnMonsters(&w);
+    assert(w.monsters[0].era == ERA_HILLS && w.monsters[1].era == ERA_SKIES &&
+           "monster fill did not straddle the boundary");
+  }
+
+  // The closed-loop edge obeys the same rule: a Blocks piece below the reboot
+  // remains falling while a new Hills board above it is stable.
+  {
+    World w = worldAtLevel(ERA_COUNT);
+    float edgeY = SCREEN_HEIGHT / 2.0f - ERA_COUNT * BAND;
+    w.platformSpawnY = edgeY + PLATFORM_SPACING / 2.0f;
+    w.cameraY = edgeY + SCREEN_HEIGHT - PLATFORM_SPACING;
+    spawnPlatforms(&w);
+    assert(w.platforms[0].active && w.platforms[1].active &&
+           w.platforms[0].position.y > edgeY &&
+           w.platforms[1].position.y < edgeY &&
+           w.platforms[0].era == ERA_BLOCKS &&
+           w.platforms[1].era == ERA_HILLS && w.platforms[0].vy > 0.0f &&
+           w.platforms[1].vy == 0.0f && "wrap platforms used one global era");
+  }
+
+  // A Hills monster stays ordinary after the peak enters Maze, even while a
+  // pellet is active there.
+  {
+    World w = bareWorld(ERA_HILLS);
+    Player p = createPlayer();
+    p.position = (Vector2){700.0f, w.bestY};
+    w.monsters[0] =
+        (Monster){{100.0f, w.bestY}, 0.0f, true, ERA_HILLS, 0.0f, 1};
+    World maze = worldAtLevel(ERA_MAZE);
+    w.bestY = maze.bestY;
+    w.level = maze.level;
+    w.powerTimer[POWERUP_PELLET] = 300.0f;
+    updateMonsters(&w, &p);
+    assert(w.monsters[0].vx == 0.0f && w.monsters[0].vy == 0.0f &&
+           "existing monster changed behavior at the global boundary");
+  }
+
+  // A Maze monster keeps chasing after the global peak leaves Maze.
+  {
+    World w = bareWorld(ERA_HILLS);
+    Player p = createPlayer();
+    p.position = (Vector2){700.0f, w.bestY};
+    w.monsters[0] = (Monster){{100.0f, w.bestY}, 0.0f, true, ERA_MAZE, 0.0f, 1};
+    updateMonsters(&w, &p);
+    assert(w.monsters[0].vx > 0.0f && w.monsters[0].vy != 0.0f &&
+           "Maze monster stopped chasing at the global boundary");
+  }
+
+  // First-cycle richness follows each coin row, including at the wrap, rather
+  // than the player's current level or the number of visual keyframes.
+  {
+    float edgeY = SCREEN_HEIGHT / 2.0f - ERA_COUNT * BAND;
+    World first = worldAtLevel(ERA_COUNT);
+    first.spawnY = edgeY + COIN_SPACING / 4.0f;
+    first.cameraY = first.spawnY + SCREEN_HEIGHT - 1.0f;
+    spawnCoins(&first);
+    assert(first.coins[0].active && first.coins[1].active &&
+           !first.coins[2].active && first.coins[0].era == ERA_BLOCKS &&
+           first.coins[1].era == ERA_BLOCKS &&
+           "last first-cycle row lost its bonus coin");
+
+    World later = worldAtLevel(ERA_COUNT);
+    later.spawnY = edgeY - COIN_SPACING / 4.0f;
+    later.cameraY = later.spawnY + SCREEN_HEIGHT - 1.0f;
+    spawnCoins(&later);
+    assert(later.coins[0].active && !later.coins[1].active &&
+           later.coins[0].era == ERA_HILLS &&
+           "later cycle kept the first-cycle bonus");
+
+    World scattered = {0};
+    scatterCoins(&scattered, (Vector2){400.0f, edgeY}, 4);
+    int scatteredEras = 0;
+    for (int i = 0; i < MAX_COINS; i++) {
+      if (scattered.coins[i].active) {
+        assert(scattered.coins[i].era ==
+               themeSampleAtWorldY(scattered.coins[i].position.y).era);
+        scatteredEras |= 1 << scattered.coins[i].era;
+      }
+    }
+    assert(scatteredEras == ((1 << ERA_BLOCKS) | (1 << ERA_HILLS)) &&
+           "scattered coins did not keep their spawn-side era");
+  }
+
   // Table values the completeness assert cannot prove. Every timer must be
   // drawable, and every era needs at least one weighted choice per category.
   for (int t = 0; t < POWERUP_COUNT; t++) {
@@ -1551,6 +1676,8 @@ static void checkEras(void) {
         continue;
       }
       total++;
+      assert(w.platforms[i].era ==
+             themeSampleAtWorldY(w.platforms[i].position.y).era);
       drifting += w.platforms[i].vx != 0.0f;
       fragile += w.platforms[i].fragile;
       falling += w.platforms[i].vy > 0.0f;
@@ -1577,7 +1704,8 @@ static void checkEras(void) {
   // zero-filled TETRO row (the failure a designated table hides) collapses all
   // four cells onto one square and trips the distinctness check.
   for (int s = 0; s < TETRO_COUNT; s++) {
-    Platform pl = {{0.0f, 0.0f}, true, false, 0.0f, 0.0f, BLOCK_FALL, s};
+    Platform pl = {{0.0f, 0.0f}, true, false,      ERA_BLOCKS,
+                   0.0f,         0.0f, BLOCK_FALL, s};
     Rectangle b[PAD_BOXES];
     assert(padBoxes(&pl, b) == PAD_BOXES);
     assert(tetroWidth(s) <= SCREEN_WIDTH - 2.0f * SPAWN_MARGIN);
@@ -1595,8 +1723,8 @@ static void checkEras(void) {
     Player p = createPlayer();
     p.position = (Vector2){400.0f, w.bestY};
     p.velocity = (Vector2){0.0f, 10.0f};
-    w.platforms[0] =
-        (Platform){{350.0f, w.bestY + 40.0f}, true, true, 0.0f, 0.0f, 0.0f, 0};
+    w.platforms[0] = (Platform){
+        {350.0f, w.bestY + 40.0f}, true, true, ERA_NIGHT, 0.0f, 0.0f, 0.0f, 0};
     for (int i = 0; i < 20 && w.platforms[0].fuse <= 0.0f; i++) {
       updatePlayer(&p);
       updateWorld(&w, &p);
@@ -1614,8 +1742,8 @@ static void checkEras(void) {
     Player p = createPlayer();
     p.position = (Vector2){400.0f, w.bestY};
     p.velocity = (Vector2){0.0f, 10.0f};
-    w.platforms[0] =
-        (Platform){{350.0f, w.bestY + 40.0f}, true, false, 0.0f, 0.0f, 0.0f, 0};
+    w.platforms[0] = (Platform){
+        {350.0f, w.bestY + 40.0f}, true, false, ERA_HILLS, 0.0f, 0.0f, 0.0f, 0};
     for (int i = 0; i < 20; i++) {
       updatePlayer(&p);
       updateWorld(&w, &p);
@@ -1629,8 +1757,14 @@ static void checkEras(void) {
     World w = bareWorld(ERA_SKIES);
     Player p = createPlayer();
     p.position = (Vector2){400.0f, w.bestY};
-    w.platforms[0] = (Platform){
-        {100.0f, w.bestY - 500.0f}, true, false, 0.0f, CLOUD_DRIFT, 0.0f, 0};
+    w.platforms[0] = (Platform){{100.0f, w.bestY - 500.0f},
+                                true,
+                                false,
+                                ERA_SKIES,
+                                0.0f,
+                                CLOUD_DRIFT,
+                                0.0f,
+                                0};
     updateWorld(&w, &p);
     assert(w.platforms[0].position.x > 100.0f && "sky platform did not drift");
     w.platforms[0].position.x = SCREEN_WIDTH - PLATFORM_WIDTH;
@@ -1646,7 +1780,7 @@ static void checkEras(void) {
     World w = bareWorld(ERA_MAZE);
     Player p = createPlayer();
     p.position = (Vector2){700.0f, w.bestY};
-    w.monsters[0] = (Monster){{100.0f, w.bestY}, 0.0f, true, 0.0f, 1};
+    w.monsters[0] = (Monster){{100.0f, w.bestY}, 0.0f, true, ERA_MAZE, 0.0f, 1};
     float gap0 = p.position.x - w.monsters[0].position.x;
     for (int i = 0; i < 10; i++) {
       updateWorld(&w, &p);
@@ -1663,10 +1797,30 @@ static void checkEras(void) {
            "ghost not fleeing");
 
     w.monsters[1] =
-        (Monster){{p.position.x, p.position.y}, 0.0f, true, 0.0f, 2};
+        (Monster){{p.position.x, p.position.y}, 0.0f, true, ERA_MAZE, 0.0f, 2};
     updateWorld(&w, &p);
     assert(!w.monsters[1].active && w.ghostChain == 1 &&
            w.comboBonus == GHOST_EAT_BONUS && "ghost was not eaten");
+  }
+
+  // A pellet does not grant immunity against an ordinary monster that remains
+  // near the Maze boundary.
+  {
+    World w = bareWorld(ERA_MAZE);
+    Player p = createPlayer();
+    p.position = (Vector2){400.0f, w.bestY};
+    w.powerTimer[POWERUP_PELLET] = 300.0f;
+    w.monsters[0] = (Monster){p.position, 0.0f, true, ERA_HILLS, 0.0f, 1};
+    updateMonsters(&w, &p);
+    assert(!w.monsters[0].active && w.hitstop == 2 && p.velocity.y == 12.0f &&
+           w.ghostChain == 0 && w.comboBonus == 0 &&
+           "pellet immunity leaked to an ordinary monster");
+
+    w.powerTimer[POWERUP_ROCKET] = 30.0f;
+    w.monsters[0] = (Monster){p.position, 0.0f, true, ERA_HILLS, 0.0f, 2};
+    updateMonsters(&w, &p);
+    assert(w.hitstop == 3 && w.ghostChain == 0 && w.comboBonus == 0 &&
+           "ordinary monster received a pellet chain bonus");
   }
 
   // Falling Blocks: the pads descend, and one caught from below hurts.
@@ -1675,10 +1829,22 @@ static void checkEras(void) {
     Player p = createPlayer();
     p.position = (Vector2){400.0f, w.bestY};
     w.coinsCollected = 5;
-    w.platforms[0] = (Platform){
-        {350.0f, w.bestY - 10.0f}, true, false, 0.0f, 0.0f, BLOCK_FALL, 0};
-    w.platforms[1] = (Platform){
-        {50.0f, w.bestY - 1000.0f}, true, false, 0.0f, 0.0f, BLOCK_FALL, 0};
+    w.platforms[0] = (Platform){{350.0f, w.bestY - 10.0f},
+                                true,
+                                false,
+                                ERA_BLOCKS,
+                                0.0f,
+                                0.0f,
+                                BLOCK_FALL,
+                                0};
+    w.platforms[1] = (Platform){{50.0f, w.bestY - 1000.0f},
+                                true,
+                                false,
+                                ERA_BLOCKS,
+                                0.0f,
+                                0.0f,
+                                BLOCK_FALL,
+                                0};
     float y0 = w.platforms[1].position.y;
     updateWorld(&w, &p);
     assert(w.platforms[1].position.y > y0 && "the blocks are not falling");
@@ -1710,8 +1876,8 @@ int main(int argc, char **argv) {
         (Vector2){110.0f + i * 80.0f, 210.0f + (i % 3) * 55.0f};
     w.coins[i].active = true;
   }
-  w.monsters[0] = (Monster){{240.0f, 120.0f}, 1.0f, true, 0.0f, 3};
-  w.monsters[1] = (Monster){{640.0f, 560.0f}, -1.0f, true, 0.0f, 7};
+  w.monsters[0] = (Monster){{240.0f, 120.0f}, 1.0f, true, ERA_HILLS, 0.0f, 3};
+  w.monsters[1] = (Monster){{640.0f, 560.0f}, -1.0f, true, ERA_HILLS, 0.0f, 7};
   for (int i = 0; i < MAX_POWERUPS; i++) {
     w.powerups[i].position = (Vector2){130.0f + i * 190.0f, 640.0f};
     w.powerups[i].type = (PowerUpType)i; // magnet / rocket / balloon / shield
@@ -1737,6 +1903,15 @@ int main(int argc, char **argv) {
     // on Birdsong Skies, a cracked pad on Night Blocks, frightened ghosts and a
     // pellet on Neon Maze, and all seven pieces on Falling Blocks.
     w.level = i;
+    for (int k = 0; k < MAX_COINS; k++) {
+      w.coins[k].era = i;
+    }
+    for (int k = 0; k < MAX_MONSTERS; k++) {
+      w.monsters[k].era = i;
+    }
+    for (int k = 0; k < MAX_POWERUPS; k++) {
+      w.powerups[k].era = i;
+    }
     for (int k = 0; k < MAX_PLATFORMS; k++) {
       w.platforms[k].active = false;
     }
@@ -1746,6 +1921,7 @@ int main(int argc, char **argv) {
             (Platform){{20.0f + k * 110.0f, 300.0f + (k % 3) * 90.0f},
                        true,
                        false,
+                       ERA_BLOCKS,
                        0.0f,
                        0.0f,
                        BLOCK_FALL,
@@ -1756,12 +1932,13 @@ int main(int argc, char **argv) {
       w.platforms[0] = (Platform){{80.0f, 470.0f},
                                   true,
                                   i == ERA_NIGHT,
+                                  i,
                                   i == ERA_NIGHT ? CRUMBLE_FRAMES * 0.6f : 0.0f,
                                   vx,
                                   0.0f,
                                   0};
       w.platforms[1] = (Platform){
-          {440.0f, 355.0f}, true, i == ERA_NIGHT, 0.0f, -vx, 0.0f, 0};
+          {440.0f, 355.0f}, true, i == ERA_NIGHT, i, 0.0f, -vx, 0.0f, 0};
     }
     w.powerTimer[POWERUP_PELLET] = (i == ERA_MAZE) ? 300.0f : 0.0f;
     w.powerups[MAX_POWERUPS - 1].type =
