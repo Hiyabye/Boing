@@ -944,14 +944,14 @@ void updateWorld(World *world, Player *player) {
   float floorY = peakY + DEATH_DROP;
   world->cameraY = clampf(need, peakY, floorY);
 
-  // Level-up fanfare on first arrival in a new theme band. Keyed off the peak
-  // (monotonic), so a fall-and-reclimb never re-triggers it.
+  // Announce first arrival in a new theme band. This follows the monotonic
+  // peak, so a fall-and-reclimb never re-triggers it; soundtrack handoffs are
+  // scheduled independently on their outgoing bar line.
   ThemeSample journey = themeSampleAt(peakAscent);
   if (journey.level > world->level) {
     world->level = journey.level;
     world->levelBanner = LEVEL_BANNER_FRAMES; // the era's rules just changed;
                                               // the HUD says which era it is
-    musicEraTransition(THEMES[journey.era].track);
   }
 
   // Idle combo reset: no coin grabbed within COMBO_TIMEOUT drops the chain.

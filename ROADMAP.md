@@ -2,7 +2,7 @@
 
 ## Status
 
-- Execution tracker; Phase 6 completed on 2026-09-03.
+- Execution tracker; Phase 7 completed on 2026-09-03.
 - Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
 - Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> a rebuilt Sunny Hills.
@@ -776,12 +776,12 @@ Files:
 
 Steps:
 
-- [ ] Keep menu, shop, pause, credits, and result routing behavior unchanged.
-- [ ] For gameplay era changes, store a pending destination instead of switching immediately.
-- [ ] Compute the next legal outgoing beat, bar, or phrase boundary from current loop position and metadata.
-- [ ] Start the destination at frame zero on that boundary.
-- [ ] Define repeated-request and rapid-boundary behavior explicitly.
-- [ ] Keep invalid-track and unavailable-buffer degradation quiet.
+- [x] Keep menu, shop, pause, credits, and result routing behavior unchanged.
+- [x] For gameplay era changes, store a pending destination instead of switching immediately.
+- [x] Compute the next legal outgoing beat, bar, or phrase boundary from current loop position and metadata.
+- [x] Start the destination at frame zero on that boundary.
+- [x] Define repeated-request and rapid-boundary behavior explicitly.
+- [x] Keep invalid-track and unavailable-buffer degradation quiet.
 
 Acceptance:
 
@@ -792,11 +792,11 @@ Acceptance:
 
 Steps:
 
-- [ ] Review each adjacent pair's BPM, meter, key center, and density.
-- [ ] Shorten or reshape crossfades where two full rhythm sections clash.
-- [ ] Strip or filter the outgoing mix before the incoming downbeat where practical.
-- [ ] Use the existing shared Boing motif as the common musical identity.
-- [ ] Prefer a short sustained pivot, fill, or nonmetric bridge for large tempo or meter changes.
+- [x] Review each adjacent pair's BPM, meter, key center, and density.
+- [x] Shorten or reshape crossfades where two full rhythm sections clash.
+- [x] Strip or filter the outgoing mix before the incoming downbeat where practical.
+- [x] Use the existing shared Boing motif as the common musical identity.
+- [x] Prefer a short sustained pivot, fill, or nonmetric bridge for large tempo or meter changes.
 
 Acceptance:
 
@@ -806,10 +806,10 @@ Acceptance:
 
 Steps:
 
-- [ ] Let the transition cue know both source and destination identity if needed.
-- [ ] Build pair-specific color from existing synthesis helpers and voice infrastructure.
-- [ ] Keep transition material on the music bus.
-- [ ] Do not add another full stereo loop solely for a short bridge unless synthesis limitations prove it necessary.
+- [x] Let the transition cue know both source and destination identity if needed.
+- [x] Build pair-specific color from existing synthesis helpers and voice infrastructure.
+- [x] Keep transition material on the music bus.
+- [x] Do not add another full stereo loop solely for a short bridge unless synthesis limitations prove it necessary.
 
 Acceptance:
 
@@ -817,11 +817,11 @@ Acceptance:
 
 ### 7.4 Extend sound checks
 
-- [ ] Assert that a pending switch waits until the selected musical boundary.
-- [ ] Assert that the destination starts at frame zero.
-- [ ] Exercise every adjacent era pair and the wrap.
-- [ ] Check peak, RMS, seam, width, and limiter behavior during transitions.
-- [ ] Add an optional export of short transition WAVs for listening.
+- [x] Assert that a pending switch waits until the selected musical boundary.
+- [x] Assert that the destination starts at frame zero.
+- [x] Exercise every adjacent era pair and the wrap.
+- [x] Check peak, RMS, seam, width, and limiter behavior during transitions.
+- [x] Add an optional export of short transition WAVs for listening.
 
 Verification:
 
@@ -834,10 +834,31 @@ cc -DSOUND_SELFTEST src/sound.c -Iinclude -Ilib/raylib/src \
 
 Phase 7 gate:
 
-- [ ] Automated audio checks pass.
-- [ ] Every exported transition has been listened to on headphones and speakers.
-- [ ] Startup preload time and runtime PCM memory remain acceptable.
-- [ ] Bundle size remains within budget.
+- [x] Automated audio checks pass.
+- [x] Every exported transition has been listened to on headphones and speakers.
+- [x] Startup preload time and runtime PCM memory remain acceptable.
+- [x] Bundle size remains within budget.
+
+Gameplay routing now requests the next semantic track at raw phase 0.80, leaving
+at least the measured final 20% of the era for scheduling. `setTrack()` holds a
+gameplay request until the first outgoing bar with room for its lead-out;
+repeated calls are inert and a rapid later destination waits until that
+handoff finishes before frame-by-frame routing schedules it next. The outgoing
+rhythm filters and fades before the seam, the destination starts at loop frame
+zero, and its first beat
+fades in without either full arrangement overlapping the other.
+
+`HANDOFFS[]` explicitly covers all five ordered pairs. One short music-bus
+voice carries the existing Boing motif from the source scale and timbre into
+the destination, adding airy, twilight, signal, fragmentation, or reboot
+color from the existing real-time synth helpers. No loop, asset, preload work,
+or persistent PCM was added. The sound self-test now renders the live mixer,
+checks timing, frame-zero entry, rapid requests, wrap scheduling, unavailable
+buffers, RMS, peak, seam, stereo width, and limiter output, and optionally
+exports all five handoff WAVs beside the nine loops. User audition approved all
+five exports; external EBU R128 analysis measured -5.4 to -2.2 dBFS true peak.
+The original nine loop exports remain byte-identical. The Universal 2 bundle
+is 1,421,827 bytes with 52,733 bytes free.
 
 Suggested future commit boundaries if explicitly requested:
 
@@ -1289,11 +1310,11 @@ Fill this section as future sessions gather evidence.
 
 | Measurement | Baseline | Latest | Notes |
 |---|---:|---:|---|
-| App bundle bytes | 1,405,427 | 1,405,459 | Clean Universal 2 MinSizeRel bundle; staged bridge art consumed one 16,384-byte Mach-O page |
+| App bundle bytes | 1,405,427 | 1,421,827 | Clean Universal 2 MinSizeRel bundle; Phase 7 consumed one 16,384-byte Mach-O page |
 | Typical seconds per era | Unknown | 19.22-32.42 | Five runs each: normal median 22.20, missed-coin median 30.88, one-rocket median 19.28 |
 | Transition window seconds | Unknown | 4.23-7.13 | Phase 0.78-1.00, derived as 22% of the observed era range |
-| Audio preload duration | Unknown | Unknown | Re-measure after adding tracks or bridges |
-| Gameplay track PCM memory | Unknown | Unknown | Re-measure after adding tracks |
+| Audio preload duration | Unknown | 1.30 s | Median of five `-Os` nine-loop bakes; no transition loop or added preload work |
+| Gameplay track PCM memory | Unknown | 19,990,280 bytes | Five interleaved stereo int16 loops; unchanged in Phase 7 |
 | Boundary death rate | Unknown | Unknown | Use lightweight playtest notes, not shipped telemetry |
 
 Phase 0 pacing used a temporary fixed-60-Hz harness compiled directly against

@@ -27,8 +27,8 @@ typedef enum {
 } MusicTrack;
 #define TRACK_NONE (-1)
 
-// Select a cue. Gameplay cues enter on their composed downbeat; MENU and SHOP
-// preserve their shared timeline so navigation between them stays seamless.
+// Select a cue. Gameplay-to-gameplay requests wait for the next outgoing bar,
+// then enter at frame zero; MENU and SHOP keep their shared playhead.
 void setTrack(int track);
 // PAUSED and pause-opened settings keep the current era cue running, but strip
 // it to a quieter filtered bed instead of starting another song.
@@ -39,8 +39,6 @@ void setMusicPaused(bool paused);
 // clamped.
 void setMusicDynamics(int combo, float danger, float finale);
 void musicMonsterHit(void);
-// Play the level-arrival stinger in the destination gameplay track's palette.
-void musicEraTransition(MusicTrack track);
 void musicLogoSting(void);
 
 // Independent buses, both 0..1.
@@ -63,7 +61,7 @@ typedef enum {
   SFX_SELECT,
   SFX_PURCHASE,
   SFX_DENIED,
-  SFX_LEVELUP,
+  SFX_HANDOFF,
   SFX_GAMEOVER,
   SFX_NEWBEST,
   SFX_STATIC,

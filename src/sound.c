@@ -833,6 +833,52 @@ static const Track TRACKS[] = {
 };
 STATIC_ASSERT(ARRAY_LEN(TRACKS) == TRACK_COUNT, tracks_full);
 
+// Every adjacent gameplay pair gets one compact handoff recipe. All switch on
+// an outgoing bar line; the beat counts only shape the fade on either side.
+typedef enum {
+  HANDOFF_AIR,
+  HANDOFF_TWILIGHT,
+  HANDOFF_SIGNAL,
+  HANDOFF_FRAGMENT,
+  HANDOFF_REBOOT,
+  HANDOFF_COUNT
+} HandoffColor;
+
+typedef struct {
+  MusicTrack from;
+  MusicTrack to;
+  float outBeats;
+  float inBeats;
+  HandoffColor color;
+} Handoff;
+
+static const Handoff HANDOFFS[] = {
+    {TRACK_HILLS, TRACK_SKIES, 1.0f, 1.0f, HANDOFF_AIR},
+    {TRACK_SKIES, TRACK_NIGHT, 1.0f, 1.0f, HANDOFF_TWILIGHT},
+    {TRACK_NIGHT, TRACK_MAZE, 1.0f, 1.0f, HANDOFF_SIGNAL},
+    {TRACK_MAZE, TRACK_BLOCKS, 1.0f, 1.0f, HANDOFF_FRAGMENT},
+    {TRACK_BLOCKS, TRACK_HILLS, 2.0f, 1.0f, HANDOFF_REBOOT},
+};
+STATIC_ASSERT(ARRAY_LEN(HANDOFFS) == TRACK_GAMEPLAY_COUNT,
+              gameplay_handoffs_full);
+STATIC_ASSERT((int)HANDOFF_COUNT == (int)TRACK_GAMEPLAY_COUNT,
+              handoff_colors_full);
+
+static const int *const GAMEPLAY_SCALES[] = {
+    SCALE_MAJOR, SCALE_LYDIAN, SCALE_DORIAN, SCALE_MINOR, SCALE_HARMONIC_MINOR,
+};
+STATIC_ASSERT(ARRAY_LEN(GAMEPLAY_SCALES) == TRACK_GAMEPLAY_COUNT,
+              gameplay_scales_full);
+
+static int handoffFor(int from, int to) {
+  for (int i = 0; i < ARRAY_LEN(HANDOFFS); i++) {
+    if ((int)HANDOFFS[i].from == from && (int)HANDOFFS[i].to == to) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 static const MusicTrack PRELOAD_ORDER[] = {
     TRACK_MENU,   TRACK_HILLS, TRACK_SKIES,   TRACK_NIGHT,   TRACK_MAZE,
     TRACK_BLOCKS, TRACK_SHOP,  TRACK_CREDITS, TRACK_RESULTS,
@@ -981,6 +1027,11 @@ static bool menuPair(int a, int b) {
 
 static int curTrack = TRACK_NONE;
 static int prevTrack = TRACK_NONE;
+static int pendingTrack = TRACK_NONE;
+static int pendingHandoff = -1;
+static int pendingFrames;
+static int pendingFadeFrames;
+static bool pendingCueStarted;
 static float crossfade = 1.0f;
 static int crossfadeFrames = 1;
 static float pauseTarget;
@@ -988,11 +1039,43 @@ static float pauseMix;
 static float musicVol = 1.0f;
 static float sfxVol = 1.0f;
 
-void setTrack(int track) {
-  if ((track != TRACK_NONE && !validTrack(track)) || track == curTrack) {
-    return;
-  }
+static int framesForBeats(int track, float beats) {
+  return (int)(beats * 60.0f / TRACKS[track].bpm * SAMPLE_RATE + 0.5f);
+}
 
+static int barBoundaryFrame(int track, int bar) {
+  int bars = TRACKS[track].bars;
+  return (int)(((int64_t)loopFrames[track] * bar + bars / 2) / bars);
+}
+
+// Return the first outgoing bar with enough room for the authored lead-out.
+// Deriving boundaries from the complete loop length avoids accumulated beat
+// rounding error at the loop seam.
+static int framesToNextBar(int track, int minLead) {
+  int bar = 1;
+  while (barBoundaryFrame(track, bar) <= loopPos[track]) {
+    bar++;
+  }
+  int wait = barBoundaryFrame(track, bar) - loopPos[track];
+  if (wait >= minLead) {
+    return wait;
+  }
+  bar++;
+  if (bar <= TRACKS[track].bars) {
+    return barBoundaryFrame(track, bar) - loopPos[track];
+  }
+  return loopFrames[track] - loopPos[track] + barBoundaryFrame(track, 1);
+}
+
+static void clearPendingTrack(void) {
+  pendingTrack = TRACK_NONE;
+  pendingHandoff = -1;
+  pendingFrames = 0;
+  pendingFadeFrames = 0;
+  pendingCueStarted = false;
+}
+
+static void switchTrackNow(int track) {
   int outgoing = curTrack;
   prevTrack = outgoing;
   curTrack = track;
@@ -1005,14 +1088,8 @@ void setTrack(int track) {
     } else {
       loopPos[track] = 0;
     }
-    float seconds;
-    if (gameplayTrack(outgoing) && gameplayTrack(track)) {
-      seconds = TRACKS[track].beatsPerBar * 60.0f / TRACKS[track].bpm;
-    } else if (menuPair(outgoing, track)) {
-      seconds = 2.0f * 60.0f / TRACKS[track].bpm;
-    } else {
-      seconds = 0.65f;
-    }
+    float seconds =
+        menuPair(outgoing, track) ? 2.0f * 60.0f / TRACKS[track].bpm : 0.65f;
     crossfadeFrames = (int)(seconds * SAMPLE_RATE + 0.5f);
   } else {
     crossfadeFrames = (int)(0.35f * SAMPLE_RATE);
@@ -1020,6 +1097,44 @@ void setTrack(int track) {
   if (crossfadeFrames < 1) {
     crossfadeFrames = 1;
   }
+}
+
+void setTrack(int track) {
+  if (track != TRACK_NONE && !validTrack(track)) {
+    return;
+  }
+  if (track == pendingTrack) {
+    return; // frame-by-frame routing repeats the same request
+  }
+  if (track == curTrack) {
+    // A reversal can cancel a silent request, but once its bridge is audible we
+    // finish that bar. A repeated later request can schedule the next handoff.
+    if (!pendingCueStarted) {
+      clearPendingTrack();
+    }
+    return;
+  }
+
+  if (gameplayTrack(curTrack) && gameplayTrack(track) &&
+      loopFrames[curTrack] > 0) {
+    // The first request owns this bar. Frame-by-frame routing repeats a rapid
+    // later destination after the current handoff, preserving musical order.
+    if (pendingTrack != TRACK_NONE) {
+      return;
+    }
+    pendingTrack = track;
+    pendingHandoff = handoffFor(curTrack, track);
+    float outBeats =
+        pendingHandoff >= 0 ? HANDOFFS[pendingHandoff].outBeats : 1.0f;
+    pendingFadeFrames = framesForBeats(curTrack, outBeats);
+    pendingFrames = framesToNextBar(curTrack, pendingFadeFrames);
+    pendingCueStarted = false;
+    return;
+  }
+
+  // Durable non-gameplay contexts remain immediate and cancel any request.
+  clearPendingTrack();
+  switchTrackNow(track);
 }
 
 void setMusicPaused(bool paused) { pauseTarget = paused ? 1.0f : 0.0f; }
@@ -1067,7 +1182,7 @@ static const CueDef CUES[] = {
     {0.09f, 0.24f, 0.0f, 2},  // SELECT
     {0.72f, 0.34f, 0.12f, 5}, // PURCHASE
     {0.32f, 0.38f, 0.16f, 6}, // DENIED
-    {0.95f, 0.34f, 0.18f, 7}, // LEVELUP
+    {0.95f, 0.34f, 0.18f, 7}, // HANDOFF
     {0.9f, 0.38f, 0.35f, 8},  // GAMEOVER
     {1.35f, 0.38f, 0.3f, 9},  // NEWBEST
     {0.5f, 0.23f, 0.14f, 7},  // STATIC
@@ -1088,6 +1203,8 @@ typedef struct {
   int rootMidi;
   unsigned seed;
   bool musicBus;
+  int handoff;
+  int handoffSeam;
 } Voice;
 
 static Voice voices[MAX_VOICES];
@@ -1121,15 +1238,15 @@ static int findVoice(unsigned priority) {
   return candidate;
 }
 
-static void triggerCue(SfxId id, float pitch, float pan, bool musicBus,
-                       SoundStyle style, int rootMidi) {
+static int triggerCue(SfxId id, float pitch, float pan, bool musicBus,
+                      SoundStyle style, int rootMidi) {
   if (id < 0 || id >= SFX_COUNT || pitch <= 0.0f || !isfinite(pitch) ||
       !isfinite(pan)) {
-    return;
+    return -1;
   }
   int slot = findVoice(CUES[id].priority);
   if (slot < 0) {
-    return;
+    return -1;
   }
   unsigned seed = hash32(++voiceSerial * 0x9e3779b9u + (unsigned)id * 101u);
   float randomPitch = id == SFX_COIN ? 0.004f : 0.012f;
@@ -1150,7 +1267,10 @@ static void triggerCue(SfxId id, float pitch, float pan, bool musicBus,
       .rootMidi = rootMidi,
       .seed = seed,
       .musicBus = musicBus,
+      .handoff = -1,
+      .handoffSeam = 0,
   };
+  return slot;
 }
 
 void sfxAt(SfxId id, float pitch, float pan) {
@@ -1168,10 +1288,19 @@ void musicLogoSting(void) {
   }
 }
 
-void musicEraTransition(MusicTrack track) {
-  if (gameplayTrack(track)) {
-    triggerCue(SFX_LEVELUP, 1.0f, 0.0f, true, TRACKS[track].style,
-               TRACKS[track].rootMidi);
+static void musicEraTransition(int handoff, int seamFrames) {
+  if (handoff < 0 || handoff >= ARRAY_LEN(HANDOFFS)) {
+    return;
+  }
+  const Handoff *def = &HANDOFFS[handoff];
+  int track = def->to;
+  int slot = triggerCue(SFX_HANDOFF, 1.0f, 0.0f, true, TRACKS[track].style,
+                        TRACKS[track].rootMidi);
+  if (slot >= 0) {
+    voices[slot].pitch = 1.0f; // soundtrack bridges stay exactly in tune
+    voices[slot].handoff = handoff;
+    voices[slot].handoffSeam = seamFrames;
+    voices[slot].length = seamFrames + framesForBeats(track, def->inBeats);
   }
 }
 
@@ -1210,6 +1339,87 @@ static float chirpWave(const Voice *v, float startHz, float endHz) {
   float cycles = sweepCycles(startHz, endHz, t, duration);
   float hz = startHz + (endHz - startHz) * t / duration;
   return styleWave(v->style, cycles, fabsf(hz), v->pos, v->seed);
+}
+
+static float renderHandoffCue(const Voice *v, unsigned seedOffset) {
+  if (v->handoff < 0 || v->handoff >= ARRAY_LEN(HANDOFFS)) {
+    return 0.0f;
+  }
+  const Handoff *handoff = &HANDOFFS[v->handoff];
+  const Track *from = &TRACKS[handoff->from], *to = &TRACKS[handoff->to];
+  float x = (float)v->pos / v->length;
+  float blendStart = v->handoffSeam * 0.5f;
+  float blendEnd = v->handoffSeam + (v->length - v->handoffSeam) * 0.5f;
+  float blend =
+      clampf((v->pos - blendStart) / (blendEnd - blendStart), 0.0f, 1.0f);
+  blend = blend * blend * (3.0f - 2.0f * blend);
+  float t = (float)v->pos / SAMPLE_RATE;
+  float fromHz = midiHz(from->rootMidi + 12);
+  float toHz = midiHz(to->rootMidi + 12);
+  float source =
+      styleWave(from->style, fromHz * t, fromHz, v->pos, v->seed + seedOffset);
+  float destination =
+      styleWave(to->style, toHz * t, toHz, v->pos, v->seed + seedOffset + 17u);
+  float pivot = source + (destination - source) * blend;
+
+  // Revoice the opening rise of the shared Boing motif: the source plays the
+  // first half and the destination answers, avoiding an early harmonic clash.
+  const int noteCount = 5;
+  int note = v->pos * noteCount / v->length;
+  if (note >= noteCount) {
+    note = noteCount - 1;
+  }
+  int start = v->length * note / noteCount;
+  int end = v->length * (note + 1) / noteCount;
+  int local = v->pos - start;
+  int attack = (int)(0.004f * SAMPLE_RATE);
+  int release = (int)(0.012f * SAMPLE_RATE);
+  float noteEnv = fminf((float)local / attack, 1.0f) *
+                  fminf((float)(end - v->pos) / release, 1.0f);
+  int motifTrack = start < v->handoffSeam ? handoff->from : handoff->to;
+  const Track *motifVoice = &TRACKS[motifTrack];
+  int degree = MOTIF[note].degree;
+  int midi = degreeMidi(GAMEPLAY_SCALES[motifTrack], motifVoice->rootMidi + 12,
+                        degree);
+  float hz = midiHz(midi);
+  float motif = noteEnv * styleWave(motifVoice->style, hz * local / SAMPLE_RATE,
+                                    hz, local, v->seed + seedOffset + 31u);
+
+  float arch = sinf(PI * x);
+  float color = 0.0f;
+  switch (handoff->color) {
+  case HANDOFF_AIR:
+    color = 0.13f * smoothNoise(v->seed + seedOffset, (unsigned)v->pos, 53u);
+    break;
+  case HANDOFF_TWILIGHT:
+    color = 0.12f * sinf(TAU * midiHz(to->rootMidi + 19) * t);
+    break;
+  case HANDOFF_SIGNAL: {
+    float duration = (float)v->length / SAMPLE_RATE;
+    float pulse = 3.0f * t + 4.0f * t * t / duration;
+    color = 0.12f * destination * (0.5f + 0.5f * sinf(TAU * pulse));
+    break;
+  }
+  case HANDOFF_FRAGMENT: {
+    int tick = (int)(0.12f * SAMPLE_RATE);
+    int at = v->pos % tick;
+    float burst = expf(-(float)at / (0.025f * SAMPLE_RATE));
+    float noise =
+        noiseAt(v->seed + seedOffset, (unsigned)v->pos) -
+        noiseAt(v->seed + seedOffset, (unsigned)(v->pos > 0 ? v->pos - 1 : 0));
+    color = 0.1f * burst * noise;
+    break;
+  }
+  case HANDOFF_REBOOT:
+    color = 0.1f * ((1.0f - blend) * floorf(source * 8.0f + 0.5f) / 8.0f +
+                    blend * triangleWave(toHz * t));
+    break;
+  case HANDOFF_COUNT:
+    break;
+  }
+
+  return cueEnv(v, 0.008f, 1.15f) *
+         (0.34f * pivot + 0.58f * motif + arch * color);
 }
 
 static float renderCueMono(const Voice *v, unsigned seedOffset) {
@@ -1300,7 +1510,10 @@ static float renderCueMono(const Voice *v, unsigned seedOffset) {
     static const int NOTES[] = {0, -6};
     return env * steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 0);
   }
-  case SFX_LEVELUP: {
+  case SFX_HANDOFF: {
+    if (v->handoff >= 0) {
+      return renderHandoffCue(v, seedOffset);
+    }
     static const int NOTES[] = {0, 4, 7, 12, 16};
     return cueEnv(v, 0.004f, 1.2f) *
            steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 12);
@@ -1583,6 +1796,121 @@ bool audioPreloadStep(void) {
   return finished;
 }
 
+static void beginPendingTrack(void) {
+  int track = pendingTrack;
+  int handoff = pendingHandoff;
+  prevTrack = TRACK_NONE; // the outgoing full mix ended before this downbeat
+  curTrack = track;
+  loopPos[track] = 0;
+  crossfade = 0.0f;
+  float inBeats = handoff >= 0 ? HANDOFFS[handoff].inBeats : 1.0f;
+  crossfadeFrames = framesForBeats(track, inBeats);
+  if (crossfadeFrames < 1) {
+    crossfadeFrames = 1;
+  }
+  clearPendingTrack();
+}
+
+static float pendingStrip(void) {
+  if (pendingTrack == TRACK_NONE) {
+    return 0.0f;
+  }
+  if (!pendingCueStarted && pendingFrames <= pendingFadeFrames) {
+    musicEraTransition(pendingHandoff, pendingFadeFrames);
+    pendingCueStarted = true;
+  }
+  if (pendingFrames >= pendingFadeFrames) {
+    return 0.0f;
+  }
+  float x = 1.0f - (float)pendingFrames / pendingFadeFrames;
+  return x * x * (3.0f - 2.0f * x);
+}
+
+static Stereo renderAudioFrame(void) {
+  if (pendingTrack != TRACK_NONE && pendingFrames <= 0) {
+    beginPendingTrack();
+  }
+  float strip = pendingStrip();
+  Stereo incoming = trackSample(curTrack);
+  Stereo outgoing = trackSample(prevTrack);
+  float inGain = sinf(crossfade * PI * 0.5f);
+  float outGain = cosf(crossfade * PI * 0.5f);
+  Stereo music = {incoming.l * inGain + outgoing.l * outGain,
+                  incoming.r * inGain + outgoing.r * outGain};
+  unsigned layerPos = validTrack(curTrack) && loopFrames[curTrack] > 0
+                          ? (unsigned)loopPos[curTrack]
+                          : dynamicsPos;
+  advanceTrack(curTrack);
+  if (prevTrack != curTrack) {
+    advanceTrack(prevTrack);
+  }
+  if (crossfade < 1.0f) {
+    crossfade += 1.0f / crossfadeFrames;
+    if (crossfade >= 1.0f) {
+      crossfade = 1.0f;
+      prevTrack = curTrack;
+    }
+  }
+
+  dangerMix = smoothToward(dangerMix, dangerTarget, 0.0007f);
+  finaleMix = smoothToward(finaleMix, finaleTarget, 0.0007f);
+  pauseMix = smoothToward(pauseMix, pauseTarget, 0.0009f);
+  Stereo combo = renderComboLayer(layerPos, musicCombo);
+  Stereo danger = renderDanger(layerPos, dangerMix);
+  Stereo finale = renderFinale(layerPos, finaleMix);
+  music.l += combo.l + danger.l + finale.l;
+  music.r += combo.r + danger.r + finale.r;
+
+  simpleMusic.l += 0.025f * (music.l - simpleMusic.l);
+  simpleMusic.r += 0.025f * (music.r - simpleMusic.r);
+  float restore = hitRestore();
+  music.l = 0.65f * simpleMusic.l + (music.l - 0.65f * simpleMusic.l) * restore;
+  music.r = 0.65f * simpleMusic.r + (music.r - 0.65f * simpleMusic.r) * restore;
+
+  pauseFilter.l += 0.075f * (music.l - pauseFilter.l);
+  pauseFilter.r += 0.075f * (music.r - pauseFilter.r);
+  music.l += (pauseFilter.l * 0.52f - music.l) * pauseMix;
+  music.r += (pauseFilter.r * 0.52f - music.r) * pauseMix;
+
+  // Remove the outgoing rhythm section before the new downbeat. Its filtered
+  // center fades first, while the short motif bridge carries across the seam.
+  float stripGain = cosf(strip * PI * 0.5f);
+  music.l = (music.l + (simpleMusic.l * 0.55f - music.l) * strip) * stripGain;
+  music.r = (music.r + (simpleMusic.r * 0.55f - music.r) * strip) * stripGain;
+
+  Stereo musicCue = {0.0f, 0.0f};
+  Stereo effects = {0.0f, 0.0f};
+  float duckTarget = 0.0f;
+  for (int v = 0; v < MAX_VOICES; v++) {
+    if (!voices[v].active) {
+      continue;
+    }
+    Stereo voice = renderVoice(&voices[v]);
+    if (voices[v].musicBus) {
+      musicCue.l += voice.l;
+      musicCue.r += voice.r;
+    } else {
+      effects.l += voice.l;
+      effects.r += voice.r;
+      duckTarget = fmaxf(duckTarget,
+                         CUES[voices[v].type].duck * voiceActivity(&voices[v]));
+    }
+    if (++voices[v].pos >= voices[v].length) {
+      voices[v].active = false;
+    }
+  }
+  float duckRate = duckTarget > duckMix ? 0.06f : 0.0012f;
+  duckMix = smoothToward(duckMix, duckTarget, duckRate);
+  float musicGain = musicVol * (1.0f - duckMix);
+  float left = (music.l + musicCue.l) * musicGain + effects.l * sfxVol;
+  float right = (music.r + musicCue.r) * musicGain + effects.r * sfxVol;
+  if (pendingTrack != TRACK_NONE && pendingFrames > 0) {
+    pendingFrames--;
+  }
+  dynamicsPos++;
+  return (Stereo){tanhf(left), tanhf(right)};
+}
+
 void updateAudio(AudioStream *stream) {
   if (!IsAudioStreamValid(*stream) || !IsAudioStreamProcessed(*stream)) {
     return;
@@ -1590,78 +1918,9 @@ void updateAudio(AudioStream *stream) {
 
   float output[BUFFER_FRAMES * CHANNELS];
   for (int i = 0; i < BUFFER_FRAMES; i++) {
-    Stereo incoming = trackSample(curTrack);
-    Stereo outgoing = trackSample(prevTrack);
-    float inGain = sinf(crossfade * PI * 0.5f);
-    float outGain = cosf(crossfade * PI * 0.5f);
-    Stereo music = {incoming.l * inGain + outgoing.l * outGain,
-                    incoming.r * inGain + outgoing.r * outGain};
-    unsigned layerPos = validTrack(curTrack) && loopFrames[curTrack] > 0
-                            ? (unsigned)loopPos[curTrack]
-                            : dynamicsPos;
-    advanceTrack(curTrack);
-    if (prevTrack != curTrack) {
-      advanceTrack(prevTrack);
-    }
-    if (crossfade < 1.0f) {
-      crossfade += 1.0f / crossfadeFrames;
-      if (crossfade >= 1.0f) {
-        crossfade = 1.0f;
-        prevTrack = curTrack;
-      }
-    }
-
-    dangerMix = smoothToward(dangerMix, dangerTarget, 0.0007f);
-    finaleMix = smoothToward(finaleMix, finaleTarget, 0.0007f);
-    pauseMix = smoothToward(pauseMix, pauseTarget, 0.0009f);
-    Stereo combo = renderComboLayer(layerPos, musicCombo);
-    Stereo danger = renderDanger(layerPos, dangerMix);
-    Stereo finale = renderFinale(layerPos, finaleMix);
-    music.l += combo.l + danger.l + finale.l;
-    music.r += combo.r + danger.r + finale.r;
-
-    simpleMusic.l += 0.025f * (music.l - simpleMusic.l);
-    simpleMusic.r += 0.025f * (music.r - simpleMusic.r);
-    float restore = hitRestore();
-    music.l =
-        0.65f * simpleMusic.l + (music.l - 0.65f * simpleMusic.l) * restore;
-    music.r =
-        0.65f * simpleMusic.r + (music.r - 0.65f * simpleMusic.r) * restore;
-
-    pauseFilter.l += 0.075f * (music.l - pauseFilter.l);
-    pauseFilter.r += 0.075f * (music.r - pauseFilter.r);
-    music.l += (pauseFilter.l * 0.52f - music.l) * pauseMix;
-    music.r += (pauseFilter.r * 0.52f - music.r) * pauseMix;
-
-    Stereo musicCue = {0.0f, 0.0f};
-    Stereo effects = {0.0f, 0.0f};
-    float duckTarget = 0.0f;
-    for (int v = 0; v < MAX_VOICES; v++) {
-      if (!voices[v].active) {
-        continue;
-      }
-      Stereo voice = renderVoice(&voices[v]);
-      if (voices[v].musicBus) {
-        musicCue.l += voice.l;
-        musicCue.r += voice.r;
-      } else {
-        effects.l += voice.l;
-        effects.r += voice.r;
-        duckTarget = fmaxf(duckTarget, CUES[voices[v].type].duck *
-                                           voiceActivity(&voices[v]));
-      }
-      if (++voices[v].pos >= voices[v].length) {
-        voices[v].active = false;
-      }
-    }
-    float duckRate = duckTarget > duckMix ? 0.06f : 0.0012f;
-    duckMix = smoothToward(duckMix, duckTarget, duckRate);
-    float musicGain = musicVol * (1.0f - duckMix);
-    float left = (music.l + musicCue.l) * musicGain + effects.l * sfxVol;
-    float right = (music.r + musicCue.r) * musicGain + effects.r * sfxVol;
-    output[i * 2] = tanhf(left);
-    output[i * 2 + 1] = tanhf(right);
-    dynamicsPos++;
+    Stereo frame = renderAudioFrame();
+    output[i * 2] = frame.l;
+    output[i * 2 + 1] = frame.r;
   }
   UpdateAudioStream(*stream, output, BUFFER_FRAMES);
 }
@@ -1691,9 +1950,30 @@ void deinitAudio(AudioStream *stream) {
   preloadJoined = false;
   logoPlayed = false;
   curTrack = prevTrack = TRACK_NONE;
+  clearPendingTrack();
+  crossfade = 1.0f;
+  crossfadeFrames = 1;
 }
 
 #ifdef SOUND_SELFTEST
+static void resetPlaybackTest(void) {
+  memset(loopPos, 0, sizeof(loopPos));
+  memset(voices, 0, sizeof(voices));
+  curTrack = prevTrack = TRACK_NONE;
+  clearPendingTrack();
+  crossfade = 1.0f;
+  crossfadeFrames = 1;
+  pauseTarget = pauseMix = 0.0f;
+  musicVol = sfxVol = 1.0f;
+  hitFrames = musicCombo = 0;
+  dangerTarget = dangerMix = 0.0f;
+  finaleTarget = finaleMix = 0.0f;
+  simpleMusic = pauseFilter = (Stereo){0.0f, 0.0f};
+  duckMix = 0.0f;
+  dynamicsPos = 0;
+  voiceSerial = 0;
+}
+
 static void checkDefinitions(void) {
   for (int i = 0; i < TRACK_COUNT; i++) {
     const Track *track = &TRACKS[i];
@@ -1709,6 +1989,16 @@ static void checkDefinitions(void) {
   }
   assert(TRACKS[TRACK_MENU].bpm == TRACKS[TRACK_SHOP].bpm);
   assert(TRACKS[TRACK_MENU].bars == TRACKS[TRACK_SHOP].bars);
+  for (int i = 0; i < ARRAY_LEN(HANDOFFS); i++) {
+    assert(HANDOFFS[i].from == (MusicTrack)i);
+    assert(HANDOFFS[i].to == (MusicTrack)((i + 1) % TRACK_GAMEPLAY_COUNT));
+    assert(HANDOFFS[i].outBeats > 0.0f &&
+           HANDOFFS[i].outBeats <= TRACKS[i].beatsPerBar);
+    assert(HANDOFFS[i].inBeats > 0.0f &&
+           HANDOFFS[i].inBeats <= TRACKS[HANDOFFS[i].to].beatsPerBar);
+    assert(HANDOFFS[i].color == (HandoffColor)i);
+    assert(GAMEPLAY_SCALES[i] != NULL);
+  }
   bool seen[TRACK_COUNT] = {false};
   for (int i = 0; i < TRACK_COUNT; i++) {
     int track = PRELOAD_ORDER[i];
@@ -1764,7 +2054,8 @@ static void checkCues(void) {
                  .gain = CUES[cue].gain,
                  .style = (SoundStyle)style,
                  .rootMidi = 60,
-                 .seed = 1234u + (unsigned)(style * SFX_COUNT + cue)};
+                 .seed = 1234u + (unsigned)(style * SFX_COUNT + cue),
+                 .handoff = -1};
       double energy = 0.0;
       for (v.pos = 0; v.pos < v.length; v.pos++) {
         float value = renderCueMono(&v, 0u);
@@ -1794,33 +2085,38 @@ static void checkCues(void) {
   assert(foundPriority && "high-priority cue was not voice-stolen in");
 
   memset(voices, 0, sizeof(voices));
-  musicEraTransition((MusicTrack)-1);
-  musicEraTransition(TRACK_MENU);
+  musicEraTransition(-1, 1);
+  musicEraTransition(ARRAY_LEN(HANDOFFS), 1);
   for (int i = 0; i < MAX_VOICES; i++) {
     assert(!voices[i].active);
   }
-  for (MusicTrack track = TRACK_HILLS; track < TRACK_GAMEPLAY_COUNT; track++) {
-    musicEraTransition(track);
-    assert(voices[track].active && voices[track].type == SFX_LEVELUP);
-    assert(voices[track].style == TRACKS[track].style);
-    assert(voices[track].rootMidi == TRACKS[track].rootMidi);
+  for (int handoff = 0; handoff < ARRAY_LEN(HANDOFFS); handoff++) {
+    memset(voices, 0, sizeof(voices));
+    int seam =
+        framesForBeats(HANDOFFS[handoff].from, HANDOFFS[handoff].outBeats);
+    musicEraTransition(handoff, seam);
+    int to = HANDOFFS[handoff].to;
+    assert(voices[0].active && voices[0].type == SFX_HANDOFF);
+    assert(voices[0].musicBus && voices[0].handoff == handoff);
+    assert(voices[0].handoffSeam == seam && voices[0].length > seam);
+    assert(voices[0].style == TRACKS[to].style);
+    assert(voices[0].rootMidi == TRACKS[to].rootMidi);
   }
 }
 
 static void checkDynamics(void) {
+  resetPlaybackTest();
   curTrack = prevTrack = TRACK_MENU;
   loopPos[TRACK_MENU] = 1234;
   setTrack(TRACK_SHOP);
-  assert(loopPos[TRACK_SHOP] == 1234 && crossfade == 0.0f);
+  assert(curTrack == TRACK_SHOP && loopPos[TRACK_SHOP] == 1234 &&
+         crossfade == 0.0f);
+  assert(crossfadeFrames == framesForBeats(TRACK_SHOP, 2.0f));
   setTrack(TRACK_HILLS);
-  setTrack(TRACK_SKIES);
-  assert(loopPos[TRACK_SKIES] == 0);
-  int barFrames = (int)(TRACKS[TRACK_SKIES].beatsPerBar * 60.0f /
-                            TRACKS[TRACK_SKIES].bpm * SAMPLE_RATE +
-                        0.5f);
-  assert(crossfadeFrames == barFrames);
+  assert(curTrack == TRACK_HILLS && loopPos[TRACK_HILLS] == 0 &&
+         pendingTrack == TRACK_NONE);
 
-  setTrack(TRACK_BLOCKS);
+  curTrack = prevTrack = TRACK_BLOCKS;
   crossfade = 1.0f;
   float low = 0.0f, high = 0.0f, mono = 0.0f, danger = 0.0f;
   float finale = 0.0f;
@@ -1850,6 +2146,93 @@ static void checkDynamics(void) {
   assert(hitRestore() == 0.0f);
 }
 
+static int prepareHandoffTest(int handoff) {
+  resetPlaybackTest();
+  const Handoff *def = &HANDOFFS[handoff];
+  curTrack = prevTrack = def->from;
+  loopPos[def->from] = framesForBeats(def->from, 0.4f);
+  int expected = barBoundaryFrame(def->from, 1) - loopPos[def->from];
+  setTrack(def->to);
+  assert(curTrack == (int)def->from && pendingTrack == (int)def->to);
+  assert(pendingHandoff == handoff && pendingFrames == expected);
+  assert(pendingFadeFrames == framesForBeats(def->from, def->outBeats));
+  setTrack(def->to);
+  assert(pendingFrames == expected); // repeated requests are idempotent
+  return expected;
+}
+
+static void checkHandoffs(void) {
+  for (int handoff = 0; handoff < ARRAY_LEN(HANDOFFS); handoff++) {
+    const Handoff *def = &HANDOFFS[handoff];
+    int seam = prepareHandoffTest(handoff);
+    int total = seam + SAMPLE_RATE * 3;
+    double sum = 0.0, side = 0.0;
+    float peak = 0.0f;
+    Stereo before = {0.0f, 0.0f};
+    float seamJump = 0.0f;
+    for (int i = 0; i < total; i++) {
+      if (i < seam) {
+        assert(curTrack == (int)def->from && loopPos[def->to] == 0);
+      }
+      Stereo frame = renderAudioFrame();
+      assert(isfinite(frame.l) && isfinite(frame.r));
+      sum += ((double)frame.l * frame.l + (double)frame.r * frame.r) * 0.5;
+      side += fabsf(frame.l - frame.r);
+      peak = fmaxf(peak, fmaxf(fabsf(frame.l), fabsf(frame.r)));
+      if (i == seam - 1) {
+        before = frame;
+        assert(pendingFrames == 0 && curTrack == (int)def->from);
+      } else if (i == seam) {
+        seamJump = fmaxf(fabsf(frame.l - before.l), fabsf(frame.r - before.r));
+        assert(curTrack == (int)def->to && prevTrack == TRACK_NONE);
+        assert(loopPos[def->to] == 1); // destination began at frame zero
+      }
+    }
+    float rms = sqrtf((float)(sum / total));
+    assert(curTrack == (int)def->to && pendingTrack == TRACK_NONE);
+    assert(rms > 0.035f && rms < 0.22f);
+    assert(peak > 0.12f && peak < 0.95f); // final tanh limiter stayed clean
+    assert(side > total * 0.002 && "handoff collapsed to mono");
+    assert(seamJump < 0.2f && "handoff made a discontinuous sample jump");
+    printf("handoff %d->%d: wait %.2fs rms %.3f peak %.3f seam %.3f\n",
+           def->from, def->to, (float)seam / SAMPLE_RATE, rms, peak, seamJump);
+  }
+
+  int due = prepareHandoffTest(0);
+  setTrack(TRACK_NIGHT);
+  assert(pendingTrack == TRACK_SKIES && pendingFrames == due);
+  setTrack(TRACK_HILLS);
+  assert(pendingTrack == TRACK_NONE); // returning to the source cancels
+
+  prepareHandoffTest(0);
+  while (!pendingCueStarted) {
+    renderAudioFrame();
+  }
+  setTrack(TRACK_NIGHT);
+  assert(pendingTrack == TRACK_SKIES); // an audible bridge finishes its bar
+  int held = pendingFrames;
+  setTrack(TRACK_COUNT + 3);
+  assert(pendingTrack == TRACK_SKIES && pendingFrames == held);
+
+  resetPlaybackTest();
+  curTrack = prevTrack = TRACK_HILLS;
+  int lead = framesForBeats(TRACK_HILLS, HANDOFFS[0].outBeats);
+  loopPos[TRACK_HILLS] = loopFrames[TRACK_HILLS] - lead / 2;
+  setTrack(TRACK_SKIES);
+  int acrossLoop = lead / 2 + barBoundaryFrame(TRACK_HILLS, 1);
+  assert(pendingFrames == acrossLoop); // too little lead defers past loop zero
+
+  int savedFrames = loopFrames[TRACK_HILLS];
+  loopFrames[TRACK_HILLS] = -1;
+  resetPlaybackTest();
+  curTrack = prevTrack = TRACK_HILLS;
+  setTrack(TRACK_SKIES);
+  assert(curTrack == TRACK_SKIES && pendingTrack == TRACK_NONE);
+  Stereo degraded = renderAudioFrame();
+  assert(isfinite(degraded.l) && isfinite(degraded.r));
+  loopFrames[TRACK_HILLS] = savedFrames;
+}
+
 static void put16(FILE *file, unsigned value) {
   fputc(value & 0xffu, file);
   fputc((value >> 8) & 0xffu, file);
@@ -1876,6 +2259,12 @@ static void writeWavHeader(FILE *file, int frames) {
   put32(file, dataBytes);
 }
 
+static const char *const TRACK_NAMES[] = {
+    "sunny", "skies", "night",   "maze",    "blocks",
+    "menu",  "shop",  "credits", "results",
+};
+STATIC_ASSERT(ARRAY_LEN(TRACK_NAMES) == TRACK_COUNT, track_names_full);
+
 static void writeTrack(const char *prefix, int track, const char *name) {
   char path[1024];
   snprintf(path, sizeof(path), "%s-%s.wav", prefix, name);
@@ -1888,12 +2277,29 @@ static void writeTrack(const char *prefix, int track, const char *name) {
   fclose(file);
 }
 
-static void exportTracks(const char *prefix) {
-  static const char *NAMES[] = {"sunny", "skies", "night",   "maze",   "blocks",
-                                "menu",  "shop",  "credits", "results"};
-  assert(ARRAY_LEN(NAMES) == TRACK_COUNT);
+static void writeHandoff(const char *prefix, int handoff) {
+  const Handoff *def = &HANDOFFS[handoff];
+  int frames = prepareHandoffTest(handoff) + SAMPLE_RATE * 3;
+  char path[1024];
+  snprintf(path, sizeof(path), "%s-%s-to-%s.wav", prefix,
+           TRACK_NAMES[def->from], TRACK_NAMES[def->to]);
+  FILE *file = fopen(path, "wb");
+  assert(file != NULL);
+  writeWavHeader(file, frames);
+  for (int i = 0; i < frames; i++) {
+    Stereo frame = renderAudioFrame();
+    put16(file, (unsigned short)lrintf(frame.l * 32767.0f));
+    put16(file, (unsigned short)lrintf(frame.r * 32767.0f));
+  }
+  fclose(file);
+}
+
+static void exportAudio(const char *prefix) {
   for (int i = 0; i < TRACK_COUNT; i++) {
-    writeTrack(prefix, i, NAMES[i]);
+    writeTrack(prefix, i, TRACK_NAMES[i]);
+  }
+  for (int i = 0; i < ARRAY_LEN(HANDOFFS); i++) {
+    writeHandoff(prefix, i);
   }
 }
 
@@ -1906,13 +2312,14 @@ int main(int argc, char **argv) {
   checkTracks();
   checkCues();
   checkDynamics();
+  checkHandoffs();
   if (argc > 1) {
-    exportTracks(argv[1]);
+    exportAudio(argv[1]);
   }
   AudioStream stream = {0};
   deinitAudio(&stream);
-  printf("ok - %d stereo cues, %d era-specific effects, adaptive layers\n",
-         TRACK_COUNT, SFX_COUNT);
+  printf("ok - %d stereo cues, %d effects, %d musical handoffs\n", TRACK_COUNT,
+         SFX_COUNT, ARRAY_LEN(HANDOFFS));
   return 0;
 }
 #endif

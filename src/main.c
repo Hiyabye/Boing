@@ -20,12 +20,16 @@
 #include "world.h"
 
 #define FADE_SPEED 3.0f // black-dip transition rate (~0.33s each direction)
+#define MUSIC_REQUEST_PHASE 0.80f // pre-roll inside the visual handoff
 
 // Full cues belong to durable contexts. Lightweight overlays keep their
 // underlying score, MENU/SHOP preserve one shared playhead, and pause filters
 // the live era instead of resetting it.
 static int trackForState(const Game *g) {
   ThemeSample journey = themeSampleAt(worldPeakAscent(&g->world));
+  EraId musicEra =
+      journey.phase >= MUSIC_REQUEST_PHASE ? journey.next : journey.era;
+  MusicTrack gameplayTrack = THEMES[musicEra].track;
   switch (g->state) {
   case GAMESTATE_SPLASH:
     return TRACK_NONE;
@@ -38,11 +42,10 @@ static int trackForState(const Game *g) {
   case GAMESTATE_GAMEOVER:
     return TRACK_RESULTS;
   case GAMESTATE_SETTINGS:
-    return g->prevState == GAMESTATE_PAUSED ? THEMES[journey.era].track
-                                            : TRACK_MENU;
+    return g->prevState == GAMESTATE_PAUSED ? gameplayTrack : TRACK_MENU;
   case GAMESTATE_PLAYING:
   case GAMESTATE_PAUSED:
-    return THEMES[journey.era].track;
+    return gameplayTrack;
   case GAMESTATE_COUNT:
     return TRACK_NONE;
   }
