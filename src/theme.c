@@ -10,8 +10,10 @@
 #endif
 
 // Ascent (world-units of climb) that one theme spans before it has fully
-// morphed into the next — a full level band.
+// morphed into the next - a full level band. The measured 19-32 second band
+// keeps its identity until the final roughly 4-7 seconds.
 #define BAND_HEIGHT 20000.0f
+#define TRANSITION_START 0.78f
 
 // The theme table. A new level is one more row here (and, for a distinct
 // backdrop shape, a case in background.c). Row order = climb order — the scene
@@ -217,6 +219,12 @@ Color gUiAccentDark = {228, 70, 139, 255};
 // sneak in before `backdrop`. A reordered struct trips this at compile time.
 STATIC_ASSERT(offsetof(Theme, backdrop) % sizeof(Color) == 0, theme_color_run);
 
+static float transitionBlend(float phase) {
+  float t = clampf((phase - TRANSITION_START) / (1.0f - TRANSITION_START), 0.0f,
+                   1.0f);
+  return t * t * (3.0f - 2.0f * t);
+}
+
 ThemeSample themeSampleAt(float ascent) {
   if (ascent < 0.0f) {
     ascent = 0.0f;
@@ -231,7 +239,7 @@ ThemeSample themeSampleAt(float ascent) {
       .era = era,
       .next = (EraId)((era + 1) % ERA_COUNT),
       .phase = phase,
-      .blend = phase,
+      .blend = transitionBlend(phase),
   };
 }
 
@@ -252,9 +260,37 @@ static Theme lerpTheme(const Theme *a, const Theme *b, float f) {
   return r;
 }
 
-void themeUpdate(ThemeSample sample) {
-  gTheme = lerpTheme(&THEMES[sample.era], &THEMES[sample.next], sample.blend);
+// The direct Blocks -> Hills RGB path turns grey halfway through. One authored
+// predawn key keeps the bridge colorful without adding an era or color system.
+// These are exactly the atmosphere colors before `mouth` in Theme.
+static const Color REBOOT_DAWN[] = {
+    {0x35, 0x34, 0x78, 0xFF}, {0xD4, 0x72, 0x82, 0xFF},
+    {0x1C, 0x26, 0x58, 0xFF}, {0x69, 0x42, 0x76, 0xFF},
+    {0xFF, 0xB3, 0x72, 0xFF}, {0xFF, 0xE6, 0xB0, 0xFF},
+    {0x4D, 0xC6, 0xB6, 0xFF}, {0x36, 0x62, 0x76, 0xFF},
+};
+STATIC_ASSERT(sizeof(REBOOT_DAWN) / sizeof(REBOOT_DAWN[0]) ==
+                  offsetof(Theme, mouth) / sizeof(Color),
+              reboot_dawn_full);
+
+static Theme renderedTheme(ThemeSample sample) {
+  const Theme *a = &THEMES[sample.era], *b = &THEMES[sample.next];
+  Theme r = lerpTheme(a, b, sample.blend);
+  if (a->bridge == BRIDGE_REBOOT) {
+    float f = sample.blend * 2.0f;
+    const Color *from = f < 1.0f ? (const Color *)a : REBOOT_DAWN;
+    const Color *to = f < 1.0f ? REBOOT_DAWN : (const Color *)b;
+    f = f < 1.0f ? f : f - 1.0f;
+    Color *colors = (Color *)&r;
+    for (int i = 0; i < (int)(sizeof(REBOOT_DAWN) / sizeof(REBOOT_DAWN[0]));
+         i++) {
+      colors[i] = ColorLerp(from[i], to[i], f);
+    }
+  }
+  return r;
 }
+
+void themeUpdate(ThemeSample sample) { gTheme = renderedTheme(sample); }
 
 // How much post-processing bloom this altitude wants. It also weights every
 // additive stamp in world.c, so each authoritative theme row owns one glow
@@ -274,31 +310,50 @@ void themeSampleSelfTest(void) {
   assert(s.level == 0 && s.cycle == 0 && s.era == ERA_HILLS &&
          s.next == ERA_SKIES && s.phase == 0.0f && s.blend == 0.0f);
 
+  s = themeSampleAt(BAND_HEIGHT * 0.70f);
+  assert(fabsf(s.phase - 0.70f) < 0.0001f && s.blend == 0.0f);
+  s = themeSampleAt(BAND_HEIGHT * TRANSITION_START);
+  assert(fabsf(s.phase - TRANSITION_START) < 0.0001f && s.blend < 0.0001f);
+  s = themeSampleAt(BAND_HEIGHT * (TRANSITION_START + 1.0f) * 0.5f);
+  assert(fabsf(s.blend - 0.5f) < 0.0001f);
+
+  for (int level = 0; level < ERA_COUNT; level++) {
+    float edge = BAND_HEIGHT * (level + 1);
+    EraId next = (EraId)((level + 1) % ERA_COUNT);
+    ThemeSample before = themeSampleAt(nextafterf(edge, 0.0f));
+    ThemeSample at = themeSampleAt(edge);
+    assert(before.level == level && before.era == (EraId)level &&
+           before.next == next && before.phase < 1.0f &&
+           before.blend > 0.9999f);
+    assert(at.level == level + 1 && at.era == next && at.phase == 0.0f &&
+           at.blend == 0.0f);
+  }
+
   float edge = BAND_HEIGHT;
-  s = themeSampleAt(nextafterf(edge, 0.0f));
-  assert(s.level == 0 && s.cycle == 0 && s.era == ERA_HILLS &&
-         s.next == ERA_SKIES && s.phase > 0.0f && s.phase < 1.0f &&
-         s.blend == s.phase);
-  s = themeSampleAt(edge);
-  assert(s.level == 1 && s.cycle == 0 && s.era == ERA_SKIES &&
-         s.next == ERA_NIGHT && s.phase == 0.0f);
   s = themeSampleAt(nextafterf(edge, INFINITY));
-  assert(s.level == 1 && s.era == ERA_SKIES && s.phase > 0.0f);
+  assert(s.level == 1 && s.era == ERA_SKIES && s.phase > 0.0f &&
+         s.blend == 0.0f);
 
   float wrap = BAND_HEIGHT * ERA_COUNT;
-  s = themeSampleAt(nextafterf(wrap, 0.0f));
-  assert(s.level == ERA_COUNT - 1 && s.cycle == 0 && s.era == ERA_BLOCKS &&
-         s.next == ERA_HILLS && s.phase > 0.0f && s.phase < 1.0f);
   s = themeSampleAt(wrap);
   assert(s.level == ERA_COUNT && s.cycle == 1 && s.era == ERA_HILLS &&
-         s.next == ERA_SKIES && s.phase == 0.0f);
+         s.next == ERA_SKIES && s.phase == 0.0f && s.blend == 0.0f);
   s = themeSampleAt(nextafterf(wrap, INFINITY));
   assert(s.level == ERA_COUNT && s.cycle == 1 && s.era == ERA_HILLS &&
-         s.phase > 0.0f);
+         s.phase > 0.0f && s.blend == 0.0f);
 
   s = themeSampleAtWorldY(SCREEN_HEIGHT / 2.0f - edge);
   assert(s.level == 1 && s.era == ERA_SKIES && s.phase == 0.0f);
   assert(themeLevelAt(wrap) == ERA_COUNT);
   assert(themeBandProgressAt(edge) == 0.0f);
+
+  themeUpdate(
+      (ThemeSample){.era = ERA_BLOCKS, .next = ERA_HILLS, .blend = 0.5f});
+  assert(gTheme.skyTop.r == REBOOT_DAWN[0].r &&
+         gTheme.skyTop.g == REBOOT_DAWN[0].g &&
+         gTheme.skyTop.b == REBOOT_DAWN[0].b &&
+         gTheme.skyBot.r == REBOOT_DAWN[1].r &&
+         gTheme.skyBot.g == REBOOT_DAWN[1].g &&
+         gTheme.skyBot.b == REBOOT_DAWN[1].b);
 }
 #endif

@@ -705,10 +705,8 @@ void drawMenuBackground(void) {
   }
 }
 
-// Fraction of the band over which the incoming backdrop's shapes crossfade in
-// — held out until this late so the next level's decor only appears near the
-// very end of the current level, not from its start. The sky gradient still
-// morphs continuously across the whole band (below); only the shapes wait.
+// Fraction of the eased exit transition over which the incoming backdrop's
+// shapes crossfade in. They stay behind the palette handoff until its end.
 #define BACKDROP_XFADE_START 0.85f
 
 static float backdropCrossfade(float f) {
@@ -717,9 +715,8 @@ static float backdropCrossfade(float f) {
              : (f - BACKDROP_XFADE_START) / (1.0f - BACKDROP_XFADE_START);
 }
 
-// Sky gradient morphs continuously with altitude (blended palette); the two
-// neighbor themes' backdrop *shapes* crossfade only in the last ~15% of the
-// band (BACKDROP_XFADE_START) so the next level's decor appears near the end.
+// The sky follows the sample's eased palette handoff. The neighboring
+// backdrop shapes wait until its final 15% before crossfading.
 void drawGameBackground(float cameraY) {
   ThemeSample sample = themeSampleAtWorldY(cameraY + SCREEN_HEIGHT / 2.0f);
   themeUpdate(sample);

@@ -22,7 +22,8 @@ typedef enum {
 
 // One pure reading of the closed-loop journey at an ascent. `level` is
 // monotonic and unbounded; only `era` and `next` wrap. `phase` is raw progress
-// through the current era, while `blend` is the visual transition weight.
+// through the current era. `blend` is a smooth visual weight held at zero
+// through the stable core, then eased to one across the exit transition.
 typedef struct {
   int level;
   int cycle;

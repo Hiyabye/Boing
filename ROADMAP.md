@@ -2,7 +2,7 @@
 
 ## Status
 
-- Execution tracker; Phase 3 completed on 2026-09-03.
+- Execution tracker; Phase 4 completed on 2026-09-03.
 - Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
 - Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> a rebuilt Sunny Hills.
@@ -526,11 +526,11 @@ Files:
 
 Steps:
 
-- [ ] Keep `phase` linear from 0.0 to 1.0.
-- [ ] Start `blend` near 0.70-0.78, based on measured traversal time.
-- [ ] Use cubic smoothstep for the transition interval.
-- [ ] Guarantee continuity at phase 1.0 and the next era at phase 0.0.
-- [ ] Cover the Falling Blocks -> Sunny Hills wrap in the same assertions.
+- [x] Keep `phase` linear from 0.0 to 1.0.
+- [x] Start `blend` near 0.70-0.78, based on measured traversal time.
+- [x] Use cubic smoothstep for the transition interval.
+- [x] Guarantee continuity at phase 1.0 and the next era at phase 0.0.
+- [x] Cover the Falling Blocks -> Sunny Hills wrap in the same assertions.
 
 Acceptance:
 
@@ -541,12 +541,12 @@ Acceptance:
 
 Steps:
 
-- [ ] Render the transition matrix with the new timing.
-- [ ] Inspect hue, luma, gameplay contrast, and additive brightness.
-- [ ] Hand-author a twilight color keyframe for Skies -> Night if the direct path remains muddy.
-- [ ] Hand-author reboot colors for Blocks -> Hills if the path remains washed out.
-- [ ] Only implement Oklab interpolation in `theme.c` if hand-authored keys and easing still fail visibly.
-- [ ] If Oklab is added, keep it file-local, clamp output safely, and measure bundle size immediately.
+- [x] Render the transition matrix with the new timing.
+- [x] Inspect hue, luma, gameplay contrast, and additive brightness.
+- [x] Hand-author a twilight color keyframe for Skies -> Night if the direct path remains muddy. The eased direct path stayed clean, so no key was added.
+- [x] Hand-author reboot colors for Blocks -> Hills if the path remains washed out.
+- [x] Only implement Oklab interpolation in `theme.c` if hand-authored keys and easing still fail visibly. It was not needed.
+- [x] If Oklab is added, keep it file-local, clamp output safely, and measure bundle size immediately. No Oklab code was added.
 
 Acceptance:
 
@@ -556,9 +556,18 @@ Acceptance:
 
 Phase 4 gate:
 
-- [ ] Transition matrix reviewed at full resolution.
-- [ ] Pure-era identity remains at least as strong as the baseline.
-- [ ] Bundle remains under the hard limit.
+- [x] Transition matrix reviewed at full resolution.
+- [x] Pure-era identity remains at least as strong as the baseline.
+- [x] Bundle remains under the hard limit.
+
+Raw phase remains linear, while visual blend now stays at zero through phase
+0.78 and cubic-smoothsteps across the measured final 4-7 seconds. The direct
+Skies -> Night path reads as a clean blue-hour descent, so it needed no extra
+key. The washed-out Blocks -> Hills midpoint now passes through one compact
+indigo-coral predawn key over atmosphere colors only. Full-color and grayscale
+matrix review kept every edge readable, `BG_SELFTEST` and `WORLD_SELFTEST`
+pass, Launch Services startup reaches the menu, and the clean bundle remains
+1,389,043 bytes.
 
 Suggested future commit boundary if explicitly requested:
 
