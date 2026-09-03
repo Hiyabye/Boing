@@ -14,6 +14,7 @@
 #define SUN_X (SCREEN_WIDTH * 0.78f)
 #define SUN_Y (SCREEN_HEIGHT * 0.20f)
 #define SUN_R 46.0f
+#define GARDEN_SUN_R 38.0f
 
 #define FAR_START 0.76f
 #define FAR_END 0.94f
@@ -619,7 +620,67 @@ static void drawBlocksMid(float cameraY, float alpha) {
   }
 }
 
-// Blocks -> Hills: falling cells first lock into a flat horizon, then soften
+static void drawGardenSprout(float x, float y, float h, float alpha) {
+  float sway = sinf((float)GetTime() * 1.8f + x * 0.03f) * h * 0.08f;
+  Color stem = Fade(GRASS_DK, alpha);
+  DrawLineEx((Vector2){x, y}, (Vector2){x + sway, y - h}, 2.2f, stem);
+  DrawCircle(x + sway - h * 0.13f, y - h * 0.62f, h * 0.12f,
+             Fade(GRASS, alpha));
+  DrawCircle(x + sway + h * 0.13f, y - h * 0.78f, h * 0.11f,
+             Fade(ColorBrightness(GRASS, 0.18f), alpha));
+  DrawCircle(x + sway, y - h, h * 0.1f, Fade(COIN_HI, 0.8f * alpha));
+}
+
+// Reboot Garden far layer: the reboot's locked horizon has softened into low
+// ridges, but a row of cultivated cells still shows the landscape's origin.
+static void drawGardenFar(float cameraY, float alpha, int omitDisc) {
+  drawTex(TEX_NEBULA, SCREEN_WIDTH * 0.5f, SCREEN_HEIGHT * 0.34f,
+          SCREEN_WIDTH * 1.3f, SCREEN_HEIGHT * 0.82f, 0.0f,
+          Fade(SUN_CORE, 0.09f * alpha));
+  if (!omitDisc) {
+    drawCelestial(GARDEN_SUN_R, 0.0f, alpha);
+  }
+  Color far = ColorBrightness(ColorLerp(SKY_TOP_HIGH, GRASS_DK, 0.45f), -0.1f);
+  drawLandscapeBand(465.0f, 92.0f, 90.0f, far, 0.88f * alpha, 3.5f, 0.88f);
+  drawLandscapeBand(525.0f, 46.0f, 40.0f, GRASS_DK, 0.84f * alpha, 4.0f, 0.18f);
+  for (int i = 0; i < 12; i++) {
+    float x = -10.0f + i * 74.0f;
+    float y = ridgeY(x, 487.0f, 66.0f, 90.0f, 0.72f) +
+              sinf(i * 1.7f - cameraY * 0.001f) * 3.0f;
+    Color c = ColorLerp(CLOUD_SHADE, GRASS, (i % 3) * 0.18f);
+    drawBlockC(x, y, 13.0f, c, 0.3f * alpha);
+  }
+}
+
+// Reboot Garden mid layer: block rows have become terraced beds. Their seams,
+// compact sprouts, and the inherited river keep this chapter between machine
+// geometry and the fully organic Hills.
+static void drawGardenMid(float cameraY, float alpha) {
+  drawLandscapeBand(560.0f, 22.0f, 170.0f, ColorBrightness(GRASS, 0.12f),
+                    0.7f * alpha, 3.0f, 0.0f);
+  drawLandscapeBand(635.0f, 19.0f, 350.0f, ColorLerp(GRASS, COIN_HI, 0.15f),
+                    0.68f * alpha, 3.0f, 0.0f);
+  drawLandscapeBand(705.0f, 17.0f, 80.0f, GRASS_DK, 0.72f * alpha, 3.0f, 0.0f);
+  drawRiver(0.72f * alpha);
+
+  for (int i = 0; i < 15; i++) {
+    int row = i % 3;
+    float x = 30.0f + (i / 3) * 188.0f + row * 24.0f;
+    float y = 552.0f + row * 72.0f + sinf(i * 1.4f - cameraY * 0.001f) * 8.0f;
+    float w = 48.0f + (i % 4) * 7.0f;
+    Color c = ColorLerp(gTheme.confetti[i % CONFETTI_COUNT], GRASS, 0.55f);
+    DrawRectangleRounded((Rectangle){x, y, w, 13.0f}, 0.38f, 5,
+                         Fade(c, 0.24f * alpha));
+    DrawRectangle(x + w * 0.48f, y + 2.0f, 2, 9,
+                  Fade(CLOUD_SHADE, 0.28f * alpha));
+    if ((i & 1) == 0) {
+      drawGardenSprout(x + w * 0.5f, y + 1.0f, 11.0f + (i % 3) * 3.0f,
+                       (0.44f + 0.06f * row) * alpha);
+    }
+  }
+}
+
+// Blocks -> Garden: falling cells first lock into a flat horizon, then soften
 // onto the incoming mountain ridge. One bright grid cell rounds and grows into
 // the new sun, while a faint predawn ribbon preserves light across the change.
 static void drawRebootFar(float cameraY, float t) {
@@ -637,7 +698,7 @@ static void drawRebootFar(float cameraY, float t) {
     drawBlockC(cellX - cell * 0.5f, cellY - cell * 0.5f, cell,
                ColorLerp(CLOUD, SUN_CORE, round), cellIn * (1.0f - round));
   }
-  drawCelestial(11.0f + (SUN_R - 11.0f) * round, 0.0f, round);
+  drawCelestial(11.0f + (GARDEN_SUN_R - 11.0f) * round, 0.0f, round);
 
   float alpha = bridgeBell(t);
   if (alpha <= 0.01f) {
@@ -747,6 +808,32 @@ static void drawRebootMid(float cameraY, float t) {
                  Fade(GRASS_DK, 0.42f * alpha * grow));
     }
   }
+}
+
+// Garden -> Hills: the compact sunrise opens into the Hills sun while planted
+// cell rows send up saplings and release pollen. The shared track continues
+// through this bridge, so the visual growth has no transport seam to hide.
+static void drawBloomFar(float t) {
+  drawCelestial(GARDEN_SUN_R + (SUN_R - GARDEN_SUN_R) * t, 0.0f, 1.0f);
+}
+
+static void drawBloomMid(float cameraY, float t) {
+  float alpha = bridgeBell(t);
+  if (alpha <= 0.01f) {
+    return;
+  }
+  float grow = easedWindow(t, 0.08f, 0.88f);
+  for (int i = 0; i < 7; i++) {
+    float x = 24.0f + i * 126.0f;
+    float ground = ridgeY(x, 525.0f, 48.0f, 40.0f, 0.0f) + 8.0f;
+    float cell = 13.0f * (1.0f - grow);
+    DrawRectangleRounded(
+        (Rectangle){x - cell * 0.5f, ground - cell, cell, cell},
+        0.2f + 0.8f * grow, 5,
+        Fade(ColorLerp(CLOUD_SHADE, GRASS_DK, grow), 0.46f * alpha));
+    drawGardenSprout(x, ground, 14.0f + 42.0f * grow, 0.72f * alpha);
+  }
+  drawPollen(cameraY, alpha * grow);
 }
 
 // Hills -> Skies: the valley drops away while one river stroke straightens
@@ -1003,6 +1090,21 @@ static void drawBlocksForeground(float cameraY, float alpha) {
   }
 }
 
+static void drawGardenForeground(float cameraY, float alpha) {
+  for (int side = 0; side < 2; side++) {
+    float x = side ? SCREEN_WIDTH - 20.0f : -22.0f;
+    for (int i = 0; i < 3; i++) {
+      float y = wrapf(i * 287.0f - cameraY * (0.58f + i * 0.04f),
+                      SCREEN_HEIGHT + 260.0f) -
+                80.0f;
+      Color c = ColorLerp(CLOUD_SHADE, GRASS_DK, 0.55f);
+      drawBlockC(x, y, 42.0f, c, 0.42f * alpha);
+      drawGardenSprout(side ? x + 5.0f : x + 37.0f, y + 4.0f, 48.0f + i * 9.0f,
+                       0.64f * alpha);
+    }
+  }
+}
+
 static void drawBackdropFar(BackdropStyle style, float cameraY, float alpha,
                             float sink, int omitDisc) {
   if (alpha <= 0.01f) {
@@ -1023,6 +1125,9 @@ static void drawBackdropFar(BackdropStyle style, float cameraY, float alpha,
     break;
   case BACKDROP_BLOCKS:
     drawBlocksFar(cameraY, alpha);
+    break;
+  case BACKDROP_GARDEN:
+    drawGardenFar(cameraY, alpha, omitDisc);
     break;
   }
 }
@@ -1047,6 +1152,9 @@ static void drawBackdropMid(BackdropStyle style, float cameraY, float alpha,
     break;
   case BACKDROP_BLOCKS:
     drawBlocksMid(cameraY, alpha);
+    break;
+  case BACKDROP_GARDEN:
+    drawGardenMid(cameraY, alpha);
     break;
   }
 }
@@ -1075,6 +1183,9 @@ static void drawForeground(BackdropStyle style, float cameraY, float alpha,
   case BACKDROP_BLOCKS:
     drawBlocksForeground(cameraY, alpha);
     break;
+  case BACKDROP_GARDEN:
+    drawGardenForeground(cameraY, alpha);
+    break;
   }
 }
 
@@ -1085,6 +1196,8 @@ static void drawBridgeFar(BridgeStyle bridge, float cameraY, float t) {
     drawSignalFar(cameraY, t);
   } else if (bridge == BRIDGE_REBOOT) {
     drawRebootFar(cameraY, t);
+  } else if (bridge == BRIDGE_BLOOM) {
+    drawBloomFar(t);
   }
 }
 
@@ -1099,6 +1212,8 @@ static void drawBridgeMid(BridgeStyle bridge, float cameraY, float t) {
     drawFragmentBridge(cameraY, t);
   } else if (bridge == BRIDGE_REBOOT) {
     drawRebootMid(cameraY, t);
+  } else if (bridge == BRIDGE_BLOOM) {
+    drawBloomMid(cameraY, t);
   }
 }
 
@@ -1136,7 +1251,7 @@ void drawGameBackground(float cameraY) {
   float mid = easedWindow(sample.phase, MID_START, MID_END);
   BridgeStyle bridge = THEMES[sample.era].bridge;
   int omitDisc = bridge == BRIDGE_TWILIGHT || bridge == BRIDGE_SIGNAL ||
-                 bridge == BRIDGE_REBOOT;
+                 bridge == BRIDGE_REBOOT || bridge == BRIDGE_BLOOM;
   float farSink = bridge == BRIDGE_CLOUDLINE ? far * 170.0f : 0.0f;
   float midSink = bridge == BRIDGE_CLOUDLINE ? mid * 230.0f : 0.0f;
 
@@ -1161,9 +1276,10 @@ void drawGameForeground(float cameraY) {
 }
 
 #ifdef BG_SELFTEST
-// Transition contact matrix of every outgoing edge, including Blocks -> Hills.
-// Rows follow THEMES[] order. Columns are the phase-zero boundary, then phases
-// .70, .78, .84, .90, .96, .995, and finally the next era at phase .005.
+// Transition contact matrix of every outgoing edge, including Blocks -> Garden
+// and the Garden -> Hills wrap. Rows follow THEMES[] order. Columns are the
+// boundary at .000, phases .700, .780, .840, .900, .960, .995, and finally
+// the next era at phase .005.
 // Every cell includes the foreground depth pass. This needs a real GL context
 // because it renders the actual draw path.
 //   cc -DBG_SELFTEST src/background.c src/theme.c src/tex.c \

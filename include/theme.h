@@ -17,6 +17,7 @@ typedef enum {
   ERA_NIGHT,
   ERA_MAZE,
   ERA_BLOCKS,
+  ERA_GARDEN,
   ERA_COUNT
 } EraId;
 
@@ -41,15 +42,17 @@ typedef enum {
   BRIDGE_SIGNAL,
   BRIDGE_FRAGMENTATION,
   BRIDGE_REBOOT,
+  BRIDGE_BLOOM,
   BRIDGE_COUNT
 } BridgeStyle;
 
 typedef enum {
-  BACKDROP_HILLS, // L1: day sky, clouds + rolling green hills/bushes
-  BACKDROP_SKIES, // L2: open blue sky, high clouds + flying birds
-  BACKDROP_STARS, // L3: night sky, moon + pixel stars + blocky terrain
-  BACKDROP_MAZE,  // L4: neon maze lattice + pellet dots on a dark ground
-  BACKDROP_BLOCKS // L5: falling neon tetromino cells
+  BACKDROP_HILLS,  // L1: day sky, clouds + rolling green hills/bushes
+  BACKDROP_SKIES,  // L2: open blue sky, high clouds + flying birds
+  BACKDROP_STARS,  // L3: night sky, moon + pixel stars + blocky terrain
+  BACKDROP_MAZE,   // L4: neon maze lattice + pellet dots on a dark ground
+  BACKDROP_BLOCKS, // L5: falling neon tetromino cells
+  BACKDROP_GARDEN  // L6: rooted cells, terraced fields, and predawn growth
 } BackdropStyle;
 
 // Compatibility name for tables and loops that count gameplay eras.

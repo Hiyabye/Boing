@@ -29,9 +29,9 @@ typedef struct Platform {
   unsigned char era; // immutable EraId
   float fuse; // frames left before a landed-on fragile pad breaks (0 = intact)
   float vx;   // Birdsong Skies: horizontal cloud drift, reflected at the edges
-  float vy;   // Falling Blocks: downward drift; > 0 also makes the pad crush
-  int shape; // Moving Blocks index into TETRO[] for art + collision. Ignored by
-             // collision at vy == 0, including a reboot-locked one-row board.
+  float vy;   // Blocks/Garden descent; > 0 crushes, Garden landing sets it to 0
+  int shape; // Cell footprint in TETRO[]. Garden keeps it after rooting; a late
+             // reboot-locked Blocks row instead collides as one plain board.
   float pressure; // immutable 0..1 arrival/relief tuning; also organic growth
 } Platform;
 

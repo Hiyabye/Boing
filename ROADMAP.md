@@ -2,10 +2,10 @@
 
 ## Status
 
-- Execution tracker; Phase 10 completed on 2026-09-03.
+- Execution tracker; Phase 11 completed with Reboot Garden on 2026-09-03.
 - Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
-- Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> a rebuilt Sunny Hills.
+- Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> Reboot Garden -> a rebuilt Sunny Hills.
 - North star: players should notice that the world evolved, but never notice a technical cut.
 
 ## Purpose
@@ -1132,9 +1132,9 @@ Position: Night -> Neon Maze.
 
 ### 10.3 Reboot Dawn keyframe
 
-Position: Falling Blocks -> Sunny Hills.
+Position: Falling Blocks -> Reboot Garden (promoted to a full era in Phase 11).
 
-- [x] Keep it as bridge data and rendering, not another `THEMES[]` gameplay row.
+- [x] Keep the keyframe itself as bridge data and rendering, not another `THEMES[]` gameplay row.
 - [x] Confirm that missions and first-cycle coin economy remain unchanged.
 
 Phase 10 gate:
@@ -1210,39 +1210,86 @@ Reject or redesign it if pulse timing merely repeats Night's crumble mechanic.
 
 ### Candidate C: Reboot Garden
 
-Position: Falling Blocks -> Sunny Hills.
+Position: Falling Blocks -> Reboot Garden -> Sunny Hills.
 
-Possible identity:
+Implemented identity:
 
-- Falling cells lock into stable platforms.
-- Stable cells sprout organic decoration.
-- The mechanic converts the previous danger into the next baseline rule.
+- One sentence: descending machine cells become safe living terrain when the player lands on and roots them.
+- Primary rule: a legal top landing sets a Garden piece's `vy` to zero while preserving its exact four-cell collision footprint.
+- Incoming motif: Falling cells lock into the predawn horizon, terraces, river, seeds, and compact sun.
+- Outgoing motif: rooted cells grow into saplings and pollen as the compact sunrise opens into Sunny Hills.
 
-This is the strongest first candidate because it directly strengthens the chosen closed loop.
+Reboot Garden was selected first because it directly strengthens the closed loop. Twilight Thermals and Constellation Circuit remain unimplemented candidates, not implied follow-up work.
 
-### Full-era implementation checklist
+### Reboot Garden implementation checklist
 
-For each new era:
+- [x] Write its one-sentence identity.
+- [x] Name its one primary gameplay rule.
+- [x] Define what visual motif arrives from the previous era.
+- [x] Define what motif leaves toward the next era.
+- [x] Define stable palette and any edge-only keyframes.
+- [x] Define far, mid, and foreground art.
+- [x] Define shape, motion, and non-color mechanic cues.
+- [x] Define the first safe encounter.
+- [x] Define development, twist, and mastery beats.
+- [x] Decide whether it needs a new track, can share a track, or only needs live layers.
+- [x] Define both incoming and outgoing musical bridges.
+- [x] Add the positional table row and mutate it once to prove the completeness guard fires.
+- [x] Add world behavior checks.
+- [x] Add the era and both adjacent edges to contact sheets.
+- [x] Listen to both adjacent audio transitions.
+- [x] Measure preload time, runtime memory, executable size, and full bundle size.
+- [x] Play through the era from its previous transition to its next transition.
 
-- [ ] Write its one-sentence identity.
-- [ ] Name its one primary gameplay rule.
-- [ ] Define what visual motif arrives from the previous era.
-- [ ] Define what motif leaves toward the next era.
-- [ ] Define stable palette and any edge-only keyframes.
-- [ ] Define far, mid, and foreground art.
-- [ ] Define shape, motion, and non-color mechanic cues.
-- [ ] Define the first safe encounter.
-- [ ] Define development, twist, and mastery beats.
-- [ ] Decide whether it needs a new track, can share a track, or only needs live layers.
-- [ ] Define both incoming and outgoing musical bridges.
-- [ ] Add the positional table row and mutate it once to prove the completeness guard fires.
-- [ ] Add world behavior checks.
-- [ ] Add the era and both adjacent edges to contact sheets.
-- [ ] Listen to both adjacent audio transitions.
-- [ ] Measure preload time, runtime memory, executable size, and full bundle size.
-- [ ] Play through the era from its previous transition to its next transition.
+The first 3% of Garden guarantees rooted I-row previews. The remaining arrival
+window introduces slow route-aligned I pieces; the stable core adds all seven
+cell shapes at mature speed, and outgoing relief returns to slow I rows before
+ordinary Hills boards arrive. A top landing stops the piece, adds shake,
+particles, and a pitched bounce, removes its motion trails and danger edges,
+and grows roots and sprouts. The piece keeps the same `TETRO[]` cells before
+and after rooting. Hits from below or the side remain dangerous only while it
+is descending.
 
-Only then add another era.
+The new predawn palette and sixth backdrop use existing shapes and generated
+textures. Far cells soften into ridges, mid cells widen into terraced beds and
+the inherited river, and rooted edge vines provide foreground depth. The new
+Bloom bridge grows those beds into saplings and pollen while the compact sun
+expands into Hills. `BRIDGE_REBOOT` now connects Blocks -> Garden;
+`BRIDGE_BLOOM` connects Garden -> Hills.
+
+Garden deliberately selects `TRACK_HILLS`. The already-approved two-beat
+Blocks -> Hills recipe therefore becomes its incoming musical bridge, entering
+Garden on the Hills cue's frame zero. Garden -> Hills is a same-track
+continuation: `setTrack(TRACK_HILLS)` preserves the playhead, so there is no
+fake transition or sixth PCM loop. The sound self-test now locks that behavior;
+all nine loop buffers, five gameplay-track handoffs, 1.30-second preload, and
+19,990,280-byte gameplay PCM footprint remain unchanged.
+
+The `THEMES[]` completeness guard was tested by adding `ERA_GARDEN` before its
+row; compilation failed with negative-size `static_assert_themes_full`, then
+passed after the row was restored. `WORLD_SELFTEST` covers the rooted preview,
+first moving I, mature spawns, top-landing conversion, unchanged four-cell
+collision, safe rooted sides, both adjacent ownership boundaries, and the
+six-era first-cycle economy. The 6x8 background matrix and six-cell world strip
+pass luma, contrast, foreground, texture, and blend checks.
+
+A temporary accelerated app sweep, removed before the final build, ran the real
+spawners, HUD, post pass, and music through all six eras, the Garden -> Hills
+wrap, and most of a second cycle. Captures showed Blocks, locked rows, predawn
+Garden pieces in both moving and rooted states, ordinary Hills boards, and
+`CYCLE 2` only after Hills safe arrival, with no state reset or visible cut.
+
+Every self-test listed in `AGENTS.md` passes and formatting is clean. The
+Universal 2 executable is 1,351,120 bytes. The complete app is 1,438,243
+bytes with 36,317 bytes free; the new era consumed one 16,384-byte Mach-O page.
+
+Suggested commit boundary:
+
+```text
+feat: add reboot garden era
+```
+
+Only add another full era after a separate product decision.
 
 ## Phase 12: Cleanup after behavior settles
 
@@ -1324,7 +1371,8 @@ Use this table while implementing or reviewing each edge.
 | Skies -> Night | Celestial disc, clouds, drift | Twilight, stars appear, clouds harden into islands | Moving pads below, clearly cracked pads above | Percussion thins, reverb grows, neutral pivot reaches Night |
 | Night -> Maze | Stars, square seams, light points | Constellations align into signal corridors | Old monsters stay ordinary, new maze creatures chase | Quantized pulse enters before Maze phrase |
 | Maze -> Blocks | Grid, neon, right angles | Corridors detach into falling cell clusters | Chase pressure fades, first falling piece demonstrates safely | Electro rhythm resolves through a fill into breakbeat |
-| Blocks -> Hills | Cells, green/cyan, shared motif | Cells lock into ridges, fields, river, seeds, and dawn | Falling pieces below, settling boards, stable pads above | Breakbeat deconstructs, motif softens into sunny mallets |
+| Blocks -> Garden | Cells, green/cyan, shared motif | Cells lock into ridges, terraces, river, seeds, and a compact dawn | Falling pieces below, locked boards, rooted Garden previews above | Breakbeat deconstructs, motif softens into sunny mallets |
+| Garden -> Hills | River, sun, green growth, mallet cue | Cell beds sprout into saplings and pollen as dawn opens | Slow Garden I pieces below, baseline cloud pads above | Shared Hills cue and playhead continue without a reset |
 
 # Review rubric for every transition
 
@@ -1403,11 +1451,11 @@ Fill this section as future sessions gather evidence.
 
 | Measurement | Baseline | Latest | Notes |
 |---|---:|---:|---|
-| App bundle bytes | 1,405,427 | 1,421,827 | Clean Universal 2 MinSizeRel bundle; Phase 7 consumed one 16,384-byte Mach-O page |
+| App bundle bytes | 1,405,427 | 1,438,243 | Clean Universal 2 MinSizeRel bundle; Reboot Garden consumed one additional 16,384-byte Mach-O page |
 | Typical seconds per era | Unknown | 19.22-32.42 | Five runs each: normal median 22.20, missed-coin median 30.88, one-rocket median 19.28 |
 | Transition window seconds | Unknown | 4.23-7.13 | Phase 0.78-1.00, derived as 22% of the observed era range |
 | Audio preload duration | Unknown | 1.30 s | Median of five `-Os` nine-loop bakes; no transition loop or added preload work |
-| Gameplay track PCM memory | Unknown | 19,990,280 bytes | Five interleaved stereo int16 loops; unchanged in Phase 7 |
+| Gameplay track PCM memory | Unknown | 19,990,280 bytes | Five interleaved stereo int16 loops; Garden reuses Hills and adds no PCM |
 | Boundary death rate | Unknown | Unknown | Use lightweight playtest notes, not shipped telemetry |
 
 Phase 0 pacing used a temporary fixed-60-Hz harness compiled directly against

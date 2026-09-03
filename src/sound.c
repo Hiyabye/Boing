@@ -833,8 +833,9 @@ static const Track TRACKS[] = {
 };
 STATIC_ASSERT(ARRAY_LEN(TRACKS) == TRACK_COUNT, tracks_full);
 
-// Every adjacent gameplay pair gets one compact handoff recipe. All switch on
-// an outgoing bar line; the beat counts only shape the fade on either side.
+// Every adjacent gameplay track pair gets one compact handoff recipe. Garden
+// reuses Hills, so Garden -> Hills intentionally keeps one playhead and needs
+// no sixth recipe. Actual switches land on an outgoing bar line.
 typedef enum {
   HANDOFF_AIR,
   HANDOFF_TWILIGHT,
@@ -2153,6 +2154,10 @@ static void checkDynamics(void) {
   setTrack(TRACK_HILLS);
   assert(curTrack == TRACK_HILLS && loopPos[TRACK_HILLS] == 0 &&
          pendingTrack == TRACK_NONE);
+  loopPos[TRACK_HILLS] = 1234;
+  setTrack(TRACK_HILLS);
+  assert(loopPos[TRACK_HILLS] == 1234 && pendingTrack == TRACK_NONE &&
+         "shared Garden/Hills track restarted");
 
   curTrack = prevTrack = TRACK_HILLS;
   Stereo noFinale = renderFinale(0, 1.0f);

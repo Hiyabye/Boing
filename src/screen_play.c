@@ -161,8 +161,8 @@ static void drawHud(const World *world) {
   drawTextShadow(coinStr, (int)gcx + 16, (int)cby + 5, 30, RAYWHITE);
 
   // Height never resets at an era seam. The cycle label appears only after the
-  // reboot's safe-arrival window; on later reboots the previous number holds
-  // until then instead of ticking over at the mathematical boundary.
+  // rebuilt Hills safe-arrival window; on later loops the previous number
+  // holds until then instead of ticking over at the mathematical boundary.
   ThemeSample journey = themeSampleAt(worldPeakAscent(world));
   int height = (int)((FLOOR_Y - world->bestY) / 10.0f);
   int cycle = journey.cycle + 1;

@@ -1,8 +1,8 @@
 #include "world.h"
 
-#include "background.h" // TETRO[] + drawTetromino: a moving Falling Blocks
-                        // pad shares the backdrop's cells, keeping art and
-                        // collision identical until a new row spawns locked
+#include "background.h" // TETRO[] + drawTetromino: moving Blocks and Garden
+                        // pads share the backdrop's cells, keeping art and
+                        // collision identical while Garden roots in place
 #include "core.h"
 #include "progress.h" // PuTrack + MAX_UPG_LEVEL for the upgrade hooks
 #include "sound.h"
@@ -58,6 +58,7 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define CRUMBLE_FRAMES 24.0f // Night Blocks: frames from landing to break
 #define CRUMBLE_JITTER 2.0f  // px of death-rattle shake while it crumbles
 #define BLOCK_FALL 1.4f      // Falling Blocks: px/frame a pad descends
+#define GARDEN_FALL 0.95f    // Reboot Garden: gentler pieces root on landing
 #define TETRO_CELL 25.0f     // one tetromino cell (a piece is 2-4 cells wide)
 #define PRESSURE_RISE_END 0.18f
 #define PRESSURE_FALL_START 0.78f
@@ -66,6 +67,8 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define INTRO_CRUMBLE_BONUS 36.0f
 #define INTRO_BLOCK_MUL 0.35f
 #define REBOOT_LOCK_START 0.88f
+#define GARDEN_ROOT_PREVIEW_END 0.03f
+#define GARDEN_ROOT_SHAKE 4.0f
 #define GHOST_PREVIEW_END 0.03f
 #define PELLET_PREVIEW_END 0.09f
 #define INTRO_GHOST_MUL 0.28f
@@ -256,11 +259,11 @@ static float crumbleDuration(const Platform *pl) {
 }
 
 // A pad's collision boxes: one board for a plain platform, one per cell for a
-// Falling Blocks tetromino. Built from the same offsets drawTetromino draws
-// with, so the art and the collision cannot drift apart.
+// Falling Blocks or Reboot Garden tetromino. Garden keeps the same cells after
+// rooting, so stopping its motion never changes collision under the player.
 #define PAD_BOXES 4
 static int padBoxes(const Platform *pl, Rectangle *out) {
-  if (pl->vy <= 0.0f) {
+  if (pl->vy <= 0.0f && pl->era != ERA_GARDEN) {
     out[0] = (Rectangle){pl->position.x, pl->position.y, platformWidth(pl),
                          PLATFORM_HEIGHT};
     return 1;
@@ -349,21 +352,24 @@ static void spawnPlatforms(World *world) {
     float pressure = encounterPressure(sample.phase);
     FIND_FREE(s, platforms, MAX_PLATFORMS);
     if (s >= 0) {
-      // Intro Blocks use a wide, one-row I piece. In the reboot's final stretch
-      // newly spawned I rows lock into stable boards; older live pieces keep
-      // falling with their original collision and danger.
-      bool locked = e == ERA_BLOCKS && sample.phase >= REBOOT_LOCK_START;
-      int shape = e == ERA_BLOCKS && (pressure < 1.0f || locked)
+      // Intro Blocks and Garden use a wide, route-aligned I piece. Late Blocks
+      // rows are born locked; Garden first previews that rooted result, then
+      // descending pieces stop only when the player lands on them.
+      bool blocks = e == ERA_BLOCKS;
+      bool garden = e == ERA_GARDEN;
+      bool locked = blocks && sample.phase >= REBOOT_LOCK_START;
+      bool rootedPreview = garden && sample.phase < GARDEN_ROOT_PREVIEW_END;
+      bool cells = blocks || garden;
+      int shape = cells && (pressure < 1.0f || locked || rootedPreview)
                       ? 0
                       : GetRandomValue(0, TETRO_COUNT - 1);
-      float w = e == ERA_BLOCKS
-                    ? tetroWidth(shape)
-                    : PLATFORM_WIDTH + (e == ERA_SKIES ? INTRO_PLATFORM_EXTRA *
-                                                             (1.0f - pressure)
-                                                       : 0.0f);
+      float w =
+          cells ? tetroWidth(shape)
+                : PLATFORM_WIDTH +
+                      (e == ERA_SKIES ? INTRO_PLATFORM_EXTRA * (1.0f - pressure)
+                                      : 0.0f);
       float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN - w);
-      if (pressure < 1.0f &&
-          (e == ERA_SKIES || e == ERA_NIGHT || e == ERA_BLOCKS)) {
+      if (pressure < 1.0f && (e == ERA_SKIES || e == ERA_NIGHT || cells)) {
         x = clampf(routeXAt(world, world->platformSpawnY) - w * 0.5f,
                    SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN - w);
       }
@@ -373,16 +379,19 @@ static void spawnPlatforms(World *world) {
               ? (GetRandomValue(0, 1) ? CLOUD_DRIFT : -CLOUD_DRIFT) * motion
               : 0.0f;
       float fall = INTRO_BLOCK_MUL + (1.0f - INTRO_BLOCK_MUL) * pressure;
-      world->platforms[s] =
-          (Platform){{x, world->platformSpawnY},
-                     true,
-                     e == ERA_NIGHT,
-                     e,
-                     0.0f,
-                     vx,
-                     e == ERA_BLOCKS && !locked ? BLOCK_FALL * fall : 0.0f,
-                     shape,
-                     pressure};
+      float vy = blocks && !locked ? BLOCK_FALL * fall : 0.0f;
+      if (garden && !rootedPreview) {
+        vy = GARDEN_FALL * fall;
+      }
+      world->platforms[s] = (Platform){{x, world->platformSpawnY},
+                                       true,
+                                       e == ERA_NIGHT,
+                                       e,
+                                       0.0f,
+                                       vx,
+                                       vy,
+                                       shape,
+                                       pressure};
     }
     world->platformSpawnY -= PLATFORM_SPACING;
   }
@@ -796,11 +805,16 @@ static void bounceOnPlatforms(World *world, Player *player) {
       }
     }
     if (landed) {
+      bool rooted = pl->era == ERA_GARDEN && pl->vy > 0.0f;
       player->position.y = top - player->radius;
       player->velocity.y = PLATFORM_BOUNCE;
-      spawnParticles(world, (Vector2){player->position.x, top}, CLOUD, 8,
-                     false);
-      sfxAt(SFX_BOUNCE, 1.0f, audioPan(player->position.x));
+      if (rooted) {
+        pl->vy = 0.0f;
+        world->shake = fmaxf(world->shake, GARDEN_ROOT_SHAKE);
+      }
+      spawnParticles(world, (Vector2){player->position.x, top},
+                     rooted ? GRASS : CLOUD, rooted ? 14 : 8, false);
+      sfxAt(SFX_BOUNCE, rooted ? 1.16f : 1.0f, audioPan(player->position.x));
       if (pl->fragile && pl->fuse <= 0.0f) {
         pl->fuse = crumbleDuration(pl);
       }
@@ -840,14 +854,14 @@ static void updatePlatforms(World *world) {
   }
 }
 
-// Falling Blocks: a descending piece caught from below or the side. Runs
-// *after* bounceOnPlatforms, which is what makes the exclusion test trivial —
+// A descending Blocks or Garden piece caught from below or the side. Runs
+// *after* bounceOnPlatforms, which makes the exclusion test straightforward:
 // a legitimate landing has already snapped the player's center a full radius
 // above the surface, so anything still overlapping came in the wrong way.
 // (Ordered before it instead, a fast enough fall would put the center inside
 // the cell on the contact frame and get crushed by a pad it should have
 // bounced off.)
-static void crushOnBlocks(World *world, Player *player) {
+static void crushOnFallingPieces(World *world, Player *player) {
   FOREACH_ACTIVE(platforms, MAX_PLATFORMS, i) {
     Platform *pl = &world->platforms[i];
     if (pl->vy <= 0.0f) {
@@ -887,7 +901,7 @@ void updateWorld(World *world, Player *player) {
 
   updatePlatforms(world);
   bounceOnPlatforms(world, player);
-  crushOnBlocks(world, player);
+  crushOnFallingPieces(world, player);
   collectPowerups(world, player);
 
   // Per-type active effects (the physics is inherently type-specific)...
@@ -1053,9 +1067,14 @@ static bool tetroCellAt(int shape, int x, int y) {
 // readable even when the player and camera are both moving.
 static void drawFallingPiece(const Platform *pl, Vector2 p, float a,
                              float glow) {
+  bool garden = pl->era == ERA_GARDEN;
   Color c = gTheme.confetti[pl->shape % CONFETTI_COUNT];
+  if (garden) {
+    c = ColorLerp(c, GRASS, 0.42f);
+  }
   Color outline = {0x04, 0x0A, 0x0D, 0xFF};
   Color danger = {0xFF, 0x55, 0x66, 0xFF};
+  Color rail = garden ? ColorBrightness(GRASS, 0.32f) : RAYWHITE;
   float w = tetroWidth(pl->shape);
   glowStamp((Vector2){p.x + w * 0.5f, p.y + TETRO_CELL}, w * 1.4f, c, 0.10f * a,
             0.30f * a, glow);
@@ -1079,8 +1098,15 @@ static void drawFallingPiece(const Platform *pl, Vector2 p, float a,
     int gx = TETRO[pl->shape][k][0], gy = TETRO[pl->shape][k][1];
     float x = p.x + gx * TETRO_CELL, y = p.y + gy * TETRO_CELL;
     if (!tetroCellAt(pl->shape, gx, gy - 1)) {
-      DrawRectangle(x + 2.0f, y + 2.0f, TETRO_CELL - 4.0f, 4.0f,
-                    Fade(RAYWHITE, a));
+      DrawRectangle(x + 2.0f, y + 2.0f, TETRO_CELL - 4.0f, 4.0f, Fade(rail, a));
+      if (garden) {
+        DrawLineEx((Vector2){x + 12.0f, y + 2.0f},
+                   (Vector2){x + 9.0f, y - 3.0f}, 1.5f,
+                   Fade(GRASS_DK, 0.8f * a));
+        DrawLineEx((Vector2){x + 12.0f, y + 2.0f},
+                   (Vector2){x + 15.0f, y - 3.0f}, 1.5f,
+                   Fade(GRASS_DK, 0.8f * a));
+      }
     }
     if (!tetroCellAt(pl->shape, gx, gy + 1)) {
       DrawRectangle(x + 3.0f, y + TETRO_CELL - 6.0f, TETRO_CELL - 6.0f, 4.0f,
@@ -1093,6 +1119,53 @@ static void drawFallingPiece(const Platform *pl, Vector2 p, float a,
     if (!tetroCellAt(pl->shape, gx + 1, gy)) {
       DrawRectangle(x + TETRO_CELL - 5.0f, y + 8.0f, 3.0f, TETRO_CELL - 11.0f,
                     Fade(danger, a));
+    }
+  }
+}
+
+// A Garden piece keeps all four collision cells when a landing roots it. Fall
+// trails and danger edges disappear; exposed tops sprout while roots hang from
+// exposed bottoms, making the state change readable without a color cue.
+static void drawRootedGardenPiece(const Platform *pl, Vector2 p, float a,
+                                  float glow) {
+  Color c =
+      ColorLerp(gTheme.confetti[pl->shape % CONFETTI_COUNT], GRASS, 0.58f);
+  Color outline = ColorBrightness(GRASS_DK, -0.35f);
+  float w = tetroWidth(pl->shape);
+  glowStamp((Vector2){p.x + w * 0.5f, p.y + TETRO_CELL}, w * 1.35f, GRASS,
+            0.07f * a, 0.14f * a, glow);
+
+  for (int k = 0; k < PAD_BOXES; k++) {
+    int gx = TETRO[pl->shape][k][0], gy = TETRO[pl->shape][k][1];
+    float x = p.x + gx * TETRO_CELL, y = p.y + gy * TETRO_CELL;
+    DrawRectangle(x - 2.0f, y - 2.0f, TETRO_CELL + 4.0f, TETRO_CELL + 4.0f,
+                  Fade(outline, a));
+  }
+  drawTetromino(p.x, p.y, TETRO_CELL, pl->shape, c, a);
+
+  for (int k = 0; k < PAD_BOXES; k++) {
+    int gx = TETRO[pl->shape][k][0], gy = TETRO[pl->shape][k][1];
+    float x = p.x + gx * TETRO_CELL, y = p.y + gy * TETRO_CELL;
+    if (!tetroCellAt(pl->shape, gx, gy - 1)) {
+      float sx = x + TETRO_CELL * 0.5f;
+      float h = 7.0f + (k % 3) * 2.0f;
+      DrawRectangle(x + 2.0f, y + 2.0f, TETRO_CELL - 4.0f, 4.0f,
+                    Fade(RAYWHITE, 0.9f * a));
+      DrawLineEx((Vector2){sx, y + 2.0f}, (Vector2){sx, y - h}, 1.8f,
+                 Fade(GRASS_DK, a));
+      DrawCircle(sx - 3.0f, y - h * 0.62f, 2.5f, Fade(GRASS, a));
+      DrawCircle(sx + 3.0f, y - h * 0.78f, 2.3f,
+                 Fade(ColorBrightness(GRASS, 0.2f), a));
+      DrawCircle(sx, y - h, 2.0f, Fade(COIN_HI, 0.9f * a));
+    }
+    if (!tetroCellAt(pl->shape, gx, gy + 1)) {
+      float rx = x + TETRO_CELL * 0.5f;
+      DrawLineEx((Vector2){rx, y + TETRO_CELL - 2.0f},
+                 (Vector2){rx - 4.0f, y + TETRO_CELL + 8.0f}, 1.6f,
+                 Fade(GRASS_DK, 0.72f * a));
+      DrawLineEx((Vector2){rx, y + TETRO_CELL - 2.0f},
+                 (Vector2){rx + 5.0f, y + TETRO_CELL + 6.0f}, 1.4f,
+                 Fade(GRASS_DK, 0.58f * a));
     }
   }
 }
@@ -1155,6 +1228,10 @@ static void drawCloudPad(const Platform *pl, float glow) {
   }
   if (pl->vy > 0.0f) {
     drawFallingPiece(pl, p, a, glow);
+    return;
+  }
+  if (pl->era == ERA_GARDEN) {
+    drawRootedGardenPiece(pl, p, a, glow);
     return;
   }
   if (pl->era == ERA_BLOCKS) {
@@ -1677,11 +1754,13 @@ static void checkEras(void) {
   assert(difficulty(&(World){.bestY = -1.0e9f}) == DIFFICULTY_CAP);
   assert(GHOST_PREVIEW_END * BAND > MONSTER_SPACING_MIN);
   assert(PELLET_PREVIEW_END * BAND > POWERUP_SPACING);
+  assert(GARDEN_ROOT_PREVIEW_END * BAND >= PLATFORM_SPACING);
   assert(REBOOT_LOCK_START > PRESSURE_FALL_START && REBOOT_LOCK_START < 1.0f);
 
   // The first platform of each mechanical era is stamped as a safe example:
-  // broad/slow Skies drift, a long Night fuse, and a slow one-row block. Their
-  // collision geometry reads those same immutable values.
+  // broad/slow Skies drift, a long Night fuse, a slow one-row block, then a
+  // rooted Garden preview followed by a gentle moving I. Collision reads the
+  // same immutable values.
   {
     const float phase = 0.02f;
     World skies = worldAtLevel(ERA_SKIES);
@@ -1725,6 +1804,30 @@ static void checkEras(void) {
            fall->vy < BLOCK_FALL && padBoxes(fall, box) == PAD_BOXES);
     assert(fabsf(fall->position.x + tetroWidth(fall->shape) * 0.5f -
                  blocks.lastSpawnX) < 0.01f);
+
+    World garden = worldAtLevel(ERA_GARDEN);
+    garden.platformSpawnY = SCREEN_HEIGHT / 2.0f - (ERA_GARDEN + phase) * BAND;
+    garden.coins[0] =
+        (Coin){{460.0f, garden.platformSpawnY}, true, ERA_GARDEN, {0, 0}};
+    garden.cameraY = garden.platformSpawnY + SCREEN_HEIGHT - 1.0f;
+    spawnPlatforms(&garden);
+    Platform *rooted = &garden.platforms[0];
+    assert(rooted->active && rooted->era == ERA_GARDEN && rooted->shape == 0 &&
+           rooted->vy == 0.0f && padBoxes(rooted, box) == PAD_BOXES);
+
+    const float movingPhase = 0.05f;
+    World growing = worldAtLevel(ERA_GARDEN);
+    growing.platformSpawnY =
+        SCREEN_HEIGHT / 2.0f - (ERA_GARDEN + movingPhase) * BAND;
+    growing.coins[0] =
+        (Coin){{460.0f, growing.platformSpawnY}, true, ERA_GARDEN, {0, 0}};
+    growing.cameraY = growing.platformSpawnY + SCREEN_HEIGHT - 1.0f;
+    spawnPlatforms(&growing);
+    Platform *seedbed = &growing.platforms[0];
+    assert(seedbed->active && seedbed->shape == 0 && seedbed->vy > 0.0f &&
+           seedbed->vy < GARDEN_FALL && padBoxes(seedbed, box) == PAD_BOXES);
+    assert(fabsf(seedbed->position.x + tetroWidth(seedbed->shape) * 0.5f -
+                 460.0f) < 0.01f);
   }
 
   // Maze previews place a docile ghost opposite the coin route and a Pellet on
@@ -1829,12 +1932,12 @@ static void checkEras(void) {
            "core monster lost its local era or mature tuning");
   }
 
-  // Reboot ownership is Falling -> Settled -> Stable. An older Blocks piece
-  // keeps falling; a newly spawned late Blocks row is a locked safe board; the
-  // first Hills row above it is the ordinary baseline. Nothing resets the run.
+  // Reboot ownership is Falling -> Settled -> Rooted. An older Blocks piece
+  // keeps falling, a late Blocks row stays locked, and the first Garden row is
+  // born rooted as a safe preview. Nothing resets the run.
   {
-    World w = worldAtLevel(ERA_COUNT);
-    float edgeY = SCREEN_HEIGHT / 2.0f - ERA_COUNT * BAND;
+    World w = worldAtLevel(ERA_GARDEN);
+    float edgeY = SCREEN_HEIGHT / 2.0f - ERA_GARDEN * BAND;
     w.platforms[0] = (Platform){{120.0f, edgeY + PLATFORM_SPACING},
                                 true,
                                 false,
@@ -1852,20 +1955,52 @@ static void checkEras(void) {
     w.cameraY = edgeY + SCREEN_HEIGHT - PLATFORM_SPACING;
     float cameraY = w.cameraY;
     spawnPlatforms(&w);
-    Platform *locked = &w.platforms[1], *hills = &w.platforms[2];
-    assert(locked->active && hills->active && locked->position.y > edgeY &&
-           hills->position.y < edgeY && locked->era == ERA_BLOCKS &&
-           hills->era == ERA_HILLS && locked->vy == 0.0f &&
-           locked->shape == 0 && locked->pressure < 0.1f && hills->vy == 0.0f &&
-           hills->pressure < 0.1f);
+    Platform *locked = &w.platforms[1], *garden = &w.platforms[2];
+    assert(locked->active && garden->active && locked->position.y > edgeY &&
+           garden->position.y < edgeY && locked->era == ERA_BLOCKS &&
+           garden->era == ERA_GARDEN && locked->vy == 0.0f &&
+           garden->vy == 0.0f && locked->shape == 0 && garden->shape == 0 &&
+           locked->pressure < 0.1f && garden->pressure < 0.1f);
     Rectangle box[PAD_BOXES];
     assert(padBoxes(locked, box) == 1 && box[0].width == tetroWidth(0));
+    float lockedY = locked->position.y;
+    assert(padBoxes(garden, box) == PAD_BOXES);
     updatePlatforms(&w);
     assert(w.platforms[0].position.y > oldY && w.platforms[0].vy > 0.0f &&
-           locked->position.y == box[0].y && "live reboot piece retuned");
-    assert(themeSampleAtWorldY(hills->position.y).cycle == 1 &&
+           locked->position.y == lockedY && "live reboot piece retuned");
+    assert(themeSampleAtWorldY(garden->position.y).cycle == 0 &&
            w.cameraY == cameraY && w.coinsCollected == 17 && w.combo == 6 &&
            w.comboBonus == 42 && "reboot reset the live run");
+  }
+
+  // Garden -> Hills preserves a rooted Garden shape below the boundary, eases
+  // the last moving I row, and introduces an ordinary Hills board above it.
+  // The cycle increments only when Hills actually begins.
+  {
+    World w = worldAtLevel(ERA_COUNT);
+    float edgeY = SCREEN_HEIGHT / 2.0f - ERA_COUNT * BAND;
+    w.platforms[0] = (Platform){{120.0f, edgeY + PLATFORM_SPACING},
+                                true,
+                                false,
+                                ERA_GARDEN,
+                                0.0f,
+                                0.0f,
+                                0.0f,
+                                3,
+                                1.0f};
+    Rectangle box[PAD_BOXES];
+    assert(padBoxes(&w.platforms[0], box) == PAD_BOXES);
+    w.platformSpawnY = edgeY + PLATFORM_SPACING / 2.0f;
+    w.cameraY = edgeY + SCREEN_HEIGHT - PLATFORM_SPACING;
+    spawnPlatforms(&w);
+    Platform *garden = &w.platforms[1], *hills = &w.platforms[2];
+    assert(garden->active && hills->active && garden->position.y > edgeY &&
+           hills->position.y < edgeY && garden->era == ERA_GARDEN &&
+           hills->era == ERA_HILLS && garden->shape == 0 && garden->vy > 0.0f &&
+           garden->vy < GARDEN_FALL && hills->vy == 0.0f &&
+           garden->pressure < 0.1f && hills->pressure < 0.1f);
+    assert(padBoxes(garden, box) == PAD_BOXES && padBoxes(hills, box) == 1);
+    assert(themeSampleAtWorldY(hills->position.y).cycle == 1);
   }
 
   // A Hills monster stays ordinary after the peak enters Maze, even while a
@@ -1906,8 +2041,8 @@ static void checkEras(void) {
     first.cameraY = first.spawnY + SCREEN_HEIGHT - 1.0f;
     spawnCoins(&first);
     assert(first.coins[0].active && first.coins[1].active &&
-           !first.coins[2].active && first.coins[0].era == ERA_BLOCKS &&
-           first.coins[1].era == ERA_BLOCKS &&
+           !first.coins[2].active && first.coins[0].era == ERA_GARDEN &&
+           first.coins[1].era == ERA_GARDEN &&
            "last first-cycle row lost its bonus coin");
 
     World later = worldAtLevel(ERA_COUNT);
@@ -1928,7 +2063,7 @@ static void checkEras(void) {
         scatteredEras |= 1 << scattered.coins[i].era;
       }
     }
-    assert(scatteredEras == ((1 << ERA_BLOCKS) | (1 << ERA_HILLS)) &&
+    assert(scatteredEras == ((1 << ERA_GARDEN) | (1 << ERA_HILLS)) &&
            "scattered coins did not keep their spawn-side era");
   }
 
@@ -1971,14 +2106,18 @@ static void checkEras(void) {
       drifting += w.platforms[i].vx != 0.0f;
       fragile += w.platforms[i].fragile;
       falling += w.platforms[i].vy > 0.0f;
+      if (e == ERA_GARDEN) {
+        Rectangle box[PAD_BOXES];
+        assert(padBoxes(&w.platforms[i], box) == PAD_BOXES);
+      }
     }
     assert(total > 0 && "no platforms spawned at all");
     assert(drifting == (e == ERA_SKIES ? total : 0) &&
            "drift gate is not Birdsong Skies");
     assert(fragile == (e == ERA_NIGHT ? total : 0) &&
            "crumble gate is not Night Blocks");
-    assert(falling == (e == ERA_BLOCKS ? total : 0) &&
-           "falling gate is not Falling Blocks");
+    assert(falling == ((e == ERA_BLOCKS || e == ERA_GARDEN) ? total : 0) &&
+           "falling gate is not Blocks or Garden");
     // The pellet is reachable only where there are ghosts to frighten.
     assert((spawnWeightOf(POWERUP_PELLET, e) > 0) == (e == ERA_MAZE));
     for (int k = 0; k < 50; k++) {
@@ -2159,6 +2298,55 @@ static void checkEras(void) {
     assert(w.coinsCollected < 5 && !w.platforms[0].active &&
            "a falling block did not crush");
   }
+
+  // Reboot Garden: a legal top landing roots a moving piece. Its four cell
+  // boxes remain identical and stop moving, while the now-static sides stop
+  // crushing the player.
+  {
+    World w = bareWorld(ERA_GARDEN);
+    Player p = createPlayer();
+    Platform *pl = &w.platforms[0];
+    *pl = (Platform){{330.0f, w.bestY + 40.0f},
+                     true,
+                     false,
+                     ERA_GARDEN,
+                     0.0f,
+                     0.0f,
+                     GARDEN_FALL,
+                     2,
+                     1.0f};
+    p.position = (Vector2){pl->position.x + TETRO_CELL * 1.5f,
+                           pl->position.y - p.radius + GARDEN_FALL + 0.1f};
+    p.velocity.y = 10.0f;
+    int shape = pl->shape;
+    float fallingY = pl->position.y;
+    Rectangle fallingBox[PAD_BOXES], box[PAD_BOXES];
+    assert(padBoxes(pl, fallingBox) == PAD_BOXES);
+    updateWorld(&w, &p);
+    assert(pl->active && pl->era == ERA_GARDEN && pl->shape == shape &&
+           pl->vy == 0.0f && padBoxes(pl, box) == PAD_BOXES &&
+           p.velocity.y == PLATFORM_BOUNCE && w.shake > 3.0f &&
+           "Garden landing did not root the piece");
+    float moved = pl->position.y - fallingY;
+    for (int k = 0; k < PAD_BOXES; k++) {
+      assert(box[k].x == fallingBox[k].x &&
+             fabsf((box[k].y - fallingBox[k].y) - moved) < 0.0001f &&
+             box[k].width == fallingBox[k].width &&
+             box[k].height == fallingBox[k].height &&
+             "Garden root changed cell collision");
+    }
+    float rootedY = pl->position.y;
+    updatePlatforms(&w);
+    assert(pl->position.y == rootedY && padBoxes(pl, box) == PAD_BOXES &&
+           "rooted Garden geometry changed");
+    p.position =
+        (Vector2){box[0].x + TETRO_CELL * 0.5f, box[0].y + TETRO_CELL * 0.75f};
+    p.velocity.y = 0.0f;
+    int hitstop = w.hitstop;
+    crushOnFallingPieces(&w, &p);
+    assert(pl->active && w.hitstop == hitstop &&
+           "rooted Garden piece still crushed");
+  }
   printf("ok — era mechanics\n");
 }
 
@@ -2210,9 +2398,8 @@ int main(int argc, char **argv) {
     w.cameraY = cameraY;
     w.bestY = SCREEN_HEIGHT / 2.0f + cameraY;
     // Each cell shows its era's *mechanic*, not just its palette: wind trails
-    // on Birdsong Skies, a cracked pad on Night Blocks, frightened ghosts and a
-    // pellet on Neon Maze, and all seven pieces plus one reboot-locked board on
-    // Falling Blocks.
+    // on Birdsong Skies, a cracked Night pad, frightened Maze ghosts, all seven
+    // Falling pieces plus one locked board, and moving/rooted Garden pieces.
     w.level = i;
     for (int k = 0; k < MAX_COINS; k++) {
       w.coins[k].era = i;
@@ -2241,6 +2428,19 @@ int main(int argc, char **argv) {
       }
       w.platforms[TETRO_COUNT] = (Platform){
           {350.0f, 600.0f}, true, false, ERA_BLOCKS, 0.0f, 0.0f, 0.0f, 0, 0.0f};
+    } else if (i == ERA_GARDEN) {
+      for (int k = 0; k < 4; k++) {
+        w.platforms[k] =
+            (Platform){{80.0f + k * 185.0f, 330.0f + (k % 2) * 145.0f},
+                       true,
+                       false,
+                       ERA_GARDEN,
+                       0.0f,
+                       0.0f,
+                       k < 2 ? GARDEN_FALL : 0.0f,
+                       k,
+                       1.0f};
+      }
     } else {
       float vx = i == ERA_SKIES ? CLOUD_DRIFT * INTRO_DRIFT_MUL : 0.0f;
       w.platforms[0] = (Platform){{80.0f, 470.0f},

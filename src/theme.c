@@ -16,10 +16,9 @@
 #define TRANSITION_START 0.78f
 
 // The theme table. A new level is one more row here (and, for a distinct
-// backdrop shape, a case in background.c). Row order = climb order — the scene
-// morphs meadow->open sky->night->neon->digital over the climb, each an homage
-// to a classic-gaming *era* (never a specific product; no proprietary names
-// ship).
+// backdrop shape, a case in background.c). Row order is climb order: meadow,
+// open sky, night, neon, digital blocks, a rooted predawn garden, then meadow
+// again. Each remains genre homage, never a specific product.
 const Theme THEMES[] = {
     // 0 — Sunny Hills: bright day, clouds + rolling hills, candy blob. A
     // classic sidescroller morning. (the original Nature palette)
@@ -206,6 +205,43 @@ const Theme THEMES[] = {
         .name = "FALLING BLOCKS",
         .glow = 0.7f,
     },
+    // 5 - Reboot Garden: predawn terraces built from rooted cells. Landing on
+    // a descending piece stops it and grows a safe garden in the same shape.
+    {
+        .skyTop = {0x48, 0x5A, 0x96, 0xFF},
+        .skyBot = {0xF1, 0xA5, 0x8F, 0xFF},
+        .skyTopHigh = {0x27, 0x35, 0x63, 0xFF},
+        .skyBotHigh = {0x9D, 0x66, 0x78, 0xFF},
+        .sun = {0xFF, 0xC5, 0x6E, 0xFF},
+        .sunCore = {0xFF, 0xF0, 0xBE, 0xFF},
+        .cloud = {0xBD, 0xE5, 0xC7, 0xFF},
+        .cloudShade = {0x67, 0x9A, 0x83, 0xFF},
+        .mouth = {0x4A, 0x29, 0x40, 0xFF},
+        .coinHi = {0xFF, 0xE3, 0x6B, 0xFF},
+        .coinLo = {0xE9, 0x9A, 0x32, 0xFF},
+        .grass = {0x79, 0xCE, 0x77, 0xFF},
+        .grassDk = {0x37, 0x6B, 0x50, 0xFF},
+        .grape = {0xE6, 0x6F, 0x9E, 0xFF},
+        .grapeDk = {0x99, 0x43, 0x6D, 0xFF},
+        .magnetRed = {0xDF, 0x48, 0x4E, 0xFF},
+        .rocketBody = {0xF4, 0xF1, 0xE8, 0xFF},
+        .rocketFin = {0x45, 0xA9, 0x9A, 0xFF},
+        .flame = {0xFF, 0xAE, 0x52, 0xFF},
+        .confetti =
+            {
+                {0x79, 0xCE, 0x77, 0xFF},
+                {0xF1, 0x88, 0x88, 0xFF},
+                {0xFF, 0xE3, 0x6B, 0xFF},
+                {0x63, 0xC9, 0xC0, 0xFF},
+                {0xAD, 0x78, 0xD0, 0xFF},
+                {0xF0, 0xA2, 0x55, 0xFF},
+            },
+        .backdrop = BACKDROP_GARDEN,
+        .bridge = BRIDGE_BLOOM,
+        .track = TRACK_HILLS,
+        .name = "REBOOT GARDEN",
+        .glow = 0.24f,
+    },
 };
 STATIC_ASSERT(sizeof(THEMES) / sizeof(THEMES[0]) == ERA_COUNT, themes_full);
 STATIC_ASSERT((int)BRIDGE_COUNT == (int)ERA_COUNT, era_bridges_full);
@@ -333,7 +369,7 @@ void themeSampleSelfTest(void) {
   assert(fabsf(s.blend - 0.5f) < 0.0001f);
 
   // Post bloom follows the eased visual sample: stable through the core, then
-  // descending smoothly across the reboot before daylight starts.
+  // descending smoothly across the reboot into the predawn garden.
   s = themeSampleAt(BAND_HEIGHT * (ERA_BLOCKS + 0.70f));
   assert(s.blend == 0.0f &&
          fabsf(themeGlow(s) - THEMES[ERA_BLOCKS].glow) < 0.0001f);
@@ -342,13 +378,16 @@ void themeSampleSelfTest(void) {
   float rebootGlow = themeGlow(s);
   assert(fabsf(s.blend - 0.5f) < 0.0001f &&
          rebootGlow < THEMES[ERA_BLOCKS].glow &&
-         rebootGlow > THEMES[ERA_HILLS].glow);
+         rebootGlow > THEMES[ERA_GARDEN].glow);
 
-  int rebootEdges = 0;
+  int rebootEdges = 0, bloomEdges = 0;
   for (int era = 0; era < ERA_COUNT; era++) {
     rebootEdges += THEMES[era].bridge == BRIDGE_REBOOT;
+    bloomEdges += THEMES[era].bridge == BRIDGE_BLOOM;
   }
   assert(rebootEdges == 1 && THEMES[ERA_BLOCKS].bridge == BRIDGE_REBOOT);
+  assert(bloomEdges == 1 && THEMES[ERA_GARDEN].bridge == BRIDGE_BLOOM);
+  assert(THEMES[ERA_GARDEN].track == TRACK_HILLS);
 
   for (int level = 0; level < ERA_COUNT; level++) {
     float edge = BAND_HEIGHT * (level + 1);
@@ -394,7 +433,7 @@ void themeSampleSelfTest(void) {
 
   s = themeSampleAt(BAND_HEIGHT * (ERA_BLOCKS + midpoint));
   assert(s.level == ERA_BLOCKS && s.cycle == 0 && s.era == ERA_BLOCKS &&
-         s.next == ERA_HILLS && fabsf(s.blend - 0.5f) < 0.0001f);
+         s.next == ERA_GARDEN && fabsf(s.blend - 0.5f) < 0.0001f);
   s.blend = 0.5f;
   themeUpdate(s);
   assert(gTheme.skyTop.r == REBOOT_DAWN[0].r &&

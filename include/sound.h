@@ -11,7 +11,8 @@ void deinitAudio(AudioStream *stream);
 // ready, keeping expensive synthesis off both the frame and audio stream paths.
 bool audioPreloadStep(void);
 
-// Gameplay tracks have semantic ids; each Theme selects one explicitly.
+// Gameplay tracks have semantic ids; each Theme selects one explicitly, and
+// multiple eras may share one cue without adding another PCM loop.
 typedef enum {
   TRACK_HILLS,
   TRACK_SKIES,
