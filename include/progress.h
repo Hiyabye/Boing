@@ -130,8 +130,8 @@ bool achievementDone(const Progress *p, int i);
 // Reset the daily slots when the local calendar date changes. Returns true when
 // callers should persist the reset (for example while the overlay stays open).
 bool progressRefreshDaily(Progress *p);
-// Spend `cost` from the bank if affordable; returns whether it went through.
-// Caller sets the owning bit + saves on true.
+// Spend a non-negative `cost` from the bank if affordable; rejects invalid
+// negative costs. Caller sets the owning bit + saves on true.
 bool tryBuy(Progress *p, int cost);
 // Bank the run's coins, advance cumulative tasks, and score achievements.
 // Returns the number of rewards paid (for an optional toast).

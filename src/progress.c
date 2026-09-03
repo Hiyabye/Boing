@@ -190,7 +190,7 @@ bool achievementDone(const Progress *p, int i) {
 }
 
 bool tryBuy(Progress *p, int cost) {
-  if (p->coinBank < cost) {
+  if (cost < 0 || p->coinBank < cost) {
     return false;
   }
   p->coinBank -= cost;
@@ -496,6 +496,7 @@ int main(void) {
   assert(cumulative.coinBank == 1800 + 100 * 5 + dailyRewards);
 
   loaded.coinBank = 100;
+  assert(!tryBuy(&loaded, -1) && loaded.coinBank == 100);
   assert(tryBuy(&loaded, 70) && loaded.coinBank == 30);
   assert(!tryBuy(&loaded, 40) && loaded.coinBank == 30);
   loaded.achievementMask = 0;
