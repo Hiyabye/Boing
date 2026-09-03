@@ -202,6 +202,11 @@ void updateSettingsMenu(Settings *s, GameState *state, GameState returnTo) {
   }
 
   if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE)) {
+    if (dragRow >= 0) {
+      suppressResize = false;
+      applySettings(s); // commit a resolution drag before leaving mid-hold
+      dragRow = -1;
+    }
     *state = returnTo;
     sfx(SFX_SELECT);
   }
@@ -235,7 +240,7 @@ static void drawRow(const Settings *s, int row, const char *label,
 }
 
 void drawSettingsMenu(const Settings *s) {
-  DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(SKY_TOP_HIGH, 0.85f));
+  DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(SKY_TOP_HIGH, 0.98f));
 
   drawCenteredText("SETTINGS", SCREEN_HEIGHT / 5, 60, UI_ACCENT);
 

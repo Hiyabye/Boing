@@ -114,12 +114,14 @@ STATIC_ASSERT(sizeof(REPEATABLE_TASKS) / sizeof(REPEATABLE_TASKS[0]) ==
                   REPEATABLE_TASK_COUNT,
               repeatable_tasks_full);
 
+#define THIRD_VISIT(era) (2 * ERA_COUNT + (era) + 1)
 const MissionDef ACHIEVEMENTS[] = {
-    {"Reach the third Neon Maze", MSTAT_ERAS, 14, 1000},
+    {"Reach the third Neon Maze", MSTAT_ERAS, THIRD_VISIT(ERA_MAZE), 1000},
     {"Collect 1000 coins in one run", MSTAT_COINS_RUN, 1000, 1000},
     {"Chain a x300 combo", MSTAT_COMBO, 300, 1000},
     {"Score 300000 in one run", MSTAT_SCORE, 300000, 1000},
-    {"Reach the third Falling Blocks", MSTAT_ERAS, 15, 1000},
+    {"Reach the third Falling Blocks", MSTAT_ERAS, THIRD_VISIT(ERA_BLOCKS),
+     1000},
 };
 const int ACHIEVEMENT_COUNT =
     (int)(sizeof(ACHIEVEMENTS) / sizeof(ACHIEVEMENTS[0]));
@@ -421,6 +423,8 @@ int main(void) {
   checkTaskDefs(DAILY_TASK_POOL, DAILY_POOL_COUNT);
   checkTaskDefs(REPEATABLE_TASKS, REPEATABLE_TASK_COUNT);
   checkTaskDefs(ACHIEVEMENTS, ACHIEVEMENT_COUNT);
+  assert(ACHIEVEMENTS[0].threshold == THIRD_VISIT(ERA_MAZE));
+  assert(ACHIEVEMENTS[4].threshold == THIRD_VISIT(ERA_BLOCKS));
 
   // Visual bridge keyframes are not levels: era tasks read only World.level.
   World eraRun = {.level = ERA_COUNT - 1};
@@ -516,7 +520,7 @@ int main(void) {
   }
   World w = {.coinsCollected = 1000,
              .bestCombo = 300,
-             .level = 14,
+             .level = THIRD_VISIT(ERA_BLOCKS) - 1,
              .comboBonus = 300000};
   assert(bankRun(&loaded, &w) == 9);
   assert(loaded.coinBank == 6430); // 30 + 1000 run + 400 repeat + 5000 rewards

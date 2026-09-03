@@ -2,7 +2,7 @@
 
 ## Status
 
-- Execution tracker; Phase 12 cleanup and final verification completed on 2026-09-04.
+- Roadmap closed after the final implementation audit on 2026-09-04.
 - Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
 - Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> Reboot Garden -> a rebuilt Sunny Hills.
@@ -802,7 +802,7 @@ Acceptance:
 
 - Adjacent loops sound like sections of one score, not two tracks playing together.
 
-### 7.3 Expand `musicEraTransition()` minimally
+### 7.3 Expand the handoff cue minimally
 
 Steps:
 
@@ -1043,21 +1043,14 @@ Acceptance:
 
 - The score communicates rebirth rather than restarting playback.
 
-### 9.4 Optional cycle variation
+### 9.4 Optional cycle variation - not selected
 
-Only do this if repeated-cycle playtests still make the loop feel mechanically repetitive.
+Repeated-cycle playtests did not justify another variation system. The decision
+is complete: the authored reboot already makes later dawns feel renewed.
 
-- [ ] Use cycle as a small seed or phase offset for noninteractive decor.
-- [ ] Keep mechanics and critical visual cues stable.
-- [ ] Avoid random theme order.
-- [ ] Avoid a new persistence field.
-
-Acceptance:
-
-- Later dawns feel renewed without changing the authored route or adding save complexity.
-
-Optional cycle variation was not added: the authored reboot made the repeated
-route read as renewed without another seed, mechanic, or persistence field.
+If this is ever reconsidered, keep mechanics and critical cues stable, use only
+a small noninteractive decor offset, preserve the authored era order, and add
+no persistence field.
 
 Phase 9 gate:
 
@@ -1402,78 +1395,121 @@ A transition is ready only when all answers are yes.
 
 ## Visual continuity
 
-- [ ] Does at least one salient shape visibly become another shape?
-- [ ] Does motion preserve direction or change with anticipation?
-- [ ] Is there a stable color or value anchor?
-- [ ] Do far layers change before near layers?
-- [ ] Is the player still the strongest focal element?
-- [ ] Does grayscale preserve platform, hazard, collectible, and player separation?
-- [ ] Is there no full-screen flash, cut, or double-scene ghosting?
+- [x] Does at least one salient shape visibly become another shape?
+- [x] Does motion preserve direction or change with anticipation?
+- [x] Is there a stable color or value anchor?
+- [x] Do far layers change before near layers?
+- [x] Is the player still the strongest focal element?
+- [x] Does grayscale preserve platform, hazard, collectible, and player separation?
+- [x] Is there no full-screen flash, cut, or double-scene ghosting?
 
 ## Gameplay continuity
 
-- [ ] Do old entities preserve their original behavior?
-- [ ] Are new entities visible before the player commits?
-- [ ] Is the first example safe enough to observe?
-- [ ] Does the mechanic use shape, motion, and sound rather than color alone?
-- [ ] Is dangerous old/new overlap deliberately limited?
-- [ ] Does visual geometry match collision exactly?
+- [x] Do old entities preserve their original behavior?
+- [x] Are new entities visible before the player commits?
+- [x] Is the first example safe enough to observe?
+- [x] Does the mechanic use shape, motion, and sound rather than color alone?
+- [x] Is dangerous old/new overlap deliberately limited?
+- [x] Does visual geometry match collision exactly?
 
 ## Audio continuity
 
-- [ ] Is the destination requested before it is needed?
-- [ ] Does the actual switch occur on a legal musical boundary?
-- [ ] Are meter, harmony, timbre, volume, and rhythm all considered?
-- [ ] Is the shared Boing motif or another anchor audible?
-- [ ] Are incompatible full rhythm sections prevented from clashing?
-- [ ] Are tails preserved without causing a peak or muddy overlap?
+- [x] Is the destination requested before it is needed?
+- [x] Does the actual switch occur on a legal musical boundary?
+- [x] Are meter, harmony, timbre, volume, and rhythm all considered?
+- [x] Is the shared Boing motif or another anchor audible?
+- [x] Are incompatible full rhythm sections prevented from clashing?
+- [x] Are tails preserved without causing a peak or muddy overlap?
 
 ## Closed-loop continuity
 
-- [ ] Does the outgoing era visibly cause the incoming era?
-- [ ] Does cycle increment without resetting the run?
-- [ ] Does the reboot preserve world-space entity ownership?
-- [ ] Does the return to nature feel authored rather than modulo-driven?
+- [x] Does the outgoing era visibly cause the incoming era?
+- [x] Does cycle increment without resetting the run?
+- [x] Does the reboot preserve world-space entity ownership?
+- [x] Does the return to nature feel authored rather than modulo-driven?
 
-# Per-session working procedure
+## Final audit result
 
-Use this checklist at the start and end of every future roadmap session.
+The closing audit traced every production module and every roadmap acceptance
+path. It found and fixed three material gaps:
+
+- The 64-slot coin pool exhausted before its retained first-cycle rows did, so
+  the spawn cursor could silently skip route rows. The pool is now 128 slots,
+  enough for the full dense retention window plus one scatter batch per live
+  monster. `WORLD_SELFTEST` reproduces the old failure and locks every row in.
+- The two "third visit" achievements still carried five-era thresholds after
+  Reboot Garden made the cycle six eras. Their thresholds now derive from
+  `ERA_COUNT`, and `PROGRESS_SELFTEST` checks both semantic destinations.
+- Neon Maze's distance layer paired a classic ghost silhouette with a chomping
+  disc. Original signal kites and a pulse courier now preserve the chase and
+  circuit language without recreating recognizable proprietary characters.
+
+The audit also removed strict-aliasing undefined behavior from generic Theme
+color interpolation, strengthened its exact color-run guards, clamped edited
+negative high scores, committed a deferred resolution drag when settings closes
+mid-hold, reset modal focus on both entry and animated exit, and made overlay
+copy visually opaque enough to avoid colliding with the underlying screen.
+These are targeted fixes; no subsystem, file split, dependency, asset, or save
+format was added.
+
+All eleven documented self-tests pass, including all five musical handoffs and
+all six visual edges. AddressSanitizer and UndefinedBehaviorSanitizer passes on
+the shared world, theme, sound, persistence, progress, UI, font, and SVG paths
+reported no fault; Clang's static analyzer reported none across `src/*.c`.
+The full-color and grayscale 6x8 transition matrix and six-era gameplay strip
+retain focal contrast, staged depth, non-color cues, and exact collision art.
+Launch Services testing covered help, all mission tabs, shop and cosmetic
+picker, credits, menu -> play -> pause -> settings -> resume -> game over ->
+retry, plus an Esc during a held resolution drag. The user's save was restored
+byte-for-byte after operational checks.
+
+The final clean Universal 2 app remains 1,438,243 bytes with 36,317 bytes free;
+the executable remains 1,351,120 bytes. Both slices depend only on
+`/System/Library` and `/usr/lib`, and the ad-hoc Hardened Runtime signature
+verifies. The review rubric is fully satisfied and this roadmap has no remaining
+implementation task. Any additional full era still requires a separate product
+decision.
+
+# Final audit working record
+
+The closing session completed the roadmap procedure below. This record is now
+archived with the finished plan.
 
 ## Start
 
-- [ ] Read `AGENTS.md` and the relevant section of this roadmap completely.
-- [ ] Run `git status --short` and preserve unrelated user changes.
-- [ ] Inspect every caller of the functions being changed.
-- [ ] Confirm the task is the next unmet dependency in this roadmap.
-- [ ] Record the current bundle size if the task can affect code size.
-- [ ] Reproduce the current behavior through the closest available end-to-end path.
+- [x] Read `AGENTS.md` and this roadmap completely.
+- [x] Run `git status --short` and preserve unrelated user changes.
+- [x] Inspect every caller of the functions being changed.
+- [x] Confirm the task is the final implementation audit.
+- [x] Record the current bundle size before code changes.
+- [x] Reproduce current behavior through the closest end-to-end paths.
 
 ## Work
 
-- [ ] Implement only the selected roadmap task.
-- [ ] Reuse current tables, helpers, pools, textures, and synthesis infrastructure.
-- [ ] Keep behavior-preserving work separate from intentional gameplay changes.
-- [ ] Add the smallest runnable check for each nontrivial branch or new rule.
-- [ ] Avoid speculative abstractions and new dependencies.
+- [x] Implement only verified roadmap gaps and final hardening.
+- [x] Reuse current tables, helpers, pools, textures, and synthesis infrastructure.
+- [x] Keep behavior-preserving refactors separate from intentional fixes.
+- [x] Add the smallest runnable check for each nontrivial rule.
+- [x] Avoid speculative abstractions and new dependencies.
 
 ## Finish
 
-- [ ] Run the focused self-test.
-- [ ] Run the clean build and formatting check.
-- [ ] Run broader tests if shared behavior changed.
-- [ ] Launch and inspect the user-visible path.
-- [ ] Measure the complete app bundle.
-- [ ] Mark completed roadmap checkboxes and record tuning findings.
-- [ ] Summarize changed files, verification, and remaining next task.
-- [ ] Do not commit unless explicitly requested.
+- [x] Run focused self-tests.
+- [x] Run the clean build and formatting check.
+- [x] Run broader tests for shared behavior.
+- [x] Launch and inspect the user-visible paths.
+- [x] Measure the complete app bundle.
+- [x] Mark completed roadmap checkboxes and record findings.
+- [x] Summarize changed files, verification, and the lack of a remaining task.
+- [x] Commit only after the user explicitly requested it.
 
 # Measured tuning data
 
-Fill this section as future sessions gather evidence.
+Final measurements retained from implementation and the closing audit.
 
 | Measurement | Baseline | Latest | Notes |
 |---|---:|---:|---|
-| App bundle bytes | 1,405,427 | 1,438,243 | Clean Universal 2 MinSizeRel bundle; Reboot Garden consumed one additional 16,384-byte Mach-O page |
+| App bundle bytes | 1,405,427 | 1,438,243 | Clean Universal 2 MinSizeRel bundle; final audit unchanged |
 | Typical seconds per era | Unknown | 19.22-32.42 | Five runs each: normal median 22.20, missed-coin median 30.88, one-rocket median 19.28 |
 | Transition window seconds | Unknown | 4.23-7.13 | Phase 0.78-1.00, derived as 22% of the observed era range |
 | Audio preload duration | Unknown | 1.30 s | Median of five `-Os` nine-loop bakes; no transition loop or added preload work |

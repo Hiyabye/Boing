@@ -64,7 +64,7 @@ static Rectangle overlayPanel(const char *title, Color fill) {
 #define HELP_STEP 44
 #define HELP_FS 28
 static void drawHelpOverlay(void) {
-  overlayPanel("HOW TO PLAY", Fade(BLACK, 0.55f));
+  overlayPanel("HOW TO PLAY", (Color){8, 17, 22, 255});
   for (int i = 0; i < HELP_LINE_COUNT; i++) {
     drawCenteredText(HELP_LINES[i], HELP_TOP + i * HELP_STEP, HELP_FS,
                      RAYWHITE);
@@ -195,6 +195,7 @@ void updateMenu(Game *g) {
 
   if (help) {
     g->showHelp = true;
+    uiFocusReset();
     sfx(SFX_SELECT);
     return;
   }

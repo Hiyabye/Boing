@@ -85,6 +85,7 @@ void updateCredits(Game *g) {
       (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_SPACE) ||
        uiItem(rCreditsBack()))) {
     g->creditsExiting = true;
+    uiFocusReset();
     sfx(SFX_SELECT);
   }
 }

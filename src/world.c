@@ -1729,6 +1729,36 @@ static void checkEras(void) {
     assert(p.coinBank == INT_MAX && "coin bank overflowed");
   }
 
+  // The dense first-cycle coin trail must keep every row while the camera
+  // climbs, even with one scattered batch per live monster. A too-small pool
+  // silently advances the spawn cursor and leaves an unwinnable route gap.
+  {
+    World w = createWorld();
+    SetRandomSeed(123);
+    spawnCoins(&w);
+    int reserve = 0;
+    for (int i = 0; i < MAX_COINS && reserve < MAX_MONSTERS * MONSTER_COIN_LOSS;
+         i++) {
+      if (!w.coins[i].active) {
+        w.coins[i] =
+            (Coin){{0.0f, w.spawnY - 1.0f}, true, ERA_HILLS, {0.0f, 0.0f}};
+        reserve++;
+      }
+    }
+    assert(reserve == MAX_MONSTERS * MONSTER_COIN_LOSS);
+    for (int step = 0; step < 80; step++) {
+      float row = w.spawnY;
+      w.cameraY = row + SCREEN_HEIGHT - 1.0f;
+      spawnCoins(&w);
+      int onRow = 0;
+      for (int i = 0; i < MAX_COINS; i++) {
+        onRow += w.coins[i].active && w.coins[i].position.y == row;
+      }
+      assert(onRow == 2 && "coin pool dropped a first-cycle route row");
+      cullBelowView(&w);
+    }
+  }
+
   // Peak progression stays monotonic while the camera can reveal an earlier
   // view sample again during a fall.
   {

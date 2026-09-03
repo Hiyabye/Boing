@@ -7,7 +7,7 @@
 
 #include <stdbool.h>
 
-#define MAX_COINS 64
+#define MAX_COINS 128 // dense first-cycle rows plus fall/scatter reserve
 #define MAX_PLATFORMS 16
 #define MAX_MONSTERS 8
 #define MAX_POWERUPS 4

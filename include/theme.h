@@ -57,9 +57,8 @@ typedef enum {
 
 #define CONFETTI_COUNT 6
 
-// One theme. Every Color must come before `backdrop` - themeUpdate() blends the
-// whole leading run of Colors generically (offsetof(Theme, backdrop)), so a new
-// color field needs no change to the lerp.
+// One theme. Every Color must come before `backdrop`: themeUpdate() blends the
+// leading run generically, and theme.c locks its exact byte count.
 typedef struct {
   // Sky (top/bottom gradient) + a deeper pair kept for shaded accents.
   Color skyTop, skyBot, skyTopHigh, skyBotHigh;

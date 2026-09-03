@@ -3,6 +3,7 @@
 #include "core.h" // clampf
 
 #include <stddef.h> // offsetof
+#include <string.h> // memcpy
 
 #ifdef BG_SELFTEST
 #include <assert.h>
@@ -130,8 +131,8 @@ const Theme THEMES[] = {
         .name = "NIGHT BLOCKS",
         .glow = 0.35f,
     },
-    // 3 - Neon Maze: purple-black void, neon maze walls + pellet dots, ghost
-    // creatures (homage to the golden-age dot-muncher maze arcades).
+    // 3 - Neon Maze: purple-black void, signal corridors, pellet dots, and
+    // roaming grape creatures in an original dot-chase homage.
     {
         .skyTop = {0x2A, 0x10, 0x48, 0xFF},
         .skyBot = {0x10, 0x06, 0x24, 0xFF},
@@ -249,10 +250,29 @@ Theme gTheme;
 Color gUiAccent = {255, 127, 176, 255};
 Color gUiAccentDark = {228, 70, 139, 255};
 
-// lerpTheme walks the leading Color run as a raw Color[] up to `backdrop`, so
-// that offset must land on a whole number of Colors - no non-Color field may
-// sneak in before `backdrop`. A reordered struct trips this at compile time.
-STATIC_ASSERT(offsetof(Theme, backdrop) % sizeof(Color) == 0, theme_color_run);
+// The declaration keeps 19 named colors and the confetti palette contiguous.
+// Exact byte-count checks reject padding and force a guard update if either
+// generic blend range changes.
+#define ATMOSPHERE_COLOR_COUNT 8
+#define THEME_COLOR_COUNT (19 + CONFETTI_COUNT)
+STATIC_ASSERT(offsetof(Theme, mouth) == ATMOSPHERE_COLOR_COUNT * sizeof(Color),
+              theme_atmosphere_run);
+STATIC_ASSERT(offsetof(Theme, backdrop) == THEME_COLOR_COUNT * sizeof(Color),
+              theme_color_run);
+
+// Character-byte addressing plus memcpy is defined for adjacent struct fields;
+// treating those fields as one Color array would violate C's aliasing rules.
+static Color themeColorAt(const Theme *theme, int i) {
+  Color color;
+  memcpy(&color, (const unsigned char *)theme + (size_t)i * sizeof(Color),
+         sizeof(color));
+  return color;
+}
+
+static void setThemeColor(Theme *theme, int i, Color color) {
+  memcpy((unsigned char *)theme + (size_t)i * sizeof(Color), &color,
+         sizeof(color));
+}
 
 static float transitionBlend(float phase) {
   float t = clampf((phase - TRANSITION_START) / (1.0f - TRANSITION_START), 0.0f,
@@ -285,12 +305,8 @@ ThemeSample themeSampleAtWorldY(float worldY) {
 // Blend every Color field (the whole leading run of the struct) from a->b by f.
 static Theme lerpTheme(const Theme *a, const Theme *b, float f) {
   Theme r = f < 0.5f ? *a : *b;
-  const Color *ca = (const Color *)a;
-  const Color *cb = (const Color *)b;
-  Color *cr = (Color *)&r;
-  int n = (int)(offsetof(Theme, backdrop) / sizeof(Color));
-  for (int i = 0; i < n; i++) {
-    cr[i] = ColorLerp(ca[i], cb[i], f);
+  for (int i = 0; i < THEME_COLOR_COUNT; i++) {
+    setThemeColor(&r, i, ColorLerp(themeColorAt(a, i), themeColorAt(b, i), f));
   }
   return r;
 }
@@ -310,7 +326,6 @@ static const Color REBOOT_DAWN[] = {
     {0xFF, 0xB3, 0x72, 0xFF}, {0xFF, 0xE6, 0xB0, 0xFF},
     {0x4D, 0xC6, 0xB6, 0xFF}, {0x36, 0x62, 0x76, 0xFF},
 };
-#define ATMOSPHERE_COLOR_COUNT (offsetof(Theme, mouth) / sizeof(Color))
 STATIC_ASSERT(sizeof(BLUE_HOUR) / sizeof(BLUE_HOUR[0]) ==
                   ATMOSPHERE_COLOR_COUNT,
               blue_hour_full);
@@ -329,12 +344,11 @@ static Theme renderedTheme(ThemeSample sample) {
   }
   if (key != NULL) {
     float f = sample.blend * 2.0f;
-    const Color *from = f < 1.0f ? (const Color *)a : key;
-    const Color *to = f < 1.0f ? key : (const Color *)b;
     f = f < 1.0f ? f : f - 1.0f;
-    Color *colors = (Color *)&r;
-    for (int i = 0; i < (int)ATMOSPHERE_COLOR_COUNT; i++) {
-      colors[i] = ColorLerp(from[i], to[i], f);
+    for (int i = 0; i < ATMOSPHERE_COLOR_COUNT; i++) {
+      Color from = sample.blend < 0.5f ? themeColorAt(a, i) : key[i];
+      Color to = sample.blend < 0.5f ? key[i] : themeColorAt(b, i);
+      setThemeColor(&r, i, ColorLerp(from, to, f));
     }
   }
   return r;

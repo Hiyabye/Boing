@@ -494,20 +494,20 @@ static void drawStarsMid(float cameraY, float alpha) {
   }
 }
 
-// A drifting arcade ghost: rounded dome, skirt, scalloped hem, and eyes.
-static void drawGhost(float x, float y, float s, Color c, float a) {
-  Color body = Fade(c, a);
-  DrawCircle(x, y, s, body);                  // dome
-  DrawRectangle(x - s, y, 2.0f * s, s, body); // skirt
-  DrawCircle(x - s * 0.6f, y + s, s * 0.4f, body);
-  DrawCircle(x, y + s, s * 0.4f, body);
-  DrawCircle(x + s * 0.6f, y + s, s * 0.4f, body); // scalloped hem
-  Color w = Fade(WHITE, a);
-  Color p = Fade((Color){0x2A, 0x2A, 0xE0, 0xFF}, a);
-  DrawCircle(x - s * 0.35f, y - s * 0.1f, s * 0.28f, w);
-  DrawCircle(x + s * 0.35f, y - s * 0.1f, s * 0.28f, w);
-  DrawCircle(x - s * 0.28f, y - s * 0.1f, s * 0.14f, p);
-  DrawCircle(x + s * 0.42f, y - s * 0.1f, s * 0.14f, p);
+// An original signal kite for the Maze distance layer: nested circuit shapes,
+// a bright core, and split antenna tails. It echoes the lattice without
+// borrowing a recognizable arcade character silhouette.
+static void drawSignalKite(float x, float y, float s, Color c, float a) {
+  Color dark = Fade(ColorBrightness(c, -0.5f), a);
+  DrawPoly((Vector2){x, y}, 6, s, 30.0f, dark);
+  DrawPoly((Vector2){x, y}, 4, s * 0.68f, 45.0f, Fade(c, a));
+  DrawRing((Vector2){x, y}, s * 0.18f, s * 0.32f, 0.0f, 360.0f, 18,
+           Fade(RAYWHITE, 0.82f * a));
+  for (int side = -1; side <= 1; side += 2) {
+    Vector2 tip = {x + side * s * 0.62f, y + s * 1.45f};
+    DrawLineEx((Vector2){x + side * s * 0.2f, y + s * 0.58f}, tip, 2.0f, dark);
+    DrawCircleV(tip, s * 0.12f, Fade(COIN_HI, a));
+  }
 }
 
 // Small stable hash for the maze wall/pellet pattern (per world cell).
@@ -573,23 +573,31 @@ static void drawMazeFar(float cameraY, float alpha) {
   EndBlendMode();
 }
 
-// Neon Maze mid layer: distant inhabitants moving between the corridors.
+// Neon Maze mid layer: signal fauna moving between the corridors.
 static void drawMazeMid(float cameraY, float alpha) {
-  for (int i = 0; i < 4; i++) { // drifting ghosts
+  for (int i = 0; i < 4; i++) { // drifting signal kites
     float x = wrapf((float)GetTime() * (14.0f + i * 4) + i * 220.0f,
                     SCREEN_WIDTH + 160.0f) -
               80.0f;
     float depth = 0.3f + 0.1f * i;
     float y =
         wrapf(i * 260.0f - cameraY * depth, SCREEN_HEIGHT + 240.0f) - 60.0f;
-    drawGhost(x, y, 22.0f, gTheme.confetti[i % CONFETTI_COUNT], 0.7f * alpha);
+    drawSignalKite(x, y, 18.0f, gTheme.confetti[i % CONFETTI_COUNT],
+                   0.7f * alpha);
   }
-  { // chomping hero crossing a parallax band
+  { // a bright pulse courier crossing one parallax band
     float x = wrapf((float)GetTime() * 40.0f, SCREEN_WIDTH + 120.0f) - 60.0f;
     float y = wrapf(80.0f - cameraY * 0.35f, SCREEN_HEIGHT + 200.0f) - 60.0f;
-    float mouth = 22.0f * fabsf(sinf((float)GetTime() * 6.0f));
-    DrawCircleSector((Vector2){x, y}, 20.0f, mouth, 360.0f - mouth, 24,
-                     Fade(COIN_HI, 0.85f * alpha));
+    float pulse = 1.0f + 0.12f * sinf((float)GetTime() * 6.0f);
+    DrawLineEx((Vector2){x - 42.0f, y}, (Vector2){x - 15.0f, y}, 3.0f,
+               Fade(COIN_HI, 0.28f * alpha));
+    for (int i = 1; i <= 3; i++) {
+      DrawCircle(x - 12.0f * i, y, 4.5f - i,
+                 Fade(COIN_HI, (0.58f - i * 0.1f) * alpha));
+    }
+    DrawPoly((Vector2){x, y}, 4, 18.0f * pulse, 45.0f,
+             Fade(COIN_HI, 0.85f * alpha));
+    DrawCircle(x, y, 5.0f * pulse, Fade(RAYWHITE, 0.9f * alpha));
   }
 }
 
