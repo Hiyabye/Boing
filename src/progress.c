@@ -67,11 +67,11 @@ const PuUpgradeDef PU_UPGRADES[] = {
     // label, base cost (level cost = base * (level+1)). Spawn cheapest, Effect
     // dearest; the shared debuff-suppress is the premium sink.
     // Short axis-only labels: the SHOP card header supplies the power-up name.
-    {"Spawn", 40},  {"Range", 60},  {"Time", 50}, // Magnet
-    {"Spawn", 40},  {"Thrust", 60}, {"Time", 50}, // Rocket
-    {"Spawn", 40},  {"Lift", 60},   {"Time", 50}, // Balloon
-    {"Spawn", 40},  {"Hits", 80},                 // Shield
-    {"Rarer", 100},                               // Debuffs
+    {"Spawn", 100}, {"Range", 150},  {"Time", 100}, // Magnet
+    {"Spawn", 100}, {"Thrust", 150}, {"Time", 100}, // Rocket
+    {"Spawn", 100}, {"Lift", 150},   {"Time", 100}, // Balloon
+    {"Spawn", 100}, {"Hits", 200},                  // Shield
+    {"Rarer", 200},                                 // Debuffs
 };
 // Enum-indexed: a new PuTrack without a row here loops past the array end, and
 // puLevel[] in Progress must match this size (both keyed by PU_UPGRADE_COUNT).
@@ -94,11 +94,11 @@ int upgCost(int track, int level) {
 }
 
 static const MissionDef DAILY_TASK_POOL[] = {
-    {"Collect 40 coins", MSTAT_COINS_RUN, 40, 40},
-    {"Earn 5000 score", MSTAT_SCORE, 5000, 50},
-    {"Build 20 combo points", MSTAT_COMBO, 20, 40},
-    {"Visit 5 era bands", MSTAT_ERAS, 5, 50},
-    {"Finish 3 runs", MSTAT_RUNS, 3, 30},
+    {"Collect 80 coins", MSTAT_COINS_RUN, 80, 50},
+    {"Earn 10000 score", MSTAT_SCORE, 10000, 50},
+    {"Build 100 combo points", MSTAT_COMBO, 100, 50},
+    {"Visit 10 era bands", MSTAT_ERAS, 10, 50},
+    {"Finish 5 runs", MSTAT_RUNS, 5, 50},
 };
 enum {
   DAILY_POOL_COUNT = (int)(sizeof(DAILY_TASK_POOL) / sizeof(DAILY_TASK_POOL[0]))
@@ -106,20 +106,20 @@ enum {
 STATIC_ASSERT(DAILY_TASK_COUNT <= DAILY_POOL_COUNT, daily_slots_fit_pool);
 
 const MissionDef REPEATABLE_TASKS[] = {
-    {"Collect 100 coins", MSTAT_COINS_RUN, 100, 50},
-    {"Earn 25000 score", MSTAT_SCORE, 25000, 75},
-    {"Finish 10 runs", MSTAT_RUNS, 10, 60},
+    {"Collect 1000 coins", MSTAT_COINS_RUN, 1000, 100},
+    {"Earn 100000 score", MSTAT_SCORE, 100000, 100},
+    {"Finish 30 runs", MSTAT_RUNS, 30, 100},
 };
 STATIC_ASSERT(sizeof(REPEATABLE_TASKS) / sizeof(REPEATABLE_TASKS[0]) ==
                   REPEATABLE_TASK_COUNT,
               repeatable_tasks_full);
 
 const MissionDef ACHIEVEMENTS[] = {
-    {"Reach the Neon Maze", MSTAT_ERAS, 4, 100},
-    {"Collect 50 coins in one run", MSTAT_COINS_RUN, 50, 100},
-    {"Chain a x10 combo", MSTAT_COMBO, 10, 100},
-    {"Score 5000 in one run", MSTAT_SCORE, 5000, 150},
-    {"Reach the Falling Blocks", MSTAT_ERAS, 5, 200},
+    {"Reach the third Neon Maze", MSTAT_ERAS, 14, 1000},
+    {"Collect 1000 coins in one run", MSTAT_COINS_RUN, 1000, 1000},
+    {"Chain a x300 combo", MSTAT_COMBO, 300, 1000},
+    {"Score 300000 in one run", MSTAT_SCORE, 300000, 1000},
+    {"Reach the third Falling Blocks", MSTAT_ERAS, 15, 1000},
 };
 const int ACHIEVEMENT_COUNT =
     (int)(sizeof(ACHIEVEMENTS) / sizeof(ACHIEVEMENTS[0]));
@@ -484,16 +484,16 @@ int main(void) {
   }
   World taskRun = {
       .coinsCollected = 60, .bestCombo = 10, .level = 1, .comboBonus = 13000};
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 30; i++) {
     bankRun(&cumulative, &taskRun);
   }
   for (int i = 0; i < DAILY_TASK_COUNT; i++) {
     assert(cumulative.dailyProgress[i] == dailyTask(&cumulative, i)->threshold);
   }
-  assert(cumulative.repeatableProgress[0] == 80);    // 180 total, keep 80
-  assert(cumulative.repeatableProgress[1] == 14000); // 39000, keep 14000
-  assert(cumulative.repeatableProgress[2] == 3);
-  assert(cumulative.coinBank == 180 + 50 + 75 + dailyRewards);
+  assert(cumulative.repeatableProgress[0] == 800);   // 1800 total
+  assert(cumulative.repeatableProgress[1] == 90000); // 390000 total
+  assert(cumulative.repeatableProgress[2] == 0);
+  assert(cumulative.coinBank == 1800 + 100 * 5 + dailyRewards);
 
   loaded.coinBank = 100;
   assert(tryBuy(&loaded, 70) && loaded.coinBank == 30);
@@ -506,9 +506,12 @@ int main(void) {
   for (int i = 0; i < REPEATABLE_TASK_COUNT; i++) {
     loaded.repeatableProgress[i] = 0;
   }
-  World w = {.coinsCollected = 50, .bestCombo = 10, .level = 3};
-  assert(bankRun(&loaded, &w) == 3);
-  assert(loaded.coinBank == 380); // 30 + 50 run coins + three 100 rewards
+  World w = {.coinsCollected = 1000,
+             .bestCombo = 300,
+             .level = 14,
+             .comboBonus = 300000};
+  assert(bankRun(&loaded, &w) == 9);
+  assert(loaded.coinBank == 6430); // 30 + 1000 run + 400 repeat + 5000 rewards
   puts("ok - cosmetics, daily tasks, repeatables, and achievements");
   return 0;
 }
