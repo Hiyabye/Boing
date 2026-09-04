@@ -503,7 +503,7 @@ static void drawSignalKite(float x, float y, float s, Color c, float a) {
   }
 }
 
-// Small stable hash for the maze wall/pellet pattern (per world cell).
+// Small stable hash for the maze wall pattern (per world cell).
 static int hash2(int i, int j) {
   unsigned h = (unsigned)i * 92837111u + (unsigned)j * 689287499u;
   unsigned shifted = h >> 13;
@@ -515,7 +515,9 @@ static int hash2(int i, int j) {
   return (int)(h & 0x7fffffffu);
 }
 
-// Neon Maze far layer: scrolling broken corridors and signal pellets.
+// Neon Maze far layer: scrolling broken corridors. Bright round dots belong
+// only to collectible gameplay pellets, so the backdrop never impersonates
+// them.
 static void drawMazeFar(float cameraY, float alpha) {
   drawNebula(cameraY, alpha);
   float sc = -cameraY * 0.4f;
@@ -549,17 +551,6 @@ static void drawMazeFar(float cameraY, float alpha) {
             (Rectangle){r.x - 2, r.y - 2, r.width + 4, r.height + 4}, 1, 4,
             glow);
         DrawRectangleRounded(r, 1, 4, wall);
-      }
-      float px = cx + MAZE_CELL / 2, py = cy + MAZE_CELL / 2;
-      if (h & 4) { // pulsing power-pellet
-        float pr = 6.0f + 2.0f * sinf((float)GetTime() * 4.0f + h);
-        drawTex(TEX_PUFF, px, py, pr * 6.0f, pr * 6.0f, 0.0f,
-                Fade(COIN_HI, 0.5f * alpha));
-        DrawCircle(px, py, pr, Fade(COIN_HI, 0.8f * alpha));
-      } else {
-        drawTex(TEX_PUFF, px, py, 22.0f, 22.0f, 0.0f,
-                Fade(COIN_HI, 0.3f * alpha));
-        DrawCircle(px, py, 3.0f, Fade(COIN_HI, 0.55f * alpha));
       }
     }
   }

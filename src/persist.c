@@ -12,8 +12,8 @@
 // ponytail: fixed CONFIG_MAX_KEYS map (persist.h), grow the constant if more
 // save fields appear. New saves use 28 of 32: highScore(1) + settings(4) +
 // progress(11 fixed task/economy fields) + one pu%d per upgrade track(12).
-// A legacy save can retain skinMask/selectedSkin too, peaking at 30. Overflow
-// is silent, so progress.c checks that peak against capacity.
+// A legacy save can retain resIndex/skinMask/selectedSkin too, peaking at 31.
+// Overflow is silent, so progress.c checks that peak against capacity.
 typedef struct {
   char key[24];
   int val;

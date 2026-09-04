@@ -132,8 +132,9 @@ const Theme THEMES[] = {
         .name = "NIGHT BLOCKS",
         .glow = 0.35f,
     },
-    // 3 - Neon Maze: purple-black void, signal corridors, pellet dots, and
-    // roaming grape creatures in an original dot-chase homage.
+    // 3 - Neon Maze: purple-black void, signal corridors, bright gameplay
+    // pellet lanes, and roaming grape creatures in an original dot-chase
+    // homage.
     {
         .skyTop = {0x2A, 0x10, 0x48, 0xFF},
         .skyBot = {0x10, 0x06, 0x24, 0xFF},

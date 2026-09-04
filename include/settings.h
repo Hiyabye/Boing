@@ -16,7 +16,7 @@ typedef struct {
 
 Settings loadSettings(void);
 void saveSettings(const Settings *s);
-void applySettings(const Settings *s); // push to raylib (FPS/window/volume)
+void applySettings(Settings *s); // push to raylib and fit window to display
 
 // Settings screen. Mouse drags each row's slider knob; keyboard Up/Down pick a
 // row and Left/Right nudge it one stop; Esc/Space or BACK exits. Sets *state to

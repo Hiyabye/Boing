@@ -1136,8 +1136,8 @@ static void glowStamp(Vector2 c, float w, Color tint, float base, float lit,
 
 static void drawCoin(Vector2 c, float t, bool pellet, float glow) {
   if (pellet) {
-    // Neon Maze: the coin trail is a pellet lane. A pellet is a dot — the
-    // minted-coin art below would fight the backdrop's own pellets.
+    // Neon Maze: the coin trail is a pellet lane. A pellet is a dot, so the
+    // minted-coin art below would fight the era's dot-chase language.
     float r = COIN_RADIUS * 0.55f;
     glowStamp(c, COIN_RADIUS * 3.5f, COIN_HI, 0.25f, 0.45f, glow);
     DrawCircle(c.x, c.y, r, COIN_HI);

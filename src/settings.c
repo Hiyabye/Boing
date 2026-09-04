@@ -7,13 +7,14 @@
 #include "ui.h"
 
 static const int FPS_OPTIONS[] = {30, 60, 90, 120, 144, 165, 240};
-// Square window sizes. Draw code stays in fixed SCREEN_WIDTH x SCREEN_HEIGHT
-// coordinates and the frame rasterizes at the selected size, so any square
-// size works.
-static const int RES_OPTIONS[] = {600,  700,  800,  900, 1000,
-                                  1100, 1200, 1300, 1400};
+// 100-point window-size steps around the native 800x800 layout. Only sizes
+// within 90% of the current display are exposed, leaving room for macOS window
+// chrome, the menu bar, and the Dock.
+static const int RES_OPTIONS[] = {400,  500,  600,  700,  800, 900,
+                                  1000, 1100, 1200, 1300, 1400};
 #define FPS_COUNT ((int)(sizeof(FPS_OPTIONS) / sizeof(FPS_OPTIONS[0])))
 #define RES_COUNT ((int)(sizeof(RES_OPTIONS) / sizeof(RES_OPTIONS[0])))
+#define DEFAULT_RES 800
 
 // The settings screen is one row per option. Adding a row = a new RowKind, a
 // table entry, and a case in changeRow()/formatValue() below.
@@ -30,6 +31,31 @@ static int dragRow = -1; // row whose slider is being dragged, -1 = none
 static bool suppressResize = false; // hold the window size steady mid res-drag
 
 static int wrapi(int v, int n) { return ((v % n) + n) % n; }
+
+static int resolutionCountFor(int width, int height) {
+  int limit = (width < height ? width : height) * 9 / 10;
+  int count = 0;
+  while (count < RES_COUNT && RES_OPTIONS[count] <= limit) {
+    count++;
+  }
+  return count > 0 ? count : 1;
+}
+
+static int resolutionCount(void) {
+  int monitor = GetCurrentMonitor();
+  return resolutionCountFor(GetMonitorWidth(monitor),
+                            GetMonitorHeight(monitor));
+}
+
+// Pick the nearest preset, preferring the smaller size on an exact tie.
+static int resolutionIndex(int size, int count) {
+  for (int i = 1; i < count; i++) {
+    if (size <= (RES_OPTIONS[i - 1] + RES_OPTIONS[i]) / 2) {
+      return i - 1;
+    }
+  }
+  return count - 1;
+}
 
 // Volume is persisted/displayed as a rounded int percent.
 static int volumePercent(float volume) { return (int)(volume * 100.0f + 0.5f); }
@@ -59,7 +85,7 @@ static int rowStops(int row) {
   case ROW_FPS:
     return FPS_COUNT;
   case ROW_RES:
-    return RES_COUNT;
+    return resolutionCount();
   case ROW_MUSIC:
   case ROW_SFX:
     return VOLUME_STOPS;
@@ -123,16 +149,22 @@ static const char *formatValue(const Settings *s, int row) {
 
 Settings loadSettings(void) {
   Settings s = {.fpsIndex = 1,
-                .resIndex = 2,
+                .resIndex = resolutionIndex(DEFAULT_RES, RES_COUNT),
                 .musicVolume = 1.0f,
                 .sfxVolume = 1.0f}; // 60fps, 800, both max
   s.fpsIndex = configGetInt("fpsIndex", s.fpsIndex);
-  s.resIndex = configGetInt("resIndex", s.resIndex);
+  // Older saves stored an index into 600..1400 in 100-point steps. New saves
+  // store the actual size so future preset changes do not reinterpret it.
+  int legacyIndex = configGetInt("resIndex", -1);
+  int legacySize = (legacyIndex >= 0 && legacyIndex < 9)
+                       ? 600 + legacyIndex * 100
+                       : DEFAULT_RES;
+  int savedSize = configGetInt("windowSize", legacySize);
+  s.resIndex = resolutionIndex(savedSize, RES_COUNT);
   s.musicVolume =
       configGetInt("musicPct", 100) / 100.0f; // stored as int percents
   s.sfxVolume = configGetInt("sfxPct", 100) / 100.0f;
   s.fpsIndex = wrapi(s.fpsIndex, FPS_COUNT);
-  s.resIndex = wrapi(s.resIndex, RES_COUNT);
   s.musicVolume = clampf(s.musicVolume, 0.0f, 1.0f);
   s.sfxVolume = clampf(s.sfxVolume, 0.0f, 1.0f);
   return s;
@@ -140,15 +172,19 @@ Settings loadSettings(void) {
 
 void saveSettings(const Settings *s) {
   configSetInt("fpsIndex", s->fpsIndex);
-  configSetInt("resIndex", s->resIndex);
+  configSetInt("windowSize", RES_OPTIONS[s->resIndex]);
   configSetInt("musicPct", volumePercent(s->musicVolume));
   configSetInt("sfxPct", volumePercent(s->sfxVolume));
   configSaveUser();
 }
 
-void applySettings(const Settings *s) {
+void applySettings(Settings *s) {
   SetTargetFPS(FPS_OPTIONS[s->fpsIndex]);
   setVolumes(s->musicVolume, s->sfxVolume);
+  int count = resolutionCount();
+  if (s->resIndex >= count) {
+    s->resIndex = count - 1;
+  }
   if (!suppressResize) {
     int size = RES_OPTIONS[s->resIndex];
     SetWindowSize(size, size);
@@ -227,7 +263,8 @@ static void drawRow(const Settings *s, int row, const char *label,
 
   // Slider: dim full track, bright fill up to the knob, round knob on top.
   float ty = trackY(row);
-  float frac = rowStop(s, row) / (float)(rowStops(row) - 1);
+  int stops = rowStops(row);
+  float frac = stops > 1 ? rowStop(s, row) / (float)(stops - 1) : 0.0f;
   float knobX = TRACK_X0 + frac * TRACK_W;
   DrawRectangleRounded((Rectangle){TRACK_X0, ty - 3, TRACK_W, 6}, 1.0f, 4,
                        Fade(RAYWHITE, 0.25f));
@@ -250,3 +287,30 @@ void drawSettingsMenu(const Settings *s) {
 
   uiButton(backRect(), "BACK", ICON_BACK);
 }
+
+#ifdef SETTINGS_SELFTEST
+// Pure preset and legacy-save checks. Dead stripping drops the renderer:
+//   cc -DSETTINGS_SELFTEST -ffunction-sections src/settings.c src/persist.c \
+//      -Iinclude -Ilib/raylib/src -Wl,-dead_strip -o /tmp/settingstest && \
+//      /tmp/settingstest
+#include <assert.h>
+
+int main(void) {
+  assert(resolutionCountFor(1512, 982) == 5);   // 400 through 800
+  assert(resolutionCountFor(800, 600) == 2);    // 400 and 500
+  assert(resolutionCountFor(0, 0) == 1);        // always expose one safe stop
+  assert(resolutionIndex(450, RES_COUNT) == 0); // ties prefer smaller
+  assert(resolutionIndex(451, RES_COUNT) == 1);
+  assert(resolutionIndex(2000, RES_COUNT) == RES_COUNT - 1);
+
+  configLoad("/no/such/settings.json");
+  configSetInt("resIndex", 3); // old 600..1400 table: index 3 was 900
+  Settings s = loadSettings();
+  assert(RES_OPTIONS[s.resIndex] == 900);
+
+  configSetInt("windowSize", 500); // explicit size supersedes legacy index
+  s = loadSettings();
+  assert(RES_OPTIONS[s.resIndex] == 500);
+  return 0;
+}
+#endif

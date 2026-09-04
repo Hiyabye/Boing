@@ -80,9 +80,10 @@ STATIC_ASSERT(sizeof(PU_UPGRADES) / sizeof(PU_UPGRADES[0]) == PU_UPGRADE_COUNT,
 
 // Ten scalar keys cover high score, settings, and fixed progress fields. Task
 // slots and upgrades each add one key, so their macros must drive the capacity
-// check instead of a hand-maintained total. Legacy bundle skins add two more.
+// check instead of a hand-maintained total. Legacy bundle skins and the old
+// resolution-index setting add three more.
 #define CONFIG_SCALAR_KEYS 10
-#define CONFIG_LEGACY_KEYS 2
+#define CONFIG_LEGACY_KEYS 3
 #define CONFIG_FIXED_KEYS                                                      \
   (CONFIG_SCALAR_KEYS + DAILY_TASK_COUNT + REPEATABLE_TASK_COUNT)
 STATIC_ASSERT(CONFIG_FIXED_KEYS + CONFIG_LEGACY_KEYS + PU_UPGRADE_COUNT <=

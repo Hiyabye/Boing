@@ -52,7 +52,7 @@ typedef enum {
   BACKDROP_HILLS,  // day sky, clouds, and rolling green hills
   BACKDROP_SKIES,  // open blue sky, high clouds, and flying birds
   BACKDROP_STARS,  // night sky, moon, pixel stars, and blocky terrain
-  BACKDROP_MAZE,   // neon maze lattice and pellet dots on dark ground
+  BACKDROP_MAZE,   // neon maze lattice on dark ground
   BACKDROP_BLOCKS, // falling neon tetromino cells
   BACKDROP_MAGMA,  // volcanic forge, lava rivers, basalt, and rising embers
   BACKDROP_GARDEN  // underground loam, branching roots, and buried sprouts
