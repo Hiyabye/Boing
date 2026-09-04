@@ -31,20 +31,19 @@ typedef struct Platform {
   float timer; // Night crumble countdown or Magma charge/eruption animation
   float vx;    // Birdsong Skies: horizontal drift, reflected at the edges
   float vy;  // Blocks/Garden descent; > 0 crushes, Garden landing sets it to 0
-  int shape; // Cell footprint in TETRO[]. Garden keeps it after rooting; Magma
-             // uses it only to vary crack geometry.
+  int shape; // Cell footprint in TETRO[]. Garden keeps it as a rooted soil bed;
+             // Magma uses it only to vary crack geometry.
   float pressure; // immutable 0..1 arrival/relief tuning; also organic growth
 } Platform;
 
 typedef struct Monster {
   Vector2 position;
-  float vx; // horizontal drift
+  float vx; // horizontal drift; Garden rootworms move their leading segment
   bool active;
   unsigned char era; // immutable EraId sampled from spawn world Y
-  float vy;      // vertical drift — 0 except while ghost-chasing on Neon Maze
-  unsigned seed; // spawn-time look (horns/eyes/mouth/legs). A field, not a hash
-                 // of the live position like entSeed: a ghost *moves*, and a
-                 // seed derived from y re-rolls its whole face every frame.
+  float vy; // Maze vertical drift; Garden reuses it as smoothed worm facing
+  unsigned seed; // spawn-time look/curve, not a hash of the live position like
+                 // entSeed: moving monsters would otherwise reroll every frame.
   float pressure; // immutable 0..1 steering pressure sampled at spawn
 } Monster;
 

@@ -17,7 +17,7 @@
 
 // The theme table. A new level is one more row here (and, for a distinct
 // backdrop shape, a case in background.c). Row order is climb order: meadow,
-// open sky, night, neon, digital blocks, a volcanic forge, a rooted predawn
+// open sky, night, neon, digital blocks, a volcanic forge, an underground root
 // garden, then meadow again. Each remains genre homage, never a specific
 // product.
 const Theme THEMES[] = {
@@ -238,47 +238,48 @@ const Theme THEMES[] = {
                 {0x5A, 0xD8, 0xC9, 0xFF},
             },
         .backdrop = BACKDROP_MAGMA,
-        .bridge = BRIDGE_FERTILE,
+        .bridge = BRIDGE_BURROW,
         .track = TRACK_MAGMA,
         .name = "MAGMA FORGE",
         .glow = 0.9f,
     },
-    // 6 - Reboot Garden: predawn terraces built from rooted cells. Landing on
-    // a descending piece stops it and grows a safe garden in the same shape.
+    // 6 - Reboot Garden: a living layer of loam and old roots beneath the
+    // surface. Landing anchors a falling seedbed, wakes its roots, and sprouts
+    // a safe platform while long rootworms patrol the soil.
     {
-        .skyTop = {0x48, 0x5A, 0x96, 0xFF},
-        .skyBot = {0xF1, 0xA5, 0x8F, 0xFF},
-        .skyTopHigh = {0x27, 0x35, 0x63, 0xFF},
-        .skyBotHigh = {0x9D, 0x66, 0x78, 0xFF},
-        .sun = {0xFF, 0xC5, 0x6E, 0xFF},
-        .sunCore = {0xFF, 0xF0, 0xBE, 0xFF},
-        .cloud = {0xBD, 0xE5, 0xC7, 0xFF},
-        .cloudShade = {0x67, 0x9A, 0x83, 0xFF},
-        .mouth = {0x4A, 0x29, 0x40, 0xFF},
-        .coinHi = {0xFF, 0xE3, 0x6B, 0xFF},
-        .coinLo = {0xE9, 0x9A, 0x32, 0xFF},
-        .grass = {0x79, 0xCE, 0x77, 0xFF},
-        .grassDk = {0x37, 0x6B, 0x50, 0xFF},
-        .grape = {0xE6, 0x6F, 0x9E, 0xFF},
-        .grapeDk = {0x99, 0x43, 0x6D, 0xFF},
-        .magnetRed = {0xDF, 0x48, 0x4E, 0xFF},
-        .rocketBody = {0xF4, 0xF1, 0xE8, 0xFF},
-        .rocketFin = {0x45, 0xA9, 0x9A, 0xFF},
-        .flame = {0xFF, 0xAE, 0x52, 0xFF},
+        .skyTop = {0x21, 0x14, 0x0F, 0xFF},
+        .skyBot = {0x6B, 0x43, 0x2C, 0xFF},
+        .skyTopHigh = {0x13, 0x0B, 0x08, 0xFF},
+        .skyBotHigh = {0x3A, 0x24, 0x19, 0xFF},
+        .sun = {0xD6, 0x9A, 0x56, 0xFF},
+        .sunCore = {0xFF, 0xE0, 0xA1, 0xFF},
+        .cloud = {0xA8, 0x79, 0x4F, 0xFF},
+        .cloudShade = {0x4A, 0x2D, 0x1D, 0xFF},
+        .mouth = {0x2B, 0x17, 0x11, 0xFF},
+        .coinHi = {0xFF, 0xD5, 0x6A, 0xFF},
+        .coinLo = {0xC8, 0x79, 0x2C, 0xFF},
+        .grass = {0x88, 0xB8, 0x4F, 0xFF},
+        .grassDk = {0x5B, 0x3B, 0x24, 0xFF},
+        .grape = {0xD9, 0x82, 0x62, 0xFF},
+        .grapeDk = {0x7A, 0x3E, 0x35, 0xFF},
+        .magnetRed = {0xD6, 0x45, 0x38, 0xFF},
+        .rocketBody = {0xEE, 0xE1, 0xCB, 0xFF},
+        .rocketFin = {0x73, 0x95, 0x45, 0xFF},
+        .flame = {0xF2, 0xA4, 0x45, 0xFF},
         .confetti =
             {
-                {0x79, 0xCE, 0x77, 0xFF},
-                {0xF1, 0x88, 0x88, 0xFF},
-                {0xFF, 0xE3, 0x6B, 0xFF},
-                {0x63, 0xC9, 0xC0, 0xFF},
-                {0xAD, 0x78, 0xD0, 0xFF},
-                {0xF0, 0xA2, 0x55, 0xFF},
+                {0x88, 0xB8, 0x4F, 0xFF},
+                {0xD9, 0x82, 0x62, 0xFF},
+                {0xFF, 0xD5, 0x6A, 0xFF},
+                {0xB9, 0x8A, 0x5A, 0xFF},
+                {0x80, 0x60, 0x4A, 0xFF},
+                {0xE9, 0xC5, 0x8D, 0xFF},
             },
         .backdrop = BACKDROP_GARDEN,
-        .bridge = BRIDGE_BLOOM,
-        .track = TRACK_HILLS,
+        .bridge = BRIDGE_EMERGENCE,
+        .track = TRACK_GARDEN,
         .name = "REBOOT GARDEN",
-        .glow = 0.24f,
+        .glow = 0.2f,
     },
 };
 STATIC_ASSERT(sizeof(THEMES) / sizeof(THEMES[0]) == ERA_COUNT, themes_full);
@@ -364,11 +365,17 @@ static const Color MELTDOWN_HEAT[] = {
     {0xFF, 0x74, 0x2E, 0xFF}, {0xFF, 0xE1, 0x88, 0xFF},
     {0x80, 0x35, 0x38, 0xFF}, {0x2B, 0x20, 0x2B, 0xFF},
 };
-static const Color FERTILE_DAWN[] = {
-    {0x35, 0x34, 0x78, 0xFF}, {0xD4, 0x72, 0x82, 0xFF},
-    {0x1C, 0x26, 0x58, 0xFF}, {0x69, 0x42, 0x76, 0xFF},
-    {0xFF, 0xB3, 0x72, 0xFF}, {0xFF, 0xE6, 0xB0, 0xFF},
-    {0x4D, 0xC6, 0xB6, 0xFF}, {0x36, 0x62, 0x76, 0xFF},
+static const Color DEEP_LOAM[] = {
+    {0x20, 0x12, 0x10, 0xFF}, {0x84, 0x42, 0x25, 0xFF},
+    {0x10, 0x08, 0x09, 0xFF}, {0x45, 0x23, 0x19, 0xFF},
+    {0xE6, 0x7A, 0x32, 0xFF}, {0xFF, 0xD0, 0x80, 0xFF},
+    {0x6D, 0x49, 0x32, 0xFF}, {0x2B, 0x1A, 0x15, 0xFF},
+};
+static const Color SURFACE_LIGHT[] = {
+    {0x5A, 0x78, 0x7D, 0xFF}, {0xD8, 0xB7, 0x78, 0xFF},
+    {0x34, 0x4F, 0x58, 0xFF}, {0x8D, 0x72, 0x4D, 0xFF},
+    {0xFF, 0xE0, 0x8A, 0xFF}, {0xFF, 0xF4, 0xC9, 0xFF},
+    {0xD8, 0xC7, 0x9D, 0xFF}, {0x8D, 0x76, 0x52, 0xFF},
 };
 STATIC_ASSERT(sizeof(BLUE_HOUR) / sizeof(BLUE_HOUR[0]) ==
                   ATMOSPHERE_COLOR_COUNT,
@@ -376,9 +383,12 @@ STATIC_ASSERT(sizeof(BLUE_HOUR) / sizeof(BLUE_HOUR[0]) ==
 STATIC_ASSERT(sizeof(MELTDOWN_HEAT) / sizeof(MELTDOWN_HEAT[0]) ==
                   ATMOSPHERE_COLOR_COUNT,
               meltdown_heat_full);
-STATIC_ASSERT(sizeof(FERTILE_DAWN) / sizeof(FERTILE_DAWN[0]) ==
+STATIC_ASSERT(sizeof(DEEP_LOAM) / sizeof(DEEP_LOAM[0]) ==
                   ATMOSPHERE_COLOR_COUNT,
-              fertile_dawn_full);
+              deep_loam_full);
+STATIC_ASSERT(sizeof(SURFACE_LIGHT) / sizeof(SURFACE_LIGHT[0]) ==
+                  ATMOSPHERE_COLOR_COUNT,
+              surface_light_full);
 
 static Theme renderedTheme(ThemeSample sample) {
   const Theme *a = &THEMES[sample.era], *b = &THEMES[sample.next];
@@ -388,8 +398,10 @@ static Theme renderedTheme(ThemeSample sample) {
     key = BLUE_HOUR;
   } else if (a->bridge == BRIDGE_MELTDOWN) {
     key = MELTDOWN_HEAT;
-  } else if (a->bridge == BRIDGE_FERTILE) {
-    key = FERTILE_DAWN;
+  } else if (a->bridge == BRIDGE_BURROW) {
+    key = DEEP_LOAM;
+  } else if (a->bridge == BRIDGE_EMERGENCE) {
+    key = SURFACE_LIGHT;
   }
   if (key != NULL) {
     float f = sample.blend * 2.0f;
@@ -427,7 +439,7 @@ void themeSampleSelfTest(void) {
   assert(fabsf(s.blend - 0.5f) < 0.0001f);
 
   // Post bloom follows each eased visual sample: the forge grows hotter as
-  // Blocks melt, then cools smoothly into the predawn garden.
+  // Blocks melt, then cools smoothly into the underground garden.
   s = themeSampleAt(BAND_HEIGHT * (ERA_BLOCKS + 0.70f));
   assert(s.blend == 0.0f &&
          fabsf(themeGlow(s) - THEMES[ERA_BLOCKS].glow) < 0.0001f);
@@ -439,20 +451,20 @@ void themeSampleSelfTest(void) {
          meltGlow < THEMES[ERA_MAGMA].glow);
   s = themeSampleAt(BAND_HEIGHT *
                     (ERA_MAGMA + (TRANSITION_START + 1.0f) * 0.5f));
-  float fertileGlow = themeGlow(s);
-  assert(fertileGlow < THEMES[ERA_MAGMA].glow &&
-         fertileGlow > THEMES[ERA_GARDEN].glow);
+  float burrowGlow = themeGlow(s);
+  assert(burrowGlow < THEMES[ERA_MAGMA].glow &&
+         burrowGlow > THEMES[ERA_GARDEN].glow);
 
-  int meltdownEdges = 0, fertileEdges = 0, bloomEdges = 0;
+  int meltdownEdges = 0, burrowEdges = 0, emergenceEdges = 0;
   for (int era = 0; era < ERA_COUNT; era++) {
     meltdownEdges += THEMES[era].bridge == BRIDGE_MELTDOWN;
-    fertileEdges += THEMES[era].bridge == BRIDGE_FERTILE;
-    bloomEdges += THEMES[era].bridge == BRIDGE_BLOOM;
+    burrowEdges += THEMES[era].bridge == BRIDGE_BURROW;
+    emergenceEdges += THEMES[era].bridge == BRIDGE_EMERGENCE;
   }
   assert(meltdownEdges == 1 && THEMES[ERA_BLOCKS].bridge == BRIDGE_MELTDOWN);
-  assert(fertileEdges == 1 && THEMES[ERA_MAGMA].bridge == BRIDGE_FERTILE);
-  assert(bloomEdges == 1 && THEMES[ERA_GARDEN].bridge == BRIDGE_BLOOM);
-  assert(THEMES[ERA_GARDEN].track == TRACK_HILLS);
+  assert(burrowEdges == 1 && THEMES[ERA_MAGMA].bridge == BRIDGE_BURROW);
+  assert(emergenceEdges == 1 && THEMES[ERA_GARDEN].bridge == BRIDGE_EMERGENCE);
+  assert(THEMES[ERA_GARDEN].track == TRACK_GARDEN);
 
   for (int level = 0; level < ERA_COUNT; level++) {
     float edge = BAND_HEIGHT * (level + 1);
@@ -510,11 +522,21 @@ void themeSampleSelfTest(void) {
          fabsf(s.blend - 0.5f) < 0.0001f);
   s.blend = 0.5f;
   themeUpdate(s);
-  assert(gTheme.skyTop.r == FERTILE_DAWN[0].r &&
-         gTheme.skyTop.g == FERTILE_DAWN[0].g &&
-         gTheme.skyTop.b == FERTILE_DAWN[0].b &&
-         gTheme.skyBot.r == FERTILE_DAWN[1].r &&
-         gTheme.skyBot.g == FERTILE_DAWN[1].g &&
-         gTheme.skyBot.b == FERTILE_DAWN[1].b);
+  assert(
+      gTheme.skyTop.r == DEEP_LOAM[0].r && gTheme.skyTop.g == DEEP_LOAM[0].g &&
+      gTheme.skyTop.b == DEEP_LOAM[0].b && gTheme.skyBot.r == DEEP_LOAM[1].r &&
+      gTheme.skyBot.g == DEEP_LOAM[1].g && gTheme.skyBot.b == DEEP_LOAM[1].b);
+
+  s = themeSampleAt(BAND_HEIGHT * (ERA_GARDEN + midpoint));
+  assert(s.level == ERA_GARDEN && s.era == ERA_GARDEN && s.next == ERA_HILLS &&
+         fabsf(s.blend - 0.5f) < 0.0001f);
+  s.blend = 0.5f;
+  themeUpdate(s);
+  assert(gTheme.skyTop.r == SURFACE_LIGHT[0].r &&
+         gTheme.skyTop.g == SURFACE_LIGHT[0].g &&
+         gTheme.skyTop.b == SURFACE_LIGHT[0].b &&
+         gTheme.skyBot.r == SURFACE_LIGHT[1].r &&
+         gTheme.skyBot.g == SURFACE_LIGHT[1].g &&
+         gTheme.skyBot.b == SURFACE_LIGHT[1].b);
 }
 #endif

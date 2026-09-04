@@ -20,6 +20,7 @@ typedef enum {
   TRACK_MAZE,
   TRACK_BLOCKS,
   TRACK_MAGMA,
+  TRACK_GARDEN,
   TRACK_GAMEPLAY_COUNT,
   TRACK_MENU = TRACK_GAMEPLAY_COUNT, // title/help/missions/settings
   TRACK_SHOP,    // beat-synchronized variation of the menu theme
@@ -53,6 +54,7 @@ typedef enum {
   SFX_BOUNCE,
   SFX_CRUMBLE,
   SFX_ERUPT,
+  SFX_ROOT,
   SFX_MAGNET,
   SFX_ROCKET,
   SFX_BALLOON,

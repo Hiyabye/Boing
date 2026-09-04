@@ -73,6 +73,8 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define INTRO_CRUMBLE_BONUS 36.0f
 #define INTRO_BLOCK_MUL 0.35f
 #define GARDEN_ROOT_PREVIEW_END 0.03f
+#define GARDEN_WORM_PREVIEW_START 0.05f
+#define GARDEN_WORM_PREVIEW_END 0.085f
 #define GARDEN_ROOT_SHAKE 4.0f
 #define GHOST_PREVIEW_END 0.03f
 #define PELLET_PREVIEW_END 0.09f
@@ -83,7 +85,17 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define MONSTER_RADIUS 24.0f
 #define MONSTER_SPACING 900.0f // vertical distance between monster bands
 #define MONSTER_DRIFT 1.5f     // horizontal speed
-#define MONSTER_COIN_LOSS 5    // coins scattered/lost on a monster hit
+// Reboot Garden rootworms reuse the monster pool. Their body is a deterministic
+// curve behind the head, so no history buffer or larger Monster struct is
+// needed.
+#define WORM_SEGMENTS 8
+#define WORM_SEGMENT_GAP 18.0f
+#define WORM_BODY_WAVE 16.0f
+#define WORM_HEAD_WAVE 7.0f
+#define WORM_WAVE_FREQ 0.035f
+#define WORM_SPEED_MUL 0.74f
+#define WORM_EDGE (MONSTER_RADIUS + (WORM_SEGMENTS - 1) * WORM_SEGMENT_GAP)
+#define MONSTER_COIN_LOSS 5 // coins scattered/lost on a monster hit
 // Neon Maze: a monster stops drifting and hunts the blob (see updateMonsters).
 #define GHOST_ACCEL 0.14f // steering accel toward (or away from) the player
 #define GHOST_VX 3.4f     // horizontal chase speed cap
@@ -256,8 +268,9 @@ float worldFog(const World *world) { return world->powerTimer[POWERUP_FOG]; }
 
 // Deterministic per-instance seed from an entity's spawn y, so coins get stable
 // random-looking variety without a struct field. **Only valid for an entity
-// that never moves vertically** — a monster on Neon Maze does, which is why it
-// carries a `seed` field stamped from this at spawn instead of calling it live.
+// that never moves vertically** - Maze ghosts and Garden rootworms do, which
+// is why every monster stamps a `seed` here at spawn instead of calling it
+// live.
 static unsigned entSeed(Vector2 p) {
   unsigned h = (unsigned)(int)fabsf(p.y) * 2654435761u;
   h ^= h >> 15;
@@ -443,27 +456,40 @@ static void spawnMonsters(World *world) {
     EraId e = sample.era;
     float pressure = encounterPressure(sample.phase);
     int chance = (int)(pressure * (d + 1) * 100.0f);
-    bool preview = e == ERA_MAZE && sample.phase < GHOST_PREVIEW_END;
+    bool ghostPreview = e == ERA_MAZE && sample.phase < GHOST_PREVIEW_END;
+    bool wormPreview = e == ERA_GARDEN &&
+                       sample.phase >= GARDEN_WORM_PREVIEW_START &&
+                       sample.phase < GARDEN_WORM_PREVIEW_END;
+    bool preview = ghostPreview || wormPreview;
     // At full pressure density rises from 1/5 at level 0 to 4/5 at level 3.
-    // Arrival and relief scale that capped difficulty down; one docile preview
-    // band is guaranteed before the ordinary roll takes over.
+    // Arrival and relief scale that capped difficulty down. Maze first shows a
+    // docile ghost; Garden waits until its rooted platform lesson is visible,
+    // then guarantees one slow rootworm opposite the coin route.
     if (preview || GetRandomValue(0, 499) < chance) {
       FIND_FREE(s, monsters, MAX_MONSTERS);
       if (s >= 0) {
-        float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
-        if (e == ERA_MAZE && pressure < 1.0f) {
+        float x =
+            e == ERA_GARDEN
+                ? GetRandomValue(WORM_EDGE, SCREEN_WIDTH - WORM_EDGE)
+                : GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN);
+        if ((e == ERA_MAZE || wormPreview) && pressure < 1.0f) {
+          float edge = e == ERA_GARDEN ? WORM_EDGE : SPAWN_MARGIN;
           x = routeXAt(world, world->monsterSpawnY) < SCREEN_WIDTH / 2.0f
-                  ? SCREEN_WIDTH - SPAWN_MARGIN
-                  : SPAWN_MARGIN;
+                  ? SCREEN_WIDTH - edge
+                  : edge;
         }
         float motion = INTRO_GHOST_MUL + (1.0f - INTRO_GHOST_MUL) * pressure;
         float speed = MONSTER_DRIFT * (1.0f + DIFFICULTY_SPEED * d) * motion;
+        if (e == ERA_GARDEN) {
+          speed *= WORM_SPEED_MUL;
+        }
         float vx = GetRandomValue(0, 1) ? speed : -speed;
-        // vy stays 0: only a Neon Maze ghost ever leaves its spawn row, and
-        // steerGhost is what gives it one.
+        // Garden reuses vy as a smoothed body-facing value; other monsters
+        // leave it at zero until Neon Maze steering gives it vertical motion.
+        float vy = e == ERA_GARDEN ? copysignf(1.0f, vx) : 0.0f;
         Vector2 at = {x, world->monsterSpawnY};
         world->monsters[s] =
-            (Monster){at, vx, true, e, 0.0f, entSeed(at), pressure};
+            (Monster){at, vx, true, e, vy, entSeed(at), pressure};
       }
     }
     float step = MONSTER_SPACING - DIFFICULTY_TIGHTEN * d;
@@ -730,8 +756,8 @@ static void hitPlayer(World *world, Player *player) {
 
 // Plowing through a monster while invincible. Also the ghost-eat on Neon Maze:
 // there it chains, each ghost on one pellet worth double the last.
-static void splatMonster(World *world, Monster *m) {
-  spawnParticles(world, m->position, GRAPE, 12, false);
+static void splatMonster(World *world, Monster *m, Vector2 impact) {
+  spawnParticles(world, impact, GRAPE, 12, false);
   m->active = false;
   world->shake = fmaxf(world->shake, SHAKE_SPLAT);
   world->hitstop = 3; // brief freeze reads as impact
@@ -748,7 +774,7 @@ static void splatMonster(World *world, Monster *m) {
     world->ghostChain++;
     pitch += 0.15f * (float)n;
   }
-  sfxAt(SFX_SPLAT, pitch, audioPan(m->position.x));
+  sfxAt(SFX_SPLAT, pitch, audioPan(impact.x));
 }
 
 // Neon Maze steering: the drifting monster becomes a ghost that hunts the blob,
@@ -765,25 +791,81 @@ static void steerGhost(Monster *m, const Player *player, bool frightened) {
   m->vy = clampf(m->vy, -GHOST_VY * top * pressure, GHOST_VY * top * pressure);
 }
 
+static float rootwormRadius(int segment) {
+  return MONSTER_RADIUS * (0.82f - segment * 0.055f);
+}
+
+// Rootworm geometry is derived from the moving head and immutable spawn seed.
+// Collision and drawing call this same function, so every visible segment
+// bites.
+static Vector2 rootwormSegment(const Monster *m, int segment) {
+  float facing = fabsf(m->vy) > 0.01f ? clampf(m->vy, -1.0f, 1.0f)
+                                      : (m->vx >= 0.0f ? 1.0f : -1.0f);
+  float phase = (m->seed & 255u) / 255.0f * TWO_PI;
+  float distance = segment * WORM_SEGMENT_GAP;
+  Vector2 p = {m->position.x - facing * distance, m->position.y};
+  float headWave = sinf(m->position.x * WORM_WAVE_FREQ + phase);
+  float bodyWave = sinf(p.x * WORM_WAVE_FREQ + phase);
+  float turn = 1.0f - fabsf(facing);
+  p.y +=
+      (bodyWave - headWave) * WORM_BODY_WAVE +
+      turn * sinf((float)segment / (WORM_SEGMENTS - 1) * PI) * distance * 0.42f;
+  return p;
+}
+
+static bool monsterTouchesPlayer(const Monster *m, const Player *player,
+                                 Vector2 *impact) {
+  if (m->era != ERA_GARDEN) {
+    *impact = m->position;
+    return CheckCollisionCircles(player->position, player->radius, m->position,
+                                 MONSTER_RADIUS);
+  }
+  for (int k = 0; k < WORM_SEGMENTS; k++) {
+    Vector2 segment = rootwormSegment(m, k);
+    if (CheckCollisionCircles(player->position, player->radius, segment,
+                              rootwormRadius(k))) {
+      *impact = segment;
+      return true;
+    }
+  }
+  return false;
+}
+
 static void updateMonsters(World *world, Player *player) {
   bool pellet = world->powerTimer[POWERUP_PELLET] > 0.0f;
   FOREACH_ACTIVE(monsters, MAX_MONSTERS, i) {
     Monster *m = &world->monsters[i];
     bool ghost = m->era == ERA_MAZE;
+    bool worm = m->era == ERA_GARDEN;
     bool frightened = ghost && pellet;
     if (ghost) {
       steerGhost(m, player, frightened);
+    } else if (worm) {
+      float phase = (m->seed & 255u) / 255.0f * TWO_PI;
+      float oldWave = sinf(m->position.x * WORM_WAVE_FREQ + phase);
+      float newWave = sinf((m->position.x + m->vx) * WORM_WAVE_FREQ + phase);
+      m->position.y += (newWave - oldWave) * WORM_HEAD_WAVE;
     }
     m->position.x += m->vx;
-    m->position.y += m->vy;
-    if (m->position.x < MONSTER_RADIUS ||
-        m->position.x > SCREEN_WIDTH - MONSTER_RADIUS) {
-      m->vx = -m->vx;
+    if (!worm) {
+      m->position.y += m->vy;
     }
-    if (CheckCollisionCircles(player->position, player->radius, m->position,
-                              MONSTER_RADIUS)) {
+    float edge = worm ? WORM_EDGE : MONSTER_RADIUS;
+    if (m->position.x < edge) {
+      m->position.x = edge;
+      m->vx = fabsf(m->vx);
+    } else if (m->position.x > SCREEN_WIDTH - edge) {
+      m->position.x = SCREEN_WIDTH - edge;
+      m->vx = -fabsf(m->vx);
+    }
+    if (worm) {
+      float facing = m->vx >= 0.0f ? 1.0f : -1.0f;
+      m->vy += (facing - m->vy) * 0.12f;
+    }
+    Vector2 impact;
+    if (monsterTouchesPlayer(m, player, &impact)) {
       if (worldInvincible(world) || frightened) {
-        splatMonster(world, m);
+        splatMonster(world, m, impact);
       } else {
         m->active = false;
         musicMonsterHit();
@@ -851,16 +933,22 @@ static void bounceOnPlatforms(World *world, Player *player) {
         world->flashPos = (Vector2){player->position.x, top};
         world->flash = 1.0f;
       }
-      Color burst = erupted ? FLAME : rooted ? GRASS : CLOUD;
-      spawnParticles(world, (Vector2){player->position.x, top}, burst,
+      Vector2 impact = {player->position.x, top};
+      Color burst = erupted ? FLAME : CLOUD;
+      spawnParticles(world, impact, burst,
                      erupted  ? 18
-                     : rooted ? 14
+                     : rooted ? 10
                               : 8,
                      false);
+      if (rooted) {
+        spawnParticles(world, impact, GRASS, 6, false);
+      }
       if (erupted) {
         sfxAt(SFX_ERUPT, 1.0f, audioPan(player->position.x));
+      } else if (rooted) {
+        sfxAt(SFX_ROOT, 1.0f, audioPan(player->position.x));
       } else {
-        sfxAt(SFX_BOUNCE, rooted ? 1.16f : 1.0f, audioPan(player->position.x));
+        sfxAt(SFX_BOUNCE, 1.0f, audioPan(player->position.x));
       }
       if (pl->fragile && pl->timer <= 0.0f) {
         pl->timer = crumbleDuration(pl);
@@ -1114,20 +1202,65 @@ static bool tetroCellAt(int shape, int x, int y) {
   return false;
 }
 
-// Falling Blocks pads share the backdrop's shapes, but not its visual weight:
-// a dark silhouette pulls them forward, white rails mark safe landing tops,
-// and warm exposed sides mark the crush zone. Short trails make their descent
-// readable even when the player and camera are both moving.
+static void drawGardenCell(float x, float y, float a) {
+  Color rim = ColorBrightness(CLOUD_SHADE, -0.32f);
+  Color soil = ColorLerp(CLOUD_SHADE, CLOUD, 0.46f);
+  DrawRectangle(x - 2.0f, y - 2.0f, TETRO_CELL + 4.0f, TETRO_CELL + 4.0f,
+                Fade(rim, a));
+  DrawRectangle(x, y, TETRO_CELL, TETRO_CELL, Fade(soil, a));
+  drawTex(TEX_ROCK, x + TETRO_CELL * 0.5f, y + TETRO_CELL * 0.5f, TETRO_CELL,
+          TETRO_CELL, 0.0f, Fade(ColorBrightness(CLOUD, -0.38f), 0.34f * a));
+  DrawCircle(x + 7.0f, y + 17.0f, 2.0f, Fade(SUN, 0.38f * a));
+}
+
+// Garden's falling tetromino footprint is now a compacted seedbed, not a neon
+// block recolor. Green buds mark safe tops; exposed sides trail hooked roots so
+// the crushing half of the rule remains readable without red warning paint.
+static void drawFallingSeedbed(const Platform *pl, Vector2 p, float a,
+                               float glow) {
+  float w = tetroWidth(pl->shape);
+  glowStamp((Vector2){p.x + w * 0.5f, p.y + TETRO_CELL}, w * 1.25f, SUN,
+            0.04f * a, 0.12f * a, glow);
+  for (int k = 0; k < PAD_BOXES; k++) {
+    int gx = TETRO[pl->shape][k][0], gy = TETRO[pl->shape][k][1];
+    float x = p.x + gx * TETRO_CELL, y = p.y + gy * TETRO_CELL;
+    if (!tetroCellAt(pl->shape, gx, gy - 1)) {
+      DrawLineEx((Vector2){x + 7.0f, y - 19.0f}, (Vector2){x + 9.0f, y - 5.0f},
+                 2.0f, Fade(CLOUD, 0.34f * a));
+      DrawCircle(x + 7.0f, y - 20.0f, 2.0f, Fade(SUN_CORE, 0.42f * a));
+    }
+    drawGardenCell(x, y, a);
+    if (!tetroCellAt(pl->shape, gx, gy - 1)) {
+      DrawRectangle(x + 2.0f, y + 2.0f, TETRO_CELL - 4.0f, 4.0f,
+                    Fade(ColorBrightness(GRASS, 0.22f), 0.9f * a));
+      DrawLineEx((Vector2){x + 12.0f, y + 2.0f}, (Vector2){x + 9.0f, y - 3.0f},
+                 1.4f, Fade(GRASS, a));
+      DrawLineEx((Vector2){x + 12.0f, y + 2.0f}, (Vector2){x + 15.0f, y - 3.0f},
+                 1.4f, Fade(GRASS, a));
+    }
+    if (!tetroCellAt(pl->shape, gx, gy + 1)) {
+      float rootX = x + TETRO_CELL * 0.5f;
+      DrawLineEx((Vector2){rootX, y + TETRO_CELL - 2.0f},
+                 (Vector2){rootX - 6.0f, y + TETRO_CELL + 10.0f}, 2.2f,
+                 Fade(COIN_LO, 0.86f * a));
+      DrawLineEx((Vector2){rootX - 6.0f, y + TETRO_CELL + 10.0f},
+                 (Vector2){rootX + 1.0f, y + TETRO_CELL + 14.0f}, 1.4f,
+                 Fade(SUN_CORE, 0.7f * a));
+    }
+  }
+}
+
+// Falling Blocks keep their hard silhouette, landing rails, and warm crush
+// edges. Garden takes the seedbed path above before any digital art is drawn.
 static void drawFallingPiece(const Platform *pl, Vector2 p, float a,
                              float glow) {
-  bool garden = pl->era == ERA_GARDEN;
-  Color c = gTheme.confetti[pl->shape % CONFETTI_COUNT];
-  if (garden) {
-    c = ColorLerp(c, GRASS, 0.42f);
+  if (pl->era == ERA_GARDEN) {
+    drawFallingSeedbed(pl, p, a, glow);
+    return;
   }
+  Color c = gTheme.confetti[pl->shape % CONFETTI_COUNT];
   Color outline = {0x04, 0x0A, 0x0D, 0xFF};
   Color danger = {0xFF, 0x55, 0x66, 0xFF};
-  Color rail = garden ? ColorBrightness(GRASS, 0.32f) : RAYWHITE;
   float w = tetroWidth(pl->shape);
   glowStamp((Vector2){p.x + w * 0.5f, p.y + TETRO_CELL}, w * 1.4f, c, 0.10f * a,
             0.30f * a, glow);
@@ -1151,15 +1284,8 @@ static void drawFallingPiece(const Platform *pl, Vector2 p, float a,
     int gx = TETRO[pl->shape][k][0], gy = TETRO[pl->shape][k][1];
     float x = p.x + gx * TETRO_CELL, y = p.y + gy * TETRO_CELL;
     if (!tetroCellAt(pl->shape, gx, gy - 1)) {
-      DrawRectangle(x + 2.0f, y + 2.0f, TETRO_CELL - 4.0f, 4.0f, Fade(rail, a));
-      if (garden) {
-        DrawLineEx((Vector2){x + 12.0f, y + 2.0f},
-                   (Vector2){x + 9.0f, y - 3.0f}, 1.5f,
-                   Fade(GRASS_DK, 0.8f * a));
-        DrawLineEx((Vector2){x + 12.0f, y + 2.0f},
-                   (Vector2){x + 15.0f, y - 3.0f}, 1.5f,
-                   Fade(GRASS_DK, 0.8f * a));
-      }
+      DrawRectangle(x + 2.0f, y + 2.0f, TETRO_CELL - 4.0f, 4.0f,
+                    Fade(RAYWHITE, a));
     }
     if (!tetroCellAt(pl->shape, gx, gy + 1)) {
       DrawRectangle(x + 3.0f, y + TETRO_CELL - 6.0f, TETRO_CELL - 6.0f, 4.0f,
@@ -1176,49 +1302,40 @@ static void drawFallingPiece(const Platform *pl, Vector2 p, float a,
   }
 }
 
-// A Garden piece keeps all four collision cells when a landing roots it. Fall
-// trails and danger edges disappear; exposed tops sprout while roots hang from
-// exposed bottoms, making the state change readable without a color cue.
+// Landing wakes the same four seedbed cells. Their falling hooks become long
+// branching roots while every exposed top keeps the requested bright sprouts.
 static void drawRootedGardenPiece(const Platform *pl, Vector2 p, float a,
                                   float glow) {
-  Color c =
-      ColorLerp(gTheme.confetti[pl->shape % CONFETTI_COUNT], GRASS, 0.58f);
-  Color outline = ColorBrightness(GRASS_DK, -0.35f);
   float w = tetroWidth(pl->shape);
-  glowStamp((Vector2){p.x + w * 0.5f, p.y + TETRO_CELL}, w * 1.35f, GRASS,
-            0.07f * a, 0.14f * a, glow);
+  glowStamp((Vector2){p.x + w * 0.5f, p.y + TETRO_CELL}, w * 1.3f, SUN,
+            0.05f * a, 0.12f * a, glow);
 
   for (int k = 0; k < PAD_BOXES; k++) {
     int gx = TETRO[pl->shape][k][0], gy = TETRO[pl->shape][k][1];
     float x = p.x + gx * TETRO_CELL, y = p.y + gy * TETRO_CELL;
-    DrawRectangle(x - 2.0f, y - 2.0f, TETRO_CELL + 4.0f, TETRO_CELL + 4.0f,
-                  Fade(outline, a));
-  }
-  drawTetromino(p.x, p.y, TETRO_CELL, pl->shape, c, a);
-
-  for (int k = 0; k < PAD_BOXES; k++) {
-    int gx = TETRO[pl->shape][k][0], gy = TETRO[pl->shape][k][1];
-    float x = p.x + gx * TETRO_CELL, y = p.y + gy * TETRO_CELL;
+    drawGardenCell(x, y, a);
     if (!tetroCellAt(pl->shape, gx, gy - 1)) {
       float sx = x + TETRO_CELL * 0.5f;
-      float h = 7.0f + (k % 3) * 2.0f;
+      float h = 9.0f + (k % 3) * 3.0f;
       DrawRectangle(x + 2.0f, y + 2.0f, TETRO_CELL - 4.0f, 4.0f,
-                    Fade(RAYWHITE, 0.9f * a));
+                    Fade(SUN_CORE, 0.8f * a));
       DrawLineEx((Vector2){sx, y + 2.0f}, (Vector2){sx, y - h}, 1.8f,
                  Fade(GRASS_DK, a));
-      DrawCircle(sx - 3.0f, y - h * 0.62f, 2.5f, Fade(GRASS, a));
-      DrawCircle(sx + 3.0f, y - h * 0.78f, 2.3f,
+      DrawCircle(sx - 3.4f, y - h * 0.6f, 2.7f, Fade(GRASS, a));
+      DrawCircle(sx + 3.4f, y - h * 0.78f, 2.5f,
                  Fade(ColorBrightness(GRASS, 0.2f), a));
       DrawCircle(sx, y - h, 2.0f, Fade(COIN_HI, 0.9f * a));
     }
     if (!tetroCellAt(pl->shape, gx, gy + 1)) {
       float rx = x + TETRO_CELL * 0.5f;
-      DrawLineEx((Vector2){rx, y + TETRO_CELL - 2.0f},
-                 (Vector2){rx - 4.0f, y + TETRO_CELL + 8.0f}, 1.6f,
-                 Fade(GRASS_DK, 0.72f * a));
-      DrawLineEx((Vector2){rx, y + TETRO_CELL - 2.0f},
-                 (Vector2){rx + 5.0f, y + TETRO_CELL + 6.0f}, 1.4f,
-                 Fade(GRASS_DK, 0.58f * a));
+      float length = 17.0f + (k % 3) * 5.0f;
+      Vector2 fork = {rx + (k & 1 ? 5.0f : -5.0f), y + TETRO_CELL + length};
+      DrawLineEx((Vector2){rx, y + TETRO_CELL - 2.0f}, fork, 2.8f,
+                 Fade(CLOUD, 0.88f * a));
+      DrawLineEx(fork, (Vector2){fork.x - 8.0f, fork.y + 7.0f}, 1.5f,
+                 Fade(CLOUD, 0.68f * a));
+      DrawLineEx(fork, (Vector2){fork.x + 7.0f, fork.y + 9.0f}, 1.3f,
+                 Fade(SUN_CORE, 0.5f * a));
     }
   }
 }
@@ -1477,6 +1594,63 @@ static void drawMonster(Vector2 m, float t, float pellet, unsigned seed,
   }
 }
 
+// Reboot Garden monsters are original rootworms: a tapering chain follows one
+// seed-driven curve, with root hairs and feelers rather than borrowed skins or
+// arena UI. rootwormSegment() also supplies collision for every visible bead.
+static void drawRootworm(const Monster *m, float t, float glow) {
+  Vector2 body[WORM_SEGMENTS];
+  for (int k = 0; k < WORM_SEGMENTS; k++) {
+    body[k] = rootwormSegment(m, k);
+  }
+
+  Color outline = ColorBrightness(GRAPE_DK, -0.28f);
+  for (int k = WORM_SEGMENTS - 1; k > 0; k--) {
+    DrawLineEx(body[k], body[k - 1], rootwormRadius(k) * 1.55f,
+               Fade(outline, 0.95f));
+  }
+  for (int k = WORM_SEGMENTS - 1; k >= 0; k--) {
+    float r = rootwormRadius(k);
+    drawTex(TEX_PUFF, body[k].x, body[k].y + r * 0.75f, r * 2.2f, r * 0.8f,
+            0.0f, Fade(BLACK, 0.22f));
+  }
+  glowStamp(body[2], WORM_SEGMENT_GAP * 6.0f, SUN, 0.05f, 0.1f, glow);
+
+  for (int k = WORM_SEGMENTS - 1; k >= 0; k--) {
+    float r = rootwormRadius(k);
+    float phase = (m->seed & 255u) / 255.0f * TWO_PI;
+    float pulse = 1.0f + 0.035f * sinf(t * 5.0f + k * 0.9f + phase);
+    Color skin = ColorLerp(GRAPE, COIN_LO, (k & 1) ? 0.1f : 0.0f);
+    DrawCircleV(body[k], r * pulse + 2.0f, outline);
+    DrawCircleV(body[k], r * pulse, skin);
+    DrawCircle(body[k].x - r * 0.22f, body[k].y - r * 0.28f, r * 0.34f,
+               Fade(ColorBrightness(GRAPE, 0.32f), 0.62f));
+    if (k > 1 && (k & 1)) {
+      float hair = (k & 2) ? -1.0f : 1.0f;
+      DrawLineEx((Vector2){body[k].x, body[k].y + hair * r * 0.7f},
+                 (Vector2){body[k].x - 4.0f, body[k].y + hair * r * 1.25f},
+                 1.4f, Fade(CLOUD, 0.7f));
+    }
+  }
+
+  Vector2 head = body[0];
+  float r = rootwormRadius(0), dir = m->vx >= 0.0f ? 1.0f : -1.0f;
+  for (int side = -1; side <= 1; side += 2) {
+    Vector2 base = {head.x + dir * r * 0.42f, head.y + side * r * 0.38f};
+    Vector2 tip = {head.x + dir * r * 1.28f, head.y + side * r * 0.72f};
+    DrawLineEx(base, tip, 2.2f, outline);
+    DrawCircleV(tip, 3.2f, COIN_HI);
+    DrawCircleV(tip, 1.2f, SUN_CORE);
+  }
+  for (int side = -1; side <= 1; side += 2) {
+    Vector2 eye = {head.x + dir * r * 0.34f, head.y + side * r * 0.27f};
+    DrawCircleV(eye, 4.8f, RAYWHITE);
+    DrawCircle(eye.x + dir * 1.7f, eye.y, 2.4f, MOUTH);
+    DrawCircle(eye.x + dir * 2.3f, eye.y - 0.8f, 0.8f, RAYWHITE);
+  }
+  DrawLineEx((Vector2){head.x + dir * r * 0.62f, head.y - 3.0f},
+             (Vector2){head.x + dir * r * 0.75f, head.y + 3.0f}, 2.0f, MOUTH);
+}
+
 static void drawPowerUp(const PowerUp *pu, float t, float glow) {
   Vector2 c = {pu->position.x,
                pu->position.y + sinf(t * 3.0f + pu->position.x * 0.1f) * 4.0f};
@@ -1730,10 +1904,15 @@ void drawWorld(const World *world) {
   drawCoin(world->coins[i].position, t, world->coins[i].era == ERA_MAZE, glow);
   FOREACH_ACTIVE(powerups, MAX_POWERUPS, i)
   drawPowerUp(&world->powerups[i], t, glow);
-  FOREACH_ACTIVE(monsters, MAX_MONSTERS, i)
-  drawMonster(world->monsters[i].position, t,
-              world->monsters[i].era == ERA_MAZE ? pellet : 0.0f,
-              world->monsters[i].seed, glow);
+  FOREACH_ACTIVE(monsters, MAX_MONSTERS, i) {
+    const Monster *m = &world->monsters[i];
+    if (m->era == ERA_GARDEN) {
+      drawRootworm(m, t, glow);
+    } else {
+      drawMonster(m->position, t, m->era == ERA_MAZE ? pellet : 0.0f, m->seed,
+                  glow);
+    }
+  }
 
   drawParticles(world, glow);
   drawFlash(world, glow);
@@ -1873,6 +2052,9 @@ static void checkEras(void) {
   assert(GHOST_PREVIEW_END * BAND > MONSTER_SPACING_MIN);
   assert(PELLET_PREVIEW_END * BAND > POWERUP_SPACING);
   assert(GARDEN_ROOT_PREVIEW_END * BAND >= PLATFORM_SPACING);
+  assert(GARDEN_WORM_PREVIEW_START > GARDEN_ROOT_PREVIEW_END);
+  assert((GARDEN_WORM_PREVIEW_END - GARDEN_WORM_PREVIEW_START) * BAND >=
+         MONSTER_SPACING_MIN);
 
   // The first platform of each mechanical era is stamped as a safe example:
   // broad/slow Skies drift, a long Night timer, a slow one-row block, a broad
@@ -1985,6 +2167,17 @@ static void checkEras(void) {
     assert(maze.powerups[0].active && maze.powerups[0].type == POWERUP_PELLET &&
            maze.powerups[0].position.x == 650.0f &&
            POWERUP_SFX[POWERUP_PELLET] == SFX_PELLET);
+
+    World garden = worldAtLevel(ERA_GARDEN);
+    garden.monsterSpawnY = SCREEN_HEIGHT / 2.0f - (ERA_GARDEN + 0.06f) * BAND;
+    garden.coins[0] =
+        (Coin){{650.0f, garden.monsterSpawnY}, true, ERA_GARDEN, {0, 0}};
+    garden.cameraY = garden.monsterSpawnY + SCREEN_HEIGHT - 1.0f;
+    spawnMonsters(&garden);
+    Monster *worm = &garden.monsters[0];
+    assert(worm->active && worm->era == ERA_GARDEN &&
+           worm->position.x == WORM_EDGE && worm->pressure < 0.3f &&
+           fabsf(worm->vx) < matureSpeed * WORM_SPEED_MUL);
   }
 
   // The mature core keeps the old capped debuff pressure, while the same high
@@ -2176,6 +2369,25 @@ static void checkEras(void) {
     updateMonsters(&w, &p);
     assert(w.monsters[0].vx > 0.0f && w.monsters[0].vy != 0.0f &&
            "Maze monster stopped chasing at the global boundary");
+  }
+
+  // Every visible rootworm segment is hazardous, not only its leading bead.
+  // The shared procedural curve must therefore remain collision truth too.
+  {
+    World w = bareWorld(ERA_GARDEN);
+    Player p = createPlayer();
+    p.position = (Vector2){20.0f, w.bestY - 500.0f};
+    w.monsters[0] =
+        (Monster){{400.0f, w.bestY}, 1.0f, true, ERA_GARDEN, 1.0f, 17, 1.0f};
+    float y = w.monsters[0].position.y;
+    updateMonsters(&w, &p);
+    assert(w.monsters[0].position.x > 400.0f && w.monsters[0].position.y != y &&
+           "rootworm did not slither");
+    p.position = rootwormSegment(&w.monsters[0], WORM_SEGMENTS - 2);
+    w.monsters[0].vx = 0.0f;
+    updateMonsters(&w, &p);
+    assert(!w.monsters[0].active && w.hitstop == 2 && p.velocity.y == 12.0f &&
+           "rootworm body did not collide");
   }
 
   // First-cycle richness follows each coin row, including at the wrap, rather
@@ -2571,7 +2783,7 @@ int main(int argc, char **argv) {
     w.bestY = SCREEN_HEIGHT / 2.0f + cameraY;
     // Each cell shows its era's *mechanic*, not just its palette: wind trails,
     // a cracked Night pad, frightened Maze ghosts, all seven Falling pieces,
-    // cold/hot/erupted Magma vents, and moving/rooted Garden pieces.
+    // cold/hot/erupted Magma vents, and Garden rootworms plus seedbeds.
     w.level = i;
     for (int k = 0; k < MAX_COINS; k++) {
       w.coins[k].era = i;

@@ -96,10 +96,13 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # Drop unreferenced code/data at link time (removes raylib's unused audio/image/
 # font-format decoders the game never calls). Compile with per-function/data
 # sections so macOS ld64 can dead-strip at that granularity.
-# -Wall -Wextra on our target only (not the raylib submodule). Deliberately
+# -Wall -Wextra on our target only (not the raylib submodule). Apple Clang's
+# MinSizeRel starts at -Os; the later -Oz is intentional because the extra
+# Mach-O text pages otherwise break the floppy budget. Deliberately
 # without -Wconversion: the code leans on raylib's int APIs, so implicit
 # float->int narrowing is expected and would flood the build (see .clang-tidy).
 target_compile_options(${PROJECT_NAME} PRIVATE
+    $<$<NOT:$<CONFIG:Debug>>:-Oz>
     -Wall -Wextra -ffunction-sections -fdata-sections)
 target_link_options(${PROJECT_NAME} PRIVATE -Wl,-dead_strip)
 

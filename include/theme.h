@@ -43,8 +43,8 @@ typedef enum {
   BRIDGE_SIGNAL,
   BRIDGE_FRAGMENTATION,
   BRIDGE_MELTDOWN,
-  BRIDGE_FERTILE,
-  BRIDGE_BLOOM,
+  BRIDGE_BURROW,
+  BRIDGE_EMERGENCE,
   BRIDGE_COUNT
 } BridgeStyle;
 
@@ -55,7 +55,7 @@ typedef enum {
   BACKDROP_MAZE,   // neon maze lattice and pellet dots on dark ground
   BACKDROP_BLOCKS, // falling neon tetromino cells
   BACKDROP_MAGMA,  // volcanic forge, lava rivers, basalt, and rising embers
-  BACKDROP_GARDEN  // rooted cells, terraced fields, and predawn growth
+  BACKDROP_GARDEN  // underground loam, branching roots, and buried sprouts
 } BackdropStyle;
 
 #define CONFETTI_COUNT 6

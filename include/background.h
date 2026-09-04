@@ -12,7 +12,7 @@ void drawGameForeground(float cameraY);
 // The seven tetromino footprints as (dx,dy) cells, all non-negative, so
 // `origin + d*cell` is both where a cell is drawn and where it collides. The
 // Falling Blocks backdrop rains them and its moving platforms use the same
-// cells; Reboot Garden keeps those cells when a moving piece roots in place.
+// cells; Reboot Garden skins the footprint as soil and keeps it after rooting.
 // Declared unsized deliberately (see the robustness convention in AGENTS.md):
 // spelling the length here would make background.c's completeness assert
 // measure this declaration instead of the table.

@@ -29,6 +29,7 @@ typedef enum {
   STYLE_MAZE,
   STYLE_BLOCKS,
   STYLE_MAGMA,
+  STYLE_GARDEN,
   STYLE_UI,
   STYLE_CREDITS,
   STYLE_RESULTS,
@@ -36,7 +37,7 @@ typedef enum {
 } SoundStyle;
 
 static const float STYLE_PITCH[] = {1.0f,  1.12f, 0.88f, 1.02f, 0.96f,
-                                    0.91f, 1.0f,  0.94f, 0.88f};
+                                    0.91f, 0.94f, 1.0f,  0.94f, 0.88f};
 STATIC_ASSERT(ARRAY_LEN(STYLE_PITCH) == STYLE_COUNT, style_pitches_full);
 
 typedef enum {
@@ -48,7 +49,8 @@ typedef enum {
   INST_KEYS,
   INST_NEON,
   INST_BLOCK,
-  INST_FORGE
+  INST_FORGE,
+  INST_ROOT
 } Instrument;
 
 typedef struct MusicBuild MusicBuild;
@@ -183,6 +185,10 @@ static float styleWave(SoundStyle style, float cycles, float hz, int sample,
     return 0.42f * sawWave(cycles, hz) + 0.3f * sine +
            0.18f * sinf(TAU * cycles * 0.5f) +
            0.1f * smoothNoise(seed, (unsigned)sample, 29u);
+  case STYLE_GARDEN:
+    return 0.46f * triangleWave(cycles) + 0.28f * sine +
+           0.16f * sinf(TAU * cycles * 0.5f) +
+           0.1f * smoothNoise(seed, (unsigned)sample, 47u);
   case STYLE_CREDITS:
     return 0.72f * sine + 0.2f * triangleWave(cycles) +
            0.08f * sinf(TAU * cycles * 2.0f);
@@ -234,6 +240,8 @@ static float instrumentRelease(Instrument inst) {
     return 0.3f;
   case INST_PLUCK:
     return 0.18f;
+  case INST_ROOT:
+    return 0.24f;
   default:
     return 0.14f;
   }
@@ -304,6 +312,17 @@ static float instrumentSample(Instrument inst, float hz, float t, float gate,
               0.27f * sinf(TAU * cycles + 0.65f * sinf(TAU * cycles * 1.5f)) +
               0.15f * triangleWave(cycles);
     return env * floorf(s * 20.0f + 0.5f) / 20.0f;
+  }
+
+  case INST_ROOT: {
+    cycles = vibratoCycles(hz, t, 2.4f, 0.0012f);
+    env = (1.0f - expf(-t * 420.0f)) * expf(-t * 3.1f) *
+          adsr(t, gate, 0.003f, 0.16f, 0.58f, 0.24f);
+    float wood = 0.58f * sinf(TAU * cycles) +
+                 0.24f * sinf(TAU * cycles * 2.67f) +
+                 0.12f * triangleWave(cycles * 0.5f);
+    float scrape = 0.08f * smoothNoise(seed, (unsigned)sample, 23u);
+    return env * (wood + scrape);
   }
 
   case INST_FORGE:
@@ -378,6 +397,7 @@ static const signed char PROG_NIGHT[] = {0, 3, 6, 4, 0, 5, 3, 4};
 static const signed char PROG_MAZE[] = {0, 0, 3, 4, 0, 5, 3, 4, 0, 6, 3, 4};
 static const signed char PROG_BLOCKS[] = {0, 5, 3, 4, 0, 6, 3, 4, 5, 3, 4, 0};
 static const signed char PROG_MAGMA[] = {0, 0, 1, 4, 0, 5, 1, 4, 0, 3, 1, 0};
+static const signed char PROG_GARDEN[] = {0, 0, 3, 4, 0, 5, 3, 0};
 static const signed char PROG_MENU[] = {0, 3, 5, 4, 0, 1, 3, 4};
 static const signed char PROG_CREDITS[] = {0, 5, 3, 4, 1, 3, 4, 0};
 static const signed char PROG_RESULTS[] = {0, 5, 3, 4};
@@ -754,6 +774,45 @@ static void composeMagma(MusicBuild *b) {
            0.0f, 10000u);
 }
 
+// Reboot Garden has its own subterranean groove: low Dorian roots, hollow wood
+// knocks that crawl across stereo, soil shakers, and a slow sprouting answer.
+static void composeGarden(MusicBuild *b) {
+  static const float KNOCK_AT[] = {0.0f, 0.75f, 1.5f, 2.5f, 3.25f};
+  static const int KNOCK_DEGREE[] = {0, 2, 4, 1, 3};
+  int tonic = b->track->rootMidi;
+  for (int bar = 0; bar < b->track->bars; bar++) {
+    float at = bar * 4.0f;
+    int degree = PROG_GARDEN[bar];
+    addChord(b, SCALE_DORIAN, tonic - 12, degree, at, 3.82f, INST_PAD, 0.052f,
+             10100u + (unsigned)bar);
+    addNote(b, INST_BASS, degreeMidi(SCALE_DORIAN, tonic - 24, degree), at,
+            1.45f, 0.2f, 0.0f, 10200u + (unsigned)bar);
+    addNote(b, INST_BASS, degreeMidi(SCALE_DORIAN, tonic - 24, degree + 4),
+            at + 2.0f, 1.35f, 0.16f, 0.0f, 10300u + (unsigned)bar);
+    for (int i = 0; i < ARRAY_LEN(KNOCK_AT); i++) {
+      int d = degree + KNOCK_DEGREE[i];
+      addNote(b, INST_ROOT, degreeMidi(SCALE_DORIAN, tonic, d),
+              at + KNOCK_AT[i], 0.38f, 0.11f, (i & 1) ? 0.52f : -0.52f,
+              10400u + (unsigned)(bar * 8 + i));
+    }
+    addDrum(b, DRUM_TOM, at + (bar & 1 ? 2.75f : 0.0f), 0.18f,
+            bar & 1 ? 0.24f : -0.24f, 10600u + (unsigned)bar);
+    for (int i = 0; i < 8; i++) {
+      addDrum(b, DRUM_SHAKER, at + i * 0.5f + 0.25f, 0.042f,
+              (i & 1) ? 0.58f : -0.58f, 10700u + (unsigned)(bar * 8 + i));
+    }
+    if ((bar & 1) != 0) {
+      addNote(b, INST_AIR, degreeMidi(SCALE_DORIAN, tonic + 12, degree + 6),
+              at + 3.0f, 0.72f, 0.055f, (bar & 2) ? 0.38f : -0.38f,
+              10800u + (unsigned)bar);
+    }
+  }
+  addMotif(b, SCALE_DORIAN, tonic + 12, 0.0f, 1.25f, 0, INST_ROOT, 0.18f,
+           -0.18f, 10900u);
+  addMotif(b, SCALE_DORIAN, tonic + 12, 16.0f, 1.25f, 1, INST_ROOT, 0.19f,
+           0.18f, 11000u);
+}
+
 static void composeMenu(MusicBuild *b) {
   int tonic = b->track->rootMidi;
   for (int bar = 0; bar < b->track->bars; bar++) {
@@ -878,6 +937,8 @@ static const Track TRACKS[] = {
      composeBlocks},
     {108.0f, ARRAY_LEN(PROG_MAGMA), 4, 57, STYLE_MAGMA, 0.1f, 0.22f, 0.12f,
      composeMagma},
+    {92.0f, ARRAY_LEN(PROG_GARDEN), 4, 62, STYLE_GARDEN, 0.12f, 0.2f, 0.112f,
+     composeGarden},
     {104.0f, ARRAY_LEN(PROG_MENU), 4, 67, STYLE_UI, 0.14f, 0.16f, 0.11f,
      composeMenu},
     {104.0f, ARRAY_LEN(PROG_MENU), 4, 67, STYLE_UI, 0.12f, 0.12f, 0.115f,
@@ -890,15 +951,16 @@ static const Track TRACKS[] = {
 STATIC_ASSERT(ARRAY_LEN(TRACKS) == TRACK_COUNT, tracks_full);
 
 // Every adjacent gameplay track pair gets one compact handoff recipe. Garden
-// reuses Hills, so Garden -> Hills intentionally keeps one playhead and needs
-// no seventh recipe. Actual switches land on an outgoing bar line.
+// now owns a subterranean cue, so both the descent into soil and emergence into
+// Hills have authored seams. Actual switches land on an outgoing bar line.
 typedef enum {
   HANDOFF_AIR,
   HANDOFF_TWILIGHT,
   HANDOFF_SIGNAL,
   HANDOFF_FRAGMENT,
   HANDOFF_MELTDOWN,
-  HANDOFF_FERTILE,
+  HANDOFF_BURROW,
+  HANDOFF_EMERGENCE,
   HANDOFF_COUNT
 } HandoffColor;
 
@@ -916,7 +978,8 @@ static const Handoff HANDOFFS[] = {
     {TRACK_NIGHT, TRACK_MAZE, 1.0f, 1.0f, HANDOFF_SIGNAL},
     {TRACK_MAZE, TRACK_BLOCKS, 1.0f, 1.0f, HANDOFF_FRAGMENT},
     {TRACK_BLOCKS, TRACK_MAGMA, 2.0f, 1.0f, HANDOFF_MELTDOWN},
-    {TRACK_MAGMA, TRACK_HILLS, 2.0f, 1.0f, HANDOFF_FERTILE},
+    {TRACK_MAGMA, TRACK_GARDEN, 2.0f, 1.0f, HANDOFF_BURROW},
+    {TRACK_GARDEN, TRACK_HILLS, 2.0f, 1.0f, HANDOFF_EMERGENCE},
 };
 STATIC_ASSERT(ARRAY_LEN(HANDOFFS) == TRACK_GAMEPLAY_COUNT,
               gameplay_handoffs_full);
@@ -924,8 +987,8 @@ STATIC_ASSERT((int)HANDOFF_COUNT == (int)TRACK_GAMEPLAY_COUNT,
               handoff_colors_full);
 
 static const int *const GAMEPLAY_SCALES[] = {
-    SCALE_MAJOR, SCALE_LYDIAN,         SCALE_DORIAN,
-    SCALE_MINOR, SCALE_HARMONIC_MINOR, SCALE_PHRYGIAN,
+    SCALE_MAJOR,          SCALE_LYDIAN,   SCALE_DORIAN, SCALE_MINOR,
+    SCALE_HARMONIC_MINOR, SCALE_PHRYGIAN, SCALE_DORIAN,
 };
 STATIC_ASSERT(ARRAY_LEN(GAMEPLAY_SCALES) == TRACK_GAMEPLAY_COUNT,
               gameplay_scales_full);
@@ -940,8 +1003,9 @@ static int handoffFor(int from, int to) {
 }
 
 static const MusicTrack PRELOAD_ORDER[] = {
-    TRACK_MENU,   TRACK_HILLS, TRACK_SKIES, TRACK_NIGHT,   TRACK_MAZE,
-    TRACK_BLOCKS, TRACK_MAGMA, TRACK_SHOP,  TRACK_CREDITS, TRACK_RESULTS,
+    TRACK_MENU, TRACK_HILLS,   TRACK_SKIES,   TRACK_NIGHT,
+    TRACK_MAZE, TRACK_BLOCKS,  TRACK_MAGMA,   TRACK_GARDEN,
+    TRACK_SHOP, TRACK_CREDITS, TRACK_RESULTS,
 };
 STATIC_ASSERT(ARRAY_LEN(PRELOAD_ORDER) == TRACK_COUNT,
               audio_preload_order_full);
@@ -1232,6 +1296,7 @@ static const CueDef CUES[] = {
     {0.22f, 0.38f, 0.08f, 3}, // BOUNCE
     {0.48f, 0.42f, 0.2f, 5},  // CRUMBLE
     {0.72f, 0.46f, 0.24f, 7}, // ERUPT
+    {0.62f, 0.4f, 0.18f, 6},  // ROOT
     {0.48f, 0.32f, 0.12f, 4}, // MAGNET
     {0.58f, 0.34f, 0.16f, 5}, // ROCKET
     {0.52f, 0.3f, 0.1f, 4},   // BALLOON
@@ -1422,13 +1487,14 @@ static float renderHandoffCue(const Voice *v, unsigned seedOffset) {
   float destination =
       styleWave(to->style, toHz * t, toHz, v->pos, v->seed + seedOffset + 17u);
   bool meltdown = handoff->color == HANDOFF_MELTDOWN;
-  bool fertile = handoff->color == HANDOFF_FERTILE;
+  bool burrow = handoff->color == HANDOFF_BURROW;
+  bool emergence = handoff->color == HANDOFF_EMERGENCE;
   float pivot = source + (destination - source) * blend;
-  if (meltdown || fertile) {
-    // E binds Blocks to the A-Phrygian forge; A then binds that forge to the
-    // Hills' D-major mallets. Holding the shared pitch makes both material
-    // changes feel like one continuous object rather than a crossfade.
-    float common = midiHz(meltdown ? 64 : 69);
+  if (meltdown || burrow || emergence) {
+    // One shared pitch carries each material change: E into the forge, A down
+    // into the root network, then D back through the soil into Sunny Hills.
+    int commonMidi = meltdown ? 64 : burrow ? 69 : 62;
+    float common = midiHz(commonMidi);
     pivot =
         0.8f * sinf(TAU * common * t) + 0.2f * sinf(TAU * common * 2.0f * t);
   }
@@ -1455,11 +1521,15 @@ static float renderHandoffCue(const Voice *v, unsigned seedOffset) {
   float hz = midiHz(midi);
   float motifWave = styleWave(motifVoice->style, hz * local / SAMPLE_RATE, hz,
                               local, v->seed + seedOffset + 31u);
-  if (meltdown || fertile) {
+  if (meltdown || burrow || emergence) {
     float localT = (float)local / SAMPLE_RATE;
     float gate = (float)(end - start) / SAMPLE_RATE * 0.72f;
-    Instrument fromInst = meltdown ? INST_BLOCK : INST_FORGE;
-    Instrument toInst = meltdown ? INST_FORGE : INST_MALLET;
+    Instrument fromInst = meltdown ? INST_BLOCK
+                          : burrow ? INST_FORGE
+                                   : INST_ROOT;
+    Instrument toInst = meltdown ? INST_FORGE
+                        : burrow ? INST_ROOT
+                                 : INST_MALLET;
     float fromWave = instrumentSample(fromInst, hz, localT, gate, local,
                                       v->seed + seedOffset + 31u);
     float toWave = instrumentSample(toInst, hz, localT, gate, local,
@@ -1501,12 +1571,21 @@ static float renderHandoffCue(const Voice *v, unsigned seedOffset) {
     color = 0.11f * (digital + (roar - digital) * blend);
     break;
   }
-  case HANDOFF_FERTILE: {
+  case HANDOFF_BURROW: {
     float crackle =
         noiseAt(v->seed + seedOffset, (unsigned)v->pos) -
         noiseAt(v->seed + seedOffset, (unsigned)(v->pos > 0 ? v->pos - 1 : 0));
+    float pulse =
+        0.7f * sinf(TAU * toHz * 0.5f * t) +
+        0.3f * smoothNoise(v->seed + seedOffset, (unsigned)v->pos, 37u);
+    color = 0.09f * (crackle * (1.0f - blend) + pulse * blend);
+    break;
+  }
+  case HANDOFF_EMERGENCE: {
+    float knock = 0.65f * triangleWave(fromHz * t) +
+                  0.35f * sinf(TAU * fromHz * 0.5f * t);
     float chime = 0.72f * sinf(TAU * toHz * t) + 0.28f * triangleWave(toHz * t);
-    color = 0.08f * (crackle * (1.0f - blend) + chime * blend);
+    color = 0.085f * (knock * (1.0f - blend) + chime * blend);
     break;
   }
   case HANDOFF_COUNT:
@@ -1552,6 +1631,15 @@ static float renderCueMono(const Voice *v, unsigned seedOffset) {
     return cueEnv(v, 0.002f, 1.15f) *
            (0.34f * thump + 0.42f * roar * (0.35f + 0.65f * rise) +
             0.24f * flare * rise);
+  }
+  case SFX_ROOT: {
+    static const int NOTES[] = {0, 2, 7};
+    float thump = chirpWave(v, 155.0f, 48.0f) * expf(-x * 7.0f);
+    float grit = n - noiseAt(v->seed + seedOffset,
+                             (unsigned)(v->pos > 0 ? v->pos - 1 : 0));
+    float sprout = steppedTone(v, NOTES, ARRAY_LEN(NOTES), x, 12);
+    return cueEnv(v, 0.002f, 1.3f) *
+           (0.38f * thump + 0.32f * grit * (1.0f - x) + 0.3f * sprout);
   }
   case SFX_MAGNET: {
     static const int NOTES[] = {0, 7, 12, 16};
@@ -1766,6 +1854,10 @@ static Stereo renderComboLayer(unsigned pos, int combo) {
     hat = 0.68f * hp + 0.32f * smoothNoise(0xF04E3u, pos, 23u);
     hatGain = 0.046f;
     break;
+  case STYLE_GARDEN:
+    hat = 0.42f * hp + 0.58f * smoothNoise(0xB0075u, pos, 31u);
+    hatGain = 0.043f;
+    break;
   default:
     break;
   }
@@ -1793,6 +1885,10 @@ static Stereo renderComboLayer(unsigned pos, int combo) {
       start = 132.0f;
       end = 42.0f;
       gain = 0.1f;
+    } else if (track->style == STYLE_GARDEN) {
+      start = 118.0f;
+      end = 40.0f;
+      gain = 0.086f;
     }
     float t = (float)kickPhase / SAMPLE_RATE;
     float phase = sweepCycles(start, end, t, (float)kickLen / SAMPLE_RATE);
@@ -1820,6 +1916,9 @@ static Stereo renderComboLayer(unsigned pos, int combo) {
       texture = 0.55f * texture +
                 0.45f * sinf(TAU * 112.0f * snarePhase / SAMPLE_RATE);
       gain = 0.06f;
+    } else if (track->style == STYLE_GARDEN) {
+      texture = 0.35f * texture + 0.65f * smoothNoise(0x50011u, pos, 29u);
+      gain = 0.052f;
     }
     float snare = gain * comboStage(combo, 10) * snareEnv * texture;
     out.l += snare * 0.8f;
@@ -2254,7 +2353,7 @@ static void checkDynamics(void) {
   loopPos[TRACK_HILLS] = 1234;
   setTrack(TRACK_HILLS);
   assert(loopPos[TRACK_HILLS] == 1234 && pendingTrack == TRACK_NONE &&
-         "shared Garden/Hills track restarted");
+         "same track restarted");
 
   curTrack = prevTrack = TRACK_HILLS;
   Stereo noFinale = renderFinale(0, 1.0f);
@@ -2306,7 +2405,8 @@ static int prepareHandoffTest(int handoff) {
 
 static void checkHandoffs(void) {
   int meltdown = handoffFor(TRACK_BLOCKS, TRACK_MAGMA);
-  assert(meltdown >= 0 && handoffFor(TRACK_MAGMA, TRACK_HILLS) >= 0);
+  assert(meltdown >= 0 && handoffFor(TRACK_MAGMA, TRACK_GARDEN) >= 0 &&
+         handoffFor(TRACK_GARDEN, TRACK_HILLS) >= 0);
   float filter, fade;
   handoffMixShape(meltdown, 0.25f, &filter, &fade);
   assert(filter > 0.0f && fade == 0.0f);
@@ -2415,8 +2515,8 @@ static void writeWavHeader(FILE *file, int frames) {
 }
 
 static const char *const TRACK_NAMES[] = {
-    "sunny", "skies", "night", "maze",    "blocks",
-    "magma", "menu",  "shop",  "credits", "results",
+    "sunny",  "skies", "night", "maze",    "blocks",  "magma",
+    "garden", "menu",  "shop",  "credits", "results",
 };
 STATIC_ASSERT(ARRAY_LEN(TRACK_NAMES) == TRACK_COUNT, track_names_full);
 
