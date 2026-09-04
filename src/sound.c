@@ -22,6 +22,11 @@ typedef struct {
   float l, r;
 } Stereo;
 
+static Stereo panGains(float pan) {
+  float angle = (clampf(pan, -1.0f, 1.0f) + 1.0f) * PI * 0.25f;
+  return (Stereo){cosf(angle), sinf(angle)};
+}
+
 typedef enum {
   STYLE_SUNNY,
   STYLE_SKIES,
@@ -50,7 +55,8 @@ typedef enum {
   INST_NEON,
   INST_BLOCK,
   INST_FORGE,
-  INST_ROOT
+  INST_ROOT,
+  INST_COUNT
 } Instrument;
 
 typedef struct MusicBuild MusicBuild;
@@ -228,23 +234,25 @@ static float adsr(float t, float gate, float attack, float decay, float sustain,
   return atGate * tail * tail;
 }
 
+// Positional in Instrument order. A new synth voice must choose its release
+// explicitly instead of silently inheriting the old switch default.
+static const float INSTRUMENT_RELEASE[] = {
+    0.3f,  // MALLET
+    0.18f, // PLUCK
+    0.55f, // AIR
+    0.9f,  // PAD
+    0.14f, // BASS
+    0.38f, // KEYS
+    0.14f, // NEON
+    0.14f, // BLOCK
+    0.14f, // FORGE
+    0.24f, // ROOT
+};
+STATIC_ASSERT(ARRAY_LEN(INSTRUMENT_RELEASE) == INST_COUNT,
+              instrument_releases_full);
+
 static float instrumentRelease(Instrument inst) {
-  switch (inst) {
-  case INST_PAD:
-    return 0.9f;
-  case INST_AIR:
-    return 0.55f;
-  case INST_KEYS:
-    return 0.38f;
-  case INST_MALLET:
-    return 0.3f;
-  case INST_PLUCK:
-    return 0.18f;
-  case INST_ROOT:
-    return 0.24f;
-  default:
-    return 0.14f;
-  }
+  return INSTRUMENT_RELEASE[inst];
 }
 
 static float instrumentSample(Instrument inst, float hz, float t, float gate,
@@ -325,8 +333,7 @@ static float instrumentSample(Instrument inst, float hz, float t, float gate,
     return env * (wood + scrape);
   }
 
-  case INST_FORGE:
-  default: {
+  case INST_FORGE: {
     cycles = vibratoCycles(hz, t, 3.2f, 0.0008f);
     env = adsr(t, gate, 0.004f, 0.18f, 0.5f, 0.28f);
     float strike = sinf(TAU * cycles +
@@ -335,7 +342,10 @@ static float instrumentSample(Instrument inst, float hz, float t, float gate,
            (0.5f * strike + 0.25f * sawWave(cycles, hz) +
             0.17f * sinf(TAU * cycles * 0.5f) + 0.08f * n * expf(-t * 5.0f));
   }
+  case INST_COUNT:
+    break;
   }
+  return 0.0f;
 }
 
 static int frameAtBeat(const MusicBuild *b, float beat) {
@@ -353,9 +363,7 @@ static void addNote(MusicBuild *b, Instrument inst, int midi, float beat,
   float gate = beats * 60.0f / b->track->bpm;
   float release = instrumentRelease(inst);
   int count = (int)((gate + release) * SAMPLE_RATE + 0.5f);
-  pan = clampf(pan, -1.0f, 1.0f);
-  float angle = (pan + 1.0f) * PI * 0.25f;
-  float left = cosf(angle), right = sinf(angle);
+  Stereo gains = panGains(pan);
   float hz = midiHz(midi);
   bool wide = inst == INST_PAD || inst == INST_AIR;
   float hzLeft = wide ? hz * 0.99798f : hz;
@@ -367,8 +375,8 @@ static void addNote(MusicBuild *b, Instrument inst, int midi, float beat,
     float l = instrumentSample(inst, hzLeft, t, gate, i, seed);
     float r =
         wide ? instrumentSample(inst, hzRight, t, gate, i, seed + 0x91u) : l;
-    b->buf[frame * 2] += gain * left * l;
-    b->buf[frame * 2 + 1] += gain * right * r;
+    b->buf[frame * 2] += gain * gains.l * l;
+    b->buf[frame * 2 + 1] += gain * gains.r * r;
   }
 }
 
@@ -519,15 +527,13 @@ static void addDrum(MusicBuild *b, DrumKind kind, float beat, float gain,
   float duration = drumDuration(kind);
   int count = (int)(duration * SAMPLE_RATE + 0.5f);
   int start = frameAtBeat(b, beat);
-  pan = clampf(pan, -1.0f, 1.0f);
-  float angle = (pan + 1.0f) * PI * 0.25f;
-  float left = cosf(angle), right = sinf(angle);
+  Stereo gains = panGains(pan);
   for (int i = 0; i < count; i++) {
     int frame = wrapFrame(start + i, b->frames);
     float value =
         gain * drumSample(kind, (float)i / SAMPLE_RATE, duration, i, seed);
-    b->buf[frame * 2] += left * value;
-    b->buf[frame * 2 + 1] += right * value;
+    b->buf[frame * 2] += gains.l * value;
+    b->buf[frame * 2 + 1] += gains.r * value;
   }
 }
 
@@ -1377,17 +1383,16 @@ static int triggerCue(SfxId id, float pitch, float pan, bool musicBus,
   unsigned seed = hash32(++voiceSerial * 0x9e3779b9u + (unsigned)id * 101u);
   float randomPitch = id == SFX_COIN ? 0.004f : 0.012f;
   pitch *= 1.0f + noiseAt(seed, 1u) * randomPitch;
-  pan =
-      clampf(pan + noiseAt(seed, 2u) * (musicBus ? 0.0f : 0.035f), -1.0f, 1.0f);
-  float angle = (pan + 1.0f) * PI * 0.25f;
+  pan += noiseAt(seed, 2u) * (musicBus ? 0.0f : 0.035f);
+  Stereo gains = panGains(pan);
   voices[slot] = (Voice){
       .active = true,
       .type = id,
       .pos = 0,
       .length = (int)(CUES[id].seconds * SAMPLE_RATE + 0.5f),
       .pitch = pitch,
-      .left = cosf(angle),
-      .right = sinf(angle),
+      .left = gains.l,
+      .right = gains.r,
       .gain = CUES[id].gain * (0.96f + 0.08f * noiseAt(seed, 3u)),
       .style = style,
       .rootMidi = rootMidi,
@@ -2028,20 +2033,15 @@ static void beginPendingTrack(void) {
   clearPendingTrack();
 }
 
-static float eased01(float x) {
-  x = clampf(x, 0.0f, 1.0f);
-  return x * x * (3.0f - 2.0f * x);
-}
-
 static void handoffMixShape(int handoff, float progress, float *filter,
                             float *fade) {
-  *filter = *fade = eased01(progress);
+  *filter = *fade = smooth01(progress);
   if (handoff >= 0 && handoff < ARRAY_LEN(HANDOFFS) &&
       HANDOFFS[handoff].color == HANDOFF_MELTDOWN) {
     // Two source beats: melt hats/snare into the low-passed center first, then
     // take out the remaining kick/bass under the shared-pitch motif bridge.
-    *filter = eased01(progress * 2.0f);
-    *fade = eased01(progress * 2.0f - 1.0f);
+    *filter = smooth01(progress * 2.0f);
+    *fade = smooth01(progress * 2.0f - 1.0f);
   }
 }
 
@@ -2210,6 +2210,25 @@ static void resetPlaybackTest(void) {
 }
 
 static void checkDefinitions(void) {
+  Stereo left = panGains(-1.0f), center = panGains(0.0f),
+         right = panGains(1.0f);
+  assert(left.l > 0.999f && fabsf(left.r) < 0.001f);
+  assert(fabsf(center.l * center.l + center.r * center.r - 1.0f) < 0.001f);
+  assert(fabsf(right.l) < 0.001f && right.r > 0.999f);
+
+  for (int inst = 0; inst < INST_COUNT; inst++) {
+    assert(INSTRUMENT_RELEASE[inst] > 0.0f);
+    double energy = 0.0;
+    for (int sample = 0; sample < 2048; sample++) {
+      float value = instrumentSample((Instrument)inst, 220.0f,
+                                     (float)sample / SAMPLE_RATE, 0.08f, sample,
+                                     123u + (unsigned)inst);
+      assert(isfinite(value));
+      energy += fabsf(value);
+    }
+    assert(energy > 0.01 && "instrument implementation is silent");
+  }
+
   for (int i = 0; i < TRACK_COUNT; i++) {
     const Track *track = &TRACKS[i];
     assert(track->bpm >= 60.0f && track->bpm <= 180.0f);

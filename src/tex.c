@@ -26,25 +26,37 @@
 
 // Grey noise -> white-with-alpha, so a tint can recolor it.
 static void lumaToAlpha(Image *img) {
+  if (img->data == NULL) {
+    return;
+  }
   Color *p = img->data;
   for (int i = 0, n = img->width * img->height; i < n; i++) {
     p[i] = (Color){255, 255, 255, p[i].r};
   }
 }
 
-// Multiply dst's alpha by src's luminance — how a shape mask and a noise field
-// combine into one texture (a radial falloff x perlin = a cloud).
-static void mulAlphaLuma(Image *dst, Image src) {
+// Multiply dst's alpha by src's luminance - how a shape mask and a noise field
+// combine into one texture (a radial falloff x perlin = a cloud). Returns false
+// when either allocation failed or the image sizes do not match.
+static bool mulAlphaLuma(Image *dst, Image src) {
+  if (dst->data == NULL || src.data == NULL || dst->width != src.width ||
+      dst->height != src.height) {
+    return false;
+  }
   Color *d = dst->data;
   const Color *s = src.data;
   for (int i = 0, n = dst->width * dst->height; i < n; i++) {
     d[i].a = (unsigned char)(d[i].a * s[i].r / 255);
   }
+  return true;
 }
 
 // Gamma the alpha ramp: g > 1 eats the faint tail (only bright wisps survive),
 // g < 1 lifts it. The contrast knob for every generator below.
 static void alphaCurve(Image *img, float g) {
+  if (img->data == NULL) {
+    return;
+  }
   unsigned char lut[256];
   for (int i = 0; i < 256; i++) {
     lut[i] = (unsigned char)(255.0f * powf(i / 255.0f, g) + 0.5f);
@@ -76,7 +88,11 @@ static Image genPuff(int px) {
 static Image genCloud(int px) {
   Image im = GenImageGradientRadial(px, px, 0.45f, WHITE, WHITE_CLEAR);
   Image n = GenImagePerlinNoise(px, px, 0, 0, 4.0f);
-  mulAlphaLuma(&im, n);
+  if (!mulAlphaLuma(&im, n)) {
+    UnloadImage(im);
+    UnloadImage(n);
+    return (Image){0};
+  }
   UnloadImage(n);
   alphaCurve(&im, 0.5f);
   return im;
@@ -112,7 +128,11 @@ static Image genStarfield(int px) {
   Image im = GenImageWhiteNoise(px, px, STAR_DENSITY);
   lumaToAlpha(&im);
   Image n = GenImagePerlinNoise(px, px, 0, 0, 2.0f);
-  mulAlphaLuma(&im, n);
+  if (!mulAlphaLuma(&im, n)) {
+    UnloadImage(im);
+    UnloadImage(n);
+    return (Image){0};
+  }
   UnloadImage(n);
   alphaCurve(&im, STAR_THIN);
   return im;
@@ -239,6 +259,12 @@ void unloadTexCache(void) {
 #define CELL 192
 
 int main(int argc, char **argv) {
+  Image empty = {0};
+  lumaToAlpha(&empty);
+  alphaCurve(&empty, 1.0f);
+  assert(!mulAlphaLuma(&empty, empty) &&
+         "empty image bypassed allocation guard");
+
   Image sheet = GenImageColor(CELL * TEX_COUNT, CELL, (Color){24, 24, 32, 255});
 
   for (int i = 0; i < TEX_COUNT; i++) {

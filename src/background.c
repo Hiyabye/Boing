@@ -27,8 +27,7 @@ static float wrapf(float value, float range) {
 }
 
 static float easedWindow(float phase, float start, float end) {
-  float t = clampf((phase - start) / (end - start), 0.0f, 1.0f);
-  return t * t * (3.0f - 2.0f * t);
+  return smooth01((phase - start) / (end - start));
 }
 
 static float bridgeBell(float t) { return 4.0f * t * (1.0f - t); }

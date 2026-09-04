@@ -37,7 +37,7 @@ static Rectangle rMissionTab(int tab) {
   return centeredRow(262, 160, 42, tab, MISSION_TAB_COUNT);
 }
 
-// The whole game loop in six short lines. Details belong in play, not here.
+// The controls and goal in six short lines. Details belong in play, not here.
 static const char *HELP_LINES[] = {
     "Move with arrow keys or mouse",
     "Grab coins to climb higher",

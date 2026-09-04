@@ -33,7 +33,7 @@ typedef struct Platform {
   float vy;  // Blocks/Garden descent; > 0 crushes, Garden landing sets it to 0
   int shape; // Cell footprint in TETRO[]. Garden keeps it as a rooted soil bed;
              // Magma uses it only to vary crack geometry.
-  float pressure; // immutable 0..1 arrival/relief tuning; also organic growth
+  float pressure; // immutable 0..1 arrival/relief tuning and Magma heat cap
 } Platform;
 
 typedef struct Monster {

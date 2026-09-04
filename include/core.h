@@ -26,4 +26,11 @@ static inline float clampf(float v, float lo, float hi) {
   return v < lo ? lo : (v > hi ? hi : v);
 }
 
+// Cubic smoothstep over 0..1. Transition, pressure, and audio envelopes share
+// this exact easing so each module does not carry its own copy of the formula.
+static inline float smooth01(float t) {
+  t = clampf(t, 0.0f, 1.0f);
+  return t * t * (3.0f - 2.0f * t);
+}
+
 #endif // CORE_H

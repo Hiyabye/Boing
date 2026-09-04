@@ -1,8 +1,7 @@
 #include "world.h"
 
-#include "background.h" // TETRO[] + drawTetromino: moving Blocks and Garden
-                        // pads share the backdrop's cells, keeping art and
-                        // collision identical while Garden roots in place
+#include "background.h" // TETRO[] is shared collision/art geometry; Blocks
+                        // also reuse drawTetromino for their rendered cells
 #include "core.h"
 #include "progress.h" // PuTrack + MAX_UPG_LEVEL for the upgrade hooks
 #include "sound.h"
@@ -139,11 +138,6 @@ STATIC_ASSERT(ERA_COUNT <= 256, entity_era_fits_byte);
 // One spawn-local envelope: safe arrival, full-strength development/mastery,
 // then relief before the next boundary. Entities stamp this value once, so a
 // live object never retunes under the player.
-static float smooth01(float t) {
-  t = clampf(t, 0.0f, 1.0f);
-  return t * t * (3.0f - 2.0f * t);
-}
-
 static float encounterPressure(float phase) {
   float arrival = smooth01(phase / PRESSURE_RISE_END);
   float relief = 1.0f - smooth01((phase - PRESSURE_FALL_START) /

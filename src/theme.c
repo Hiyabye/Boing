@@ -314,9 +314,7 @@ static void setThemeColor(Theme *theme, int i, Color color) {
 }
 
 static float transitionBlend(float phase) {
-  float t = clampf((phase - TRANSITION_START) / (1.0f - TRANSITION_START), 0.0f,
-                   1.0f);
-  return t * t * (3.0f - 2.0f * t);
+  return smooth01((phase - TRANSITION_START) / (1.0f - TRANSITION_START));
 }
 
 ThemeSample themeSampleAt(float ascent) {
