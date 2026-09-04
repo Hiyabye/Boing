@@ -28,14 +28,15 @@ typedef enum {
   STYLE_NIGHT,
   STYLE_MAZE,
   STYLE_BLOCKS,
+  STYLE_MAGMA,
   STYLE_UI,
   STYLE_CREDITS,
   STYLE_RESULTS,
   STYLE_COUNT
 } SoundStyle;
 
-static const float STYLE_PITCH[] = {1.0f,  1.12f, 0.88f, 1.02f,
-                                    0.96f, 1.0f,  0.94f, 0.88f};
+static const float STYLE_PITCH[] = {1.0f,  1.12f, 0.88f, 1.02f, 0.96f,
+                                    0.91f, 1.0f,  0.94f, 0.88f};
 STATIC_ASSERT(ARRAY_LEN(STYLE_PITCH) == STYLE_COUNT, style_pitches_full);
 
 typedef enum {
@@ -46,7 +47,8 @@ typedef enum {
   INST_BASS,
   INST_KEYS,
   INST_NEON,
-  INST_BLOCK
+  INST_BLOCK,
+  INST_FORGE
 } Instrument;
 
 typedef struct MusicBuild MusicBuild;
@@ -177,6 +179,10 @@ static float styleWave(SoundStyle style, float cycles, float hz, int sample,
     float digital = 0.62f * pulseWave(cycles, hz, 0.5f) + 0.38f * sine;
     return floorf(digital * 18.0f + 0.5f) / 18.0f;
   }
+  case STYLE_MAGMA:
+    return 0.42f * sawWave(cycles, hz) + 0.3f * sine +
+           0.18f * sinf(TAU * cycles * 0.5f) +
+           0.1f * smoothNoise(seed, (unsigned)sample, 29u);
   case STYLE_CREDITS:
     return 0.72f * sine + 0.2f * triangleWave(cycles) +
            0.08f * sinf(TAU * cycles * 2.0f);
@@ -291,14 +297,24 @@ static float instrumentSample(Instrument inst, float hz, float t, float gate,
            (0.48f * pulseWave(cycles, hz, 0.25f) + 0.28f * sawWave(cycles, hz) +
             0.24f * sinf(TAU * cycles + 0.8f * sinf(TAU * cycles * 2.0f)));
 
-  case INST_BLOCK:
-  default: {
+  case INST_BLOCK: {
     cycles = vibratoCycles(hz, t, 6.0f, 0.001f);
     env = adsr(t, gate, 0.003f, 0.1f, 0.62f, 0.12f);
     float s = 0.58f * pulseWave(cycles, hz, 0.5f) +
               0.27f * sinf(TAU * cycles + 0.65f * sinf(TAU * cycles * 1.5f)) +
               0.15f * triangleWave(cycles);
     return env * floorf(s * 20.0f + 0.5f) / 20.0f;
+  }
+
+  case INST_FORGE:
+  default: {
+    cycles = vibratoCycles(hz, t, 3.2f, 0.0008f);
+    env = adsr(t, gate, 0.004f, 0.18f, 0.5f, 0.28f);
+    float strike = sinf(TAU * cycles +
+                        2.4f * expf(-t * 7.0f) * sinf(TAU * cycles * 2.71f));
+    return env *
+           (0.5f * strike + 0.25f * sawWave(cycles, hz) +
+            0.17f * sinf(TAU * cycles * 0.5f) + 0.08f * n * expf(-t * 5.0f));
   }
   }
 }
@@ -343,12 +359,14 @@ static const int SCALE_LYDIAN[] = {0, 2, 4, 6, 7, 9, 11};
 static const int SCALE_MINOR[] = {0, 2, 3, 5, 7, 8, 10};
 static const int SCALE_DORIAN[] = {0, 2, 3, 5, 7, 9, 10};
 static const int SCALE_HARMONIC_MINOR[] = {0, 2, 3, 5, 7, 8, 11};
+static const int SCALE_PHRYGIAN[] = {0, 1, 3, 5, 7, 8, 10};
 STATIC_ASSERT(ARRAY_LEN(SCALE_MAJOR) == SCALE_DEGREES, major_scale_full);
 STATIC_ASSERT(ARRAY_LEN(SCALE_LYDIAN) == SCALE_DEGREES, lydian_scale_full);
 STATIC_ASSERT(ARRAY_LEN(SCALE_MINOR) == SCALE_DEGREES, minor_scale_full);
 STATIC_ASSERT(ARRAY_LEN(SCALE_DORIAN) == SCALE_DEGREES, dorian_scale_full);
 STATIC_ASSERT(ARRAY_LEN(SCALE_HARMONIC_MINOR) == SCALE_DEGREES,
               harmonic_minor_scale_full);
+STATIC_ASSERT(ARRAY_LEN(SCALE_PHRYGIAN) == SCALE_DEGREES, phrygian_scale_full);
 
 // Harmonic plans are shared config rather than hidden inside each composer.
 // TRACKS derives each loop's bar count from these arrays, so score length and
@@ -359,6 +377,7 @@ static const signed char PROG_SKIES[] = {0, 1, 3, 0, 5, 1, 4, 0, 3, 1, 4, 0};
 static const signed char PROG_NIGHT[] = {0, 3, 6, 4, 0, 5, 3, 4};
 static const signed char PROG_MAZE[] = {0, 0, 3, 4, 0, 5, 3, 4, 0, 6, 3, 4};
 static const signed char PROG_BLOCKS[] = {0, 5, 3, 4, 0, 6, 3, 4, 5, 3, 4, 0};
+static const signed char PROG_MAGMA[] = {0, 0, 1, 4, 0, 5, 1, 4, 0, 3, 1, 0};
 static const signed char PROG_MENU[] = {0, 3, 5, 4, 0, 1, 3, 4};
 static const signed char PROG_CREDITS[] = {0, 5, 3, 4, 1, 3, 4, 0};
 static const signed char PROG_RESULTS[] = {0, 5, 3, 4};
@@ -700,6 +719,41 @@ static void composeBlocks(MusicBuild *b) {
            0.17f, 0.0f, 5000u);
 }
 
+static void composeMagma(MusicBuild *b) {
+  static const float HAMMER_AT[] = {0.5f, 1.5f, 2.75f, 3.5f};
+  int tonic = b->track->rootMidi;
+  for (int bar = 0; bar < b->track->bars; bar++) {
+    float at = bar * 4.0f;
+    int degree = PROG_MAGMA[bar];
+    addChord(b, SCALE_PHRYGIAN, tonic, degree, at, 3.82f, INST_PAD, 0.052f,
+             9000u + (unsigned)bar);
+    addNote(b, INST_BASS, degreeMidi(SCALE_PHRYGIAN, tonic - 24, degree), at,
+            1.5f, 0.22f, 0.0f, 9100u + (unsigned)bar);
+    addNote(b, INST_BASS, degreeMidi(SCALE_PHRYGIAN, tonic - 24, degree + 4),
+            at + 2.5f, 1.1f, 0.18f, 0.0f, 9200u + (unsigned)bar);
+    for (int i = 0; i < ARRAY_LEN(HAMMER_AT); i++) {
+      int d = degree + (i == 2 ? 4 : (i & 1) * 2);
+      addNote(b, INST_FORGE, degreeMidi(SCALE_PHRYGIAN, tonic + 12, d),
+              at + HAMMER_AT[i], 0.24f, 0.105f, (i & 1) ? 0.48f : -0.48f,
+              9300u + (unsigned)(bar * 4 + i));
+    }
+    addDrum(b, DRUM_KICK, at, 0.5f, 0.0f, 9500u + (unsigned)bar);
+    addDrum(b, DRUM_KICK, at + 2.5f, 0.38f, 0.0f, 9520u + (unsigned)bar);
+    addDrum(b, DRUM_TOM, at + 1.5f, 0.24f, -0.26f, 9540u + (unsigned)bar);
+    addDrum(b, DRUM_TOM, at + 3.5f, 0.28f, 0.26f, 9560u + (unsigned)bar);
+    for (int i = 0; i < 8; i++) {
+      addDrum(b, DRUM_SHAKER, at + i * 0.5f + 0.25f, 0.05f,
+              (i & 1) ? 0.62f : -0.62f, 9600u + (unsigned)(bar * 8 + i));
+    }
+  }
+  addMotif(b, SCALE_PHRYGIAN, tonic + 12, 0.0f, 1.25f, 0, INST_FORGE, 0.17f,
+           -0.18f, 9800u);
+  addMotif(b, SCALE_PHRYGIAN, tonic + 12, 16.0f, 1.25f, 1, INST_FORGE, 0.16f,
+           0.18f, 9900u);
+  addMotif(b, SCALE_PHRYGIAN, tonic + 12, 32.0f, 1.25f, 0, INST_FORGE, 0.19f,
+           0.0f, 10000u);
+}
+
 static void composeMenu(MusicBuild *b) {
   int tonic = b->track->rootMidi;
   for (int bar = 0; bar < b->track->bars; bar++) {
@@ -822,6 +876,8 @@ static const Track TRACKS[] = {
      composeMaze},
     {142.0f, ARRAY_LEN(PROG_BLOCKS), 4, 64, STYLE_BLOCKS, 0.06f, 0.06f, 0.135f,
      composeBlocks},
+    {108.0f, ARRAY_LEN(PROG_MAGMA), 4, 57, STYLE_MAGMA, 0.1f, 0.22f, 0.12f,
+     composeMagma},
     {104.0f, ARRAY_LEN(PROG_MENU), 4, 67, STYLE_UI, 0.14f, 0.16f, 0.11f,
      composeMenu},
     {104.0f, ARRAY_LEN(PROG_MENU), 4, 67, STYLE_UI, 0.12f, 0.12f, 0.115f,
@@ -835,13 +891,14 @@ STATIC_ASSERT(ARRAY_LEN(TRACKS) == TRACK_COUNT, tracks_full);
 
 // Every adjacent gameplay track pair gets one compact handoff recipe. Garden
 // reuses Hills, so Garden -> Hills intentionally keeps one playhead and needs
-// no sixth recipe. Actual switches land on an outgoing bar line.
+// no seventh recipe. Actual switches land on an outgoing bar line.
 typedef enum {
   HANDOFF_AIR,
   HANDOFF_TWILIGHT,
   HANDOFF_SIGNAL,
   HANDOFF_FRAGMENT,
-  HANDOFF_REBOOT,
+  HANDOFF_MELTDOWN,
+  HANDOFF_FERTILE,
   HANDOFF_COUNT
 } HandoffColor;
 
@@ -858,7 +915,8 @@ static const Handoff HANDOFFS[] = {
     {TRACK_SKIES, TRACK_NIGHT, 1.0f, 1.0f, HANDOFF_TWILIGHT},
     {TRACK_NIGHT, TRACK_MAZE, 1.0f, 1.0f, HANDOFF_SIGNAL},
     {TRACK_MAZE, TRACK_BLOCKS, 1.0f, 1.0f, HANDOFF_FRAGMENT},
-    {TRACK_BLOCKS, TRACK_HILLS, 2.0f, 1.0f, HANDOFF_REBOOT},
+    {TRACK_BLOCKS, TRACK_MAGMA, 2.0f, 1.0f, HANDOFF_MELTDOWN},
+    {TRACK_MAGMA, TRACK_HILLS, 2.0f, 1.0f, HANDOFF_FERTILE},
 };
 STATIC_ASSERT(ARRAY_LEN(HANDOFFS) == TRACK_GAMEPLAY_COUNT,
               gameplay_handoffs_full);
@@ -866,7 +924,8 @@ STATIC_ASSERT((int)HANDOFF_COUNT == (int)TRACK_GAMEPLAY_COUNT,
               handoff_colors_full);
 
 static const int *const GAMEPLAY_SCALES[] = {
-    SCALE_MAJOR, SCALE_LYDIAN, SCALE_DORIAN, SCALE_MINOR, SCALE_HARMONIC_MINOR,
+    SCALE_MAJOR, SCALE_LYDIAN,         SCALE_DORIAN,
+    SCALE_MINOR, SCALE_HARMONIC_MINOR, SCALE_PHRYGIAN,
 };
 STATIC_ASSERT(ARRAY_LEN(GAMEPLAY_SCALES) == TRACK_GAMEPLAY_COUNT,
               gameplay_scales_full);
@@ -881,8 +940,8 @@ static int handoffFor(int from, int to) {
 }
 
 static const MusicTrack PRELOAD_ORDER[] = {
-    TRACK_MENU,   TRACK_HILLS, TRACK_SKIES,   TRACK_NIGHT,   TRACK_MAZE,
-    TRACK_BLOCKS, TRACK_SHOP,  TRACK_CREDITS, TRACK_RESULTS,
+    TRACK_MENU,   TRACK_HILLS, TRACK_SKIES, TRACK_NIGHT,   TRACK_MAZE,
+    TRACK_BLOCKS, TRACK_MAGMA, TRACK_SHOP,  TRACK_CREDITS, TRACK_RESULTS,
 };
 STATIC_ASSERT(ARRAY_LEN(PRELOAD_ORDER) == TRACK_COUNT,
               audio_preload_order_full);
@@ -1172,6 +1231,7 @@ static const CueDef CUES[] = {
     {0.16f, 0.32f, 0.04f, 2}, // COIN
     {0.22f, 0.38f, 0.08f, 3}, // BOUNCE
     {0.48f, 0.42f, 0.2f, 5},  // CRUMBLE
+    {0.72f, 0.46f, 0.24f, 7}, // ERUPT
     {0.48f, 0.32f, 0.12f, 4}, // MAGNET
     {0.58f, 0.34f, 0.16f, 5}, // ROCKET
     {0.52f, 0.3f, 0.1f, 4},   // BALLOON
@@ -1361,12 +1421,14 @@ static float renderHandoffCue(const Voice *v, unsigned seedOffset) {
       styleWave(from->style, fromHz * t, fromHz, v->pos, v->seed + seedOffset);
   float destination =
       styleWave(to->style, toHz * t, toHz, v->pos, v->seed + seedOffset + 17u);
-  bool reboot = handoff->color == HANDOFF_REBOOT;
+  bool meltdown = handoff->color == HANDOFF_MELTDOWN;
+  bool fertile = handoff->color == HANDOFF_FERTILE;
   float pivot = source + (destination - source) * blend;
-  if (reboot) {
-    // A is common to E harmonic minor and D major. Hold it in a plain voice
-    // while the busy digital arrangement falls away and the new mode settles.
-    float common = midiHz(69);
+  if (meltdown || fertile) {
+    // E binds Blocks to the A-Phrygian forge; A then binds that forge to the
+    // Hills' D-major mallets. Holding the shared pitch makes both material
+    // changes feel like one continuous object rather than a crossfade.
+    float common = midiHz(meltdown ? 64 : 69);
     pivot =
         0.8f * sinf(TAU * common * t) + 0.2f * sinf(TAU * common * 2.0f * t);
   }
@@ -1393,14 +1455,16 @@ static float renderHandoffCue(const Voice *v, unsigned seedOffset) {
   float hz = midiHz(midi);
   float motifWave = styleWave(motifVoice->style, hz * local / SAMPLE_RATE, hz,
                               local, v->seed + seedOffset + 31u);
-  if (reboot) {
+  if (meltdown || fertile) {
     float localT = (float)local / SAMPLE_RATE;
     float gate = (float)(end - start) / SAMPLE_RATE * 0.72f;
-    float digital = styleWave(STYLE_BLOCKS, hz * localT, hz, local,
-                              v->seed + seedOffset + 31u);
-    float mallet = instrumentSample(INST_MALLET, hz, localT, gate, local,
+    Instrument fromInst = meltdown ? INST_BLOCK : INST_FORGE;
+    Instrument toInst = meltdown ? INST_FORGE : INST_MALLET;
+    float fromWave = instrumentSample(fromInst, hz, localT, gate, local,
+                                      v->seed + seedOffset + 31u);
+    float toWave = instrumentSample(toInst, hz, localT, gate, local,
                                     v->seed + seedOffset + 47u);
-    motifWave = digital + (mallet - digital) * blend;
+    motifWave = fromWave + (toWave - fromWave) * blend;
   }
   float motif = noteEnv * motifWave;
 
@@ -1429,10 +1493,20 @@ static float renderHandoffCue(const Voice *v, unsigned seedOffset) {
     color = 0.1f * burst * noise;
     break;
   }
-  case HANDOFF_REBOOT: {
+  case HANDOFF_MELTDOWN: {
     float digital = floorf(source * 8.0f + 0.5f) / 8.0f;
-    float soft = 0.72f * sinf(TAU * toHz * t) + 0.28f * triangleWave(toHz * t);
-    color = 0.1f * (digital + (soft - digital) * blend);
+    float roar =
+        0.62f * sinf(TAU * toHz * 0.5f * t) +
+        0.38f * smoothNoise(v->seed + seedOffset, (unsigned)v->pos, 31u);
+    color = 0.11f * (digital + (roar - digital) * blend);
+    break;
+  }
+  case HANDOFF_FERTILE: {
+    float crackle =
+        noiseAt(v->seed + seedOffset, (unsigned)v->pos) -
+        noiseAt(v->seed + seedOffset, (unsigned)(v->pos > 0 ? v->pos - 1 : 0));
+    float chime = 0.72f * sinf(TAU * toHz * t) + 0.28f * triangleWave(toHz * t);
+    color = 0.08f * (crackle * (1.0f - blend) + chime * blend);
     break;
   }
   case HANDOFF_COUNT:
@@ -1467,6 +1541,17 @@ static float renderCueMono(const Voice *v, unsigned seedOffset) {
                                (unsigned)(v->pos > 0 ? v->pos - 1 : 0)));
     float pulse = 0.55f + 0.45f * fabsf(sinf(TAU * 13.0f * t));
     return env * (0.48f * chunks + 0.52f * crack * pulse);
+  }
+  case SFX_ERUPT: {
+    float thump = chirpWave(v, 120.0f, 38.0f) * expf(-x * 6.0f);
+    float roar = 0.55f * smooth + 0.45f * n;
+    float flare = sinf(
+        TAU * sweepCycles(95.0f, 680.0f, t, (float)v->length / SAMPLE_RATE));
+    float rise = clampf((x - 0.12f) / 0.58f, 0.0f, 1.0f);
+    rise = rise * rise * (3.0f - 2.0f * rise);
+    return cueEnv(v, 0.002f, 1.15f) *
+           (0.34f * thump + 0.42f * roar * (0.35f + 0.65f * rise) +
+            0.24f * flare * rise);
   }
   case SFX_MAGNET: {
     static const int NOTES[] = {0, 7, 12, 16};
@@ -1677,6 +1762,10 @@ static Stereo renderComboLayer(unsigned pos, int combo) {
     hat = floorf(hp * 8.0f + 0.5f) / 8.0f;
     hatGain = 0.05f;
     break;
+  case STYLE_MAGMA:
+    hat = 0.68f * hp + 0.32f * smoothNoise(0xF04E3u, pos, 23u);
+    hatGain = 0.046f;
+    break;
   default:
     break;
   }
@@ -1700,6 +1789,10 @@ static Stereo renderComboLayer(unsigned pos, int combo) {
       start = 176.0f;
       end = 58.0f;
       gain = 0.108f;
+    } else if (track->style == STYLE_MAGMA) {
+      start = 132.0f;
+      end = 42.0f;
+      gain = 0.1f;
     }
     float t = (float)kickPhase / SAMPLE_RATE;
     float phase = sweepCycles(start, end, t, (float)kickLen / SAMPLE_RATE);
@@ -1723,6 +1816,10 @@ static Stereo renderComboLayer(unsigned pos, int combo) {
     } else if (track->style == STYLE_BLOCKS) {
       texture = floorf(texture * 10.0f + 0.5f) / 10.0f;
       gain = 0.072f;
+    } else if (track->style == STYLE_MAGMA) {
+      texture = 0.55f * texture +
+                0.45f * sinf(TAU * 112.0f * snarePhase / SAMPLE_RATE);
+      gain = 0.06f;
     }
     float snare = gain * comboStage(combo, 10) * snareEnv * texture;
     out.l += snare * 0.8f;
@@ -1841,9 +1938,9 @@ static void handoffMixShape(int handoff, float progress, float *filter,
                             float *fade) {
   *filter = *fade = eased01(progress);
   if (handoff >= 0 && handoff < ARRAY_LEN(HANDOFFS) &&
-      HANDOFFS[handoff].color == HANDOFF_REBOOT) {
-    // Two source beats: remove hats/snare into the low-passed center first,
-    // then take out the remaining kick/bass under the neutral motif bridge.
+      HANDOFFS[handoff].color == HANDOFF_MELTDOWN) {
+    // Two source beats: melt hats/snare into the low-passed center first, then
+    // take out the remaining kick/bass under the shared-pitch motif bridge.
     *filter = eased01(progress * 2.0f);
     *fade = eased01(progress * 2.0f - 1.0f);
   }
@@ -2208,13 +2305,14 @@ static int prepareHandoffTest(int handoff) {
 }
 
 static void checkHandoffs(void) {
-  int reboot = handoffFor(TRACK_BLOCKS, TRACK_HILLS);
+  int meltdown = handoffFor(TRACK_BLOCKS, TRACK_MAGMA);
+  assert(meltdown >= 0 && handoffFor(TRACK_MAGMA, TRACK_HILLS) >= 0);
   float filter, fade;
-  handoffMixShape(reboot, 0.25f, &filter, &fade);
+  handoffMixShape(meltdown, 0.25f, &filter, &fade);
   assert(filter > 0.0f && fade == 0.0f);
-  handoffMixShape(reboot, 0.5f, &filter, &fade);
+  handoffMixShape(meltdown, 0.5f, &filter, &fade);
   assert(filter == 1.0f && fade == 0.0f);
-  handoffMixShape(reboot, 0.75f, &filter, &fade);
+  handoffMixShape(meltdown, 0.75f, &filter, &fade);
   assert(filter == 1.0f && fabsf(fade - 0.5f) < 0.0001f);
   handoffMixShape(0, 0.25f, &filter, &fade);
   assert(filter == fade && filter > 0.0f);
@@ -2317,8 +2415,8 @@ static void writeWavHeader(FILE *file, int frames) {
 }
 
 static const char *const TRACK_NAMES[] = {
-    "sunny", "skies", "night",   "maze",    "blocks",
-    "menu",  "shop",  "credits", "results",
+    "sunny", "skies", "night", "maze",    "blocks",
+    "magma", "menu",  "shop",  "credits", "results",
 };
 STATIC_ASSERT(ARRAY_LEN(TRACK_NAMES) == TRACK_COUNT, track_names_full);
 

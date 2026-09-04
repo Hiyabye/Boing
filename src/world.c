@@ -59,14 +59,19 @@ static float durMul(PuTrack track) { return 1.0f + DUR_STEP * gPuUpg[track]; }
 #define CRUMBLE_JITTER 2.0f  // px of death-rattle shake while it crumbles
 #define BLOCK_FALL 1.4f      // Falling Blocks: px/frame a pad descends
 #define GARDEN_FALL 0.95f    // Reboot Garden: gentler pieces root on landing
-#define TETRO_CELL 25.0f     // one tetromino cell (a piece is 2-4 cells wide)
+#define MAGMA_CHARGE_CYCLE 150.0f // frames per basalt vent heat pulse
+#define MAGMA_ERUPT_HEAT 0.82f    // visible heat needed for the launch
+#define MAGMA_ERUPT_BOUNCE -42.0f // charged vent's stronger upward kick
+#define MAGMA_ERUPT_FRAMES 34.0f  // lingering flame/steam animation
+#define MAGMA_ERUPT_SHAKE 8.0f
+#define MAGMA_PLATFORM_EXTRA 35.0f // broader safe arrival/relief vents
+#define TETRO_CELL 25.0f // one tetromino cell (a piece is 2-4 cells wide)
 #define PRESSURE_RISE_END 0.18f
 #define PRESSURE_FALL_START 0.78f
 #define INTRO_PLATFORM_EXTRA 60.0f
 #define INTRO_DRIFT_MUL 0.35f
 #define INTRO_CRUMBLE_BONUS 36.0f
 #define INTRO_BLOCK_MUL 0.35f
-#define REBOOT_LOCK_START 0.88f
 #define GARDEN_ROOT_PREVIEW_END 0.03f
 #define GARDEN_ROOT_SHAKE 4.0f
 #define GHOST_PREVIEW_END 0.03f
@@ -132,6 +137,17 @@ static float encounterPressure(float phase) {
   float relief = 1.0f - smooth01((phase - PRESSURE_FALL_START) /
                                  (1.0f - PRESSURE_FALL_START));
   return arrival * relief;
+}
+
+// One fixed-step heat pulse shared by collision and art. Arrival pressure dims
+// it below the eruption threshold, so a new chapter teaches the vent safely;
+// an erupted vent is permanently cooled and never changes back underfoot.
+static float magmaHeat(const Platform *pl) {
+  if (pl->era != ERA_MAGMA || pl->cooled) {
+    return 0.0f;
+  }
+  float phase = fmodf(pl->timer, MAGMA_CHARGE_CYCLE) / MAGMA_CHARGE_CYCLE;
+  return pl->pressure * (0.5f - 0.5f * cosf(phase * TWO_PI));
 }
 
 // Power-up table (indexed by PowerUpType). Ordered exactly as the enum.
@@ -249,9 +265,13 @@ static unsigned entSeed(Vector2 p) {
 }
 
 static float platformWidth(const Platform *pl) {
-  return PLATFORM_WIDTH + (pl->era == ERA_SKIES
-                               ? INTRO_PLATFORM_EXTRA * (1.0f - pl->pressure)
-                               : 0.0f);
+  float extra = 0.0f;
+  if (pl->era == ERA_SKIES) {
+    extra = INTRO_PLATFORM_EXTRA * (1.0f - pl->pressure);
+  } else if (pl->era == ERA_MAGMA) {
+    extra = MAGMA_PLATFORM_EXTRA * (1.0f - pl->pressure);
+  }
+  return PLATFORM_WIDTH + extra;
 }
 
 static float crumbleDuration(const Platform *pl) {
@@ -352,24 +372,28 @@ static void spawnPlatforms(World *world) {
     float pressure = encounterPressure(sample.phase);
     FIND_FREE(s, platforms, MAX_PLATFORMS);
     if (s >= 0) {
-      // Intro Blocks and Garden use a wide, route-aligned I piece. Late Blocks
-      // rows are born locked; Garden first previews that rooted result, then
-      // descending pieces stop only when the player lands on them.
+      // Intro Blocks and Garden use a wide, route-aligned I piece. Magma uses
+      // ordinary boards whose crack pattern varies by shape; its first and
+      // final low-pressure vents are already-cooled safe examples.
       bool blocks = e == ERA_BLOCKS;
+      bool magma = e == ERA_MAGMA;
       bool garden = e == ERA_GARDEN;
-      bool locked = blocks && sample.phase >= REBOOT_LOCK_START;
       bool rootedPreview = garden && sample.phase < GARDEN_ROOT_PREVIEW_END;
       bool cells = blocks || garden;
-      int shape = cells && (pressure < 1.0f || locked || rootedPreview)
+      int shape = cells && (pressure < 1.0f || rootedPreview)
                       ? 0
                       : GetRandomValue(0, TETRO_COUNT - 1);
-      float w =
-          cells ? tetroWidth(shape)
-                : PLATFORM_WIDTH +
-                      (e == ERA_SKIES ? INTRO_PLATFORM_EXTRA * (1.0f - pressure)
-                                      : 0.0f);
+      if (magma) {
+        shape = GetRandomValue(0, TETRO_COUNT - 1);
+      }
+      float extra = e == ERA_SKIES   ? INTRO_PLATFORM_EXTRA
+                    : e == ERA_MAGMA ? MAGMA_PLATFORM_EXTRA
+                                     : 0.0f;
+      float w = cells ? tetroWidth(shape)
+                      : PLATFORM_WIDTH + extra * (1.0f - pressure);
       float x = GetRandomValue(SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN - w);
-      if (pressure < 1.0f && (e == ERA_SKIES || e == ERA_NIGHT || cells)) {
+      if (pressure < 1.0f &&
+          (e == ERA_SKIES || e == ERA_NIGHT || magma || cells)) {
         x = clampf(routeXAt(world, world->platformSpawnY) - w * 0.5f,
                    SPAWN_MARGIN, SCREEN_WIDTH - SPAWN_MARGIN - w);
       }
@@ -379,19 +403,26 @@ static void spawnPlatforms(World *world) {
               ? (GetRandomValue(0, 1) ? CLOUD_DRIFT : -CLOUD_DRIFT) * motion
               : 0.0f;
       float fall = INTRO_BLOCK_MUL + (1.0f - INTRO_BLOCK_MUL) * pressure;
-      float vy = blocks && !locked ? BLOCK_FALL * fall : 0.0f;
+      float vy = blocks ? BLOCK_FALL * fall : 0.0f;
       if (garden && !rootedPreview) {
         vy = GARDEN_FALL * fall;
       }
-      world->platforms[s] = (Platform){{x, world->platformSpawnY},
-                                       true,
-                                       e == ERA_NIGHT,
-                                       e,
-                                       0.0f,
-                                       vx,
-                                       vy,
-                                       shape,
-                                       pressure};
+      bool cooled = magma && pressure < 0.08f;
+      float timer = magma ? entSeed((Vector2){x, world->platformSpawnY}) %
+                                (int)MAGMA_CHARGE_CYCLE
+                          : 0.0f;
+      world->platforms[s] = (Platform){
+          .position = {x, world->platformSpawnY},
+          .active = true,
+          .fragile = e == ERA_NIGHT,
+          .era = e,
+          .cooled = cooled,
+          .timer = timer,
+          .vx = vx,
+          .vy = vy,
+          .shape = shape,
+          .pressure = pressure,
+      };
     }
     world->platformSpawnY -= PLATFORM_SPACING;
   }
@@ -806,24 +837,40 @@ static void bounceOnPlatforms(World *world, Player *player) {
     }
     if (landed) {
       bool rooted = pl->era == ERA_GARDEN && pl->vy > 0.0f;
+      bool erupted = pl->era == ERA_MAGMA && !pl->cooled &&
+                     magmaHeat(pl) >= MAGMA_ERUPT_HEAT;
       player->position.y = top - player->radius;
-      player->velocity.y = PLATFORM_BOUNCE;
+      player->velocity.y = erupted ? MAGMA_ERUPT_BOUNCE : PLATFORM_BOUNCE;
       if (rooted) {
         pl->vy = 0.0f;
         world->shake = fmaxf(world->shake, GARDEN_ROOT_SHAKE);
+      } else if (erupted) {
+        pl->cooled = true;
+        pl->timer = -MAGMA_ERUPT_FRAMES;
+        world->shake = fmaxf(world->shake, MAGMA_ERUPT_SHAKE);
+        world->flashPos = (Vector2){player->position.x, top};
+        world->flash = 1.0f;
       }
-      spawnParticles(world, (Vector2){player->position.x, top},
-                     rooted ? GRASS : CLOUD, rooted ? 14 : 8, false);
-      sfxAt(SFX_BOUNCE, rooted ? 1.16f : 1.0f, audioPan(player->position.x));
-      if (pl->fragile && pl->fuse <= 0.0f) {
-        pl->fuse = crumbleDuration(pl);
+      Color burst = erupted ? FLAME : rooted ? GRASS : CLOUD;
+      spawnParticles(world, (Vector2){player->position.x, top}, burst,
+                     erupted  ? 18
+                     : rooted ? 14
+                              : 8,
+                     false);
+      if (erupted) {
+        sfxAt(SFX_ERUPT, 1.0f, audioPan(player->position.x));
+      } else {
+        sfxAt(SFX_BOUNCE, rooted ? 1.16f : 1.0f, audioPan(player->position.x));
+      }
+      if (pl->fragile && pl->timer <= 0.0f) {
+        pl->timer = crumbleDuration(pl);
       }
       return;
     }
   }
 }
 
-// Platform motion + the Night Blocks crumble countdown. Runs before
+// Platform motion, Night crumble, and Magma charge clocks. Runs before
 // bounceOnPlatforms so a moving pad's landing test sees this step's position.
 static void updatePlatforms(World *world) {
   FOREACH_ACTIVE(platforms, MAX_PLATFORMS, i) {
@@ -841,7 +888,13 @@ static void updatePlatforms(World *world) {
       }
     }
 
-    if (pl->fuse > 0.0f && (pl->fuse -= 1.0f) <= 0.0f) {
+    if (pl->era == ERA_MAGMA) {
+      if (pl->cooled) {
+        pl->timer = fminf(pl->timer + 1.0f, 0.0f);
+      } else {
+        pl->timer = fmodf(pl->timer + 1.0f, MAGMA_CHARGE_CYCLE);
+      }
+    } else if (pl->timer > 0.0f && (pl->timer -= 1.0f) <= 0.0f) {
       float width = platformWidth(pl);
       spawnParticles(world,
                      (Vector2){pl->position.x + width / 2.0f,
@@ -1170,59 +1223,94 @@ static void drawRootedGardenPiece(const Platform *pl, Vector2 p, float a,
   }
 }
 
-// A late-reboot Blocks row is born motionless with one rectangular collision
-// surface. Four cell faces preserve where it came from; the continuous white
-// rail, soft cloud backing, and growing sprouts say that it is now dependable.
-static void drawLockedBoard(const Platform *pl, Vector2 p, float a,
-                            float glow) {
-  float width = platformWidth(pl);
-  float organic = clampf(1.0f - pl->pressure, 0.0f, 1.0f);
-  float cx = p.x + width * 0.5f;
-  Color cell = gTheme.confetti[pl->shape % CONFETTI_COUNT];
-  glowStamp((Vector2){cx, p.y + PLATFORM_HEIGHT * 0.5f}, width * 1.25f, cell,
-            0.05f * a, 0.12f * a, glow);
-  drawTex(TEX_PUFF, cx, p.y + PLATFORM_HEIGHT + 6.0f, width * 1.45f, 38.0f,
-          0.0f, Fade(SKY_BOT_HIGH, 0.42f * a));
-  drawTex(TEX_CLOUD, p.x + 24.0f, p.y + 3.0f, 62.0f, 46.0f, 0.0f,
-          Fade(CLOUD, a * (0.28f + 0.5f * organic)));
-  drawTex(TEX_CLOUD, p.x + width - 24.0f, p.y + 3.0f, 62.0f, 46.0f, 0.0f,
-          Fade(CLOUD, a * (0.28f + 0.5f * organic)));
+// Magma vents breathe from dark basalt to a visibly open, flame-tipped mouth.
+// Hitting the hot crest launches the player, leaves this same collision board
+// behind as glassy obsidian, and runs one short plume from its negative timer.
+static void drawMagmaVent(const Platform *pl, Vector2 p, float a, float glow) {
+  float width = platformWidth(pl), cx = p.x + width * 0.5f;
+  float heat = magmaHeat(pl);
+  float eruption = pl->cooled && pl->timer < 0.0f
+                       ? clampf(-pl->timer / MAGMA_ERUPT_FRAMES, 0.0f, 1.0f)
+                       : 0.0f;
+  Color stone = pl->cooled ? ColorLerp(CLOUD_SHADE, SKY_TOP_HIGH, 0.52f)
+                           : ColorLerp(CLOUD_SHADE, GRASS, 0.34f);
+  Color molten = ColorLerp(COIN_LO, SUN_CORE, heat);
+
+  drawTex(TEX_PUFF, cx, p.y + PLATFORM_HEIGHT + 7.0f, width * 1.45f, 38.0f,
+          0.0f, Fade(BLACK, 0.42f * a));
+  glowStamp((Vector2){cx, p.y + 2.0f}, width * (1.0f + heat), FLAME, 0.03f * a,
+            (0.32f * heat + 0.35f * eruption) * a, glow);
+
+  if (eruption > 0.0f) {
+    BeginBlendMode(BLEND_ADDITIVE);
+    for (int k = 0; k < 3; k++) {
+      float side = (k - 1) * (12.0f + 5.0f * (1.0f - eruption));
+      float h = 54.0f + k * 22.0f + 82.0f * eruption;
+      drawTex(
+          TEX_PUFF, cx + side, p.y - h * 0.42f, 38.0f + k * 7.0f, h,
+          side * 0.18f,
+          Fade(k == 1 ? SUN_CORE : FLAME, eruption * (0.34f + k * 0.08f) * a));
+    }
+    EndBlendMode();
+  }
 
   Rectangle board = {p.x, p.y, width, PLATFORM_HEIGHT};
-  DrawRectangleRounded(board, 0.18f + 0.42f * organic, 8,
-                       Fade(ColorLerp(cell, GRASS_DK, organic), a));
-  for (int k = 0; k < 4; k++) {
-    float x = p.x + k * TETRO_CELL;
-    Color c = ColorLerp(gTheme.confetti[k % CONFETTI_COUNT], GRASS, organic);
-    DrawRectangle(x + 2.0f, p.y + 3.0f, TETRO_CELL - 4.0f,
-                  PLATFORM_HEIGHT - 5.0f, Fade(c, 0.62f * a));
-    if (k > 0) {
-      DrawRectangle(x - 1.0f, p.y + 4.0f, 2.0f, PLATFORM_HEIGHT - 6.0f,
-                    Fade(CLOUD_SHADE, 0.45f * a * (1.0f - organic)));
+  DrawRectangleRounded(
+      (Rectangle){p.x - 3.0f, p.y - 3.0f, width + 6.0f, PLATFORM_HEIGHT + 7.0f},
+      0.38f, 8, Fade(ColorBrightness(CLOUD_SHADE, -0.35f), a));
+  DrawRectangleRounded(board, 0.45f, 8, Fade(stone, a));
+  DrawRectangleRounded((Rectangle){p.x + 3.0f, p.y + 2.0f, width - 6.0f, 5.0f},
+                       0.8f, 6,
+                       Fade(pl->cooled ? ColorBrightness(stone, 0.42f) : molten,
+                            (pl->cooled ? 0.72f : 0.18f + 0.82f * heat) * a));
+
+  for (int k = 0; k < 3; k++) {
+    float x =
+        p.x + width * (0.2f + k * 0.3f) + ((pl->shape + k) % 3 - 1) * 4.0f;
+    float bend = (k & 1 ? 1.0f : -1.0f) * (5.0f + pl->shape % 3);
+    Color crack = pl->cooled ? Fade(SKY_TOP_HIGH, 0.72f * a)
+                             : Fade(molten, (0.22f + 0.78f * heat) * a);
+    DrawLineEx((Vector2){x, p.y + 2.0f},
+               (Vector2){x + bend, p.y + PLATFORM_HEIGHT * 0.52f}, 1.5f + heat,
+               crack);
+    DrawLineEx((Vector2){x + bend, p.y + PLATFORM_HEIGHT * 0.52f},
+               (Vector2){x + bend * 0.45f, p.y + PLATFORM_HEIGHT - 2.0f},
+               1.3f + heat, crack);
+  }
+
+  if (!pl->cooled) {
+    float flame = smooth01((heat - 0.55f) / (1.0f - 0.55f));
+    float vent = 5.0f + 6.0f * heat;
+    DrawEllipse(cx, p.y + 2.0f, vent, 3.0f + 2.0f * heat,
+                Fade(ColorBrightness(CLOUD_SHADE, -0.5f), a));
+    for (int k = -1; k <= 1; k++) {
+      float x = cx + k * 15.0f;
+      float h = flame * (8.0f + (k == 0 ? 8.0f : 0.0f));
+      DrawTriangle((Vector2){x - 4.0f, p.y}, (Vector2){x, p.y - h},
+                   (Vector2){x + 4.0f, p.y}, Fade(FLAME, flame * a));
+    }
+  } else {
+    DrawLineEx((Vector2){p.x + 7.0f, p.y + 2.0f},
+               (Vector2){p.x + width - 7.0f, p.y + 2.0f}, 2.0f,
+               Fade(RAYWHITE, 0.55f * a));
+    for (int k = -1; k <= 1 && eruption > 0.0f; k++) {
+      float x = cx + k * 16.0f;
+      DrawLineEx((Vector2){x, p.y - 5.0f},
+                 (Vector2){x + k * 3.0f, p.y - 18.0f - 8.0f * eruption}, 1.5f,
+                 Fade(CLOUD, 0.5f * eruption * a));
     }
   }
-  DrawLineEx((Vector2){p.x + 4.0f, p.y + 2.0f},
-             (Vector2){p.x + width - 4.0f, p.y + 2.0f}, 4.0f,
-             Fade(RAYWHITE, a));
-  DrawRectangleRoundedLines(board, 0.18f + 0.42f * organic, 8,
-                            Fade(GRASS_DK, a));
-  for (int k = 0; k < 5; k++) {
-    float x = p.x + 12.0f + k * 19.0f;
-    float h = organic * (4.0f + (k % 3) * 2.0f);
-    DrawLineEx((Vector2){x, p.y + 1.0f},
-               (Vector2){x + (k & 1 ? 2.0f : -2.0f), p.y + 1.0f - h}, 1.5f,
-               Fade(GRASS, 0.75f * a * organic));
-  }
+  DrawRectangleRoundedLines(board, 0.45f, 8, Fade(CLOUD_SHADE, a));
 }
 
 static void drawCloudPad(const Platform *pl, float glow) {
   Vector2 p = pl->position;
   float width = platformWidth(pl);
   float a = 1.0f;
-  if (pl->fuse > 0.0f) {
-    // Death rattle: the pad shakes and thins out over its stamped fuse, so the
+  if (pl->fragile && pl->timer > 0.0f) {
+    // Death rattle: the pad shakes and thins out over its stamped timer, so the
     // introductory crack stays readable longer without changing underfoot.
-    a = pl->fuse / crumbleDuration(pl);
+    a = pl->timer / crumbleDuration(pl);
     p.x += GetRandomValue(-100, 100) / 100.0f * CRUMBLE_JITTER;
     p.y += GetRandomValue(-100, 100) / 100.0f * CRUMBLE_JITTER;
   }
@@ -1230,12 +1318,12 @@ static void drawCloudPad(const Platform *pl, float glow) {
     drawFallingPiece(pl, p, a, glow);
     return;
   }
-  if (pl->era == ERA_GARDEN) {
-    drawRootedGardenPiece(pl, p, a, glow);
+  if (pl->era == ERA_MAGMA) {
+    drawMagmaVent(pl, p, a, glow);
     return;
   }
-  if (pl->era == ERA_BLOCKS) {
-    drawLockedBoard(pl, p, a, glow);
+  if (pl->era == ERA_GARDEN) {
+    drawRootedGardenPiece(pl, p, a, glow);
     return;
   }
   if (pl->vx != 0.0f) {
@@ -1663,9 +1751,9 @@ int getScore(const World *world) {
 
 #ifdef WORLD_SELFTEST
 // Contact strip of one fixed gameplay scene rendered once per era, so the
-// entities can be eyeballed without playing to 80,000 units - the sibling of
-// background.c's BG_SELFTEST, and the only way to see a monster and a power-up
-// at the neon palette without a lucky drop.
+// entities can be eyeballed without climbing through a full cycle - the sibling
+// of background.c's BG_SELFTEST, and the only way to see a monster and a
+// power-up at the neon palette without a lucky drop.
 //   cc -DWORLD_SELFTEST src/world.c src/background.c src/player.c src/theme.c \
 //      src/tex.c src/svg.c src/sound.c src/progress.c src/persist.c \
 //      lib/nanosvg_impl.c -Iinclude -Ilib/nanosvg/src -Ilib/raylib/src \
@@ -1785,12 +1873,11 @@ static void checkEras(void) {
   assert(GHOST_PREVIEW_END * BAND > MONSTER_SPACING_MIN);
   assert(PELLET_PREVIEW_END * BAND > POWERUP_SPACING);
   assert(GARDEN_ROOT_PREVIEW_END * BAND >= PLATFORM_SPACING);
-  assert(REBOOT_LOCK_START > PRESSURE_FALL_START && REBOOT_LOCK_START < 1.0f);
 
   // The first platform of each mechanical era is stamped as a safe example:
-  // broad/slow Skies drift, a long Night fuse, a slow one-row block, then a
-  // rooted Garden preview followed by a gentle moving I. Collision reads the
-  // same immutable values.
+  // broad/slow Skies drift, a long Night timer, a slow one-row block, a broad
+  // cooled Magma vent, then a rooted Garden preview followed by a gentle I.
+  // Collision reads the same immutable values.
   {
     const float phase = 0.02f;
     World skies = worldAtLevel(ERA_SKIES);
@@ -1815,15 +1902,16 @@ static void checkEras(void) {
     night.cameraY = night.platformSpawnY + SCREEN_HEIGHT - 1.0f;
     spawnPlatforms(&night);
     Platform *crumble = &night.platforms[0];
-    float introFuse = crumbleDuration(crumble);
-    assert(crumble->fragile && introFuse > CRUMBLE_FRAMES);
+    float introTimer = crumbleDuration(crumble);
+    assert(crumble->fragile && introTimer > CRUMBLE_FRAMES);
     Player landing = createPlayer();
     landing.position =
         (Vector2){crumble->position.x + platformWidth(crumble) * 0.5f,
                   crumble->position.y - landing.radius + 1.0f};
     landing.velocity.y = 10.0f;
     bounceOnPlatforms(&night, &landing);
-    assert(crumble->fuse == introFuse && "intro crumble used the mature fuse");
+    assert(crumble->timer == introTimer &&
+           "intro crumble used the mature timer");
 
     World blocks = worldAtLevel(ERA_BLOCKS);
     blocks.platformSpawnY = SCREEN_HEIGHT / 2.0f - (ERA_BLOCKS + phase) * BAND;
@@ -1834,6 +1922,19 @@ static void checkEras(void) {
            fall->vy < BLOCK_FALL && padBoxes(fall, box) == PAD_BOXES);
     assert(fabsf(fall->position.x + tetroWidth(fall->shape) * 0.5f -
                  blocks.lastSpawnX) < 0.01f);
+
+    World magma = worldAtLevel(ERA_MAGMA);
+    magma.platformSpawnY = SCREEN_HEIGHT / 2.0f - (ERA_MAGMA + phase) * BAND;
+    magma.coins[0] =
+        (Coin){{490.0f, magma.platformSpawnY}, true, ERA_MAGMA, {0, 0}};
+    magma.cameraY = magma.platformSpawnY + SCREEN_HEIGHT - 1.0f;
+    spawnPlatforms(&magma);
+    Platform *vent = &magma.platforms[0];
+    float ventWidth = platformWidth(vent);
+    assert(vent->active && vent->era == ERA_MAGMA && vent->cooled &&
+           magmaHeat(vent) == 0.0f && ventWidth > PLATFORM_WIDTH &&
+           padBoxes(vent, box) == 1 && box[0].width == ventWidth);
+    assert(fabsf(vent->position.x + ventWidth * 0.5f - 490.0f) < 0.01f);
 
     World garden = worldAtLevel(ERA_GARDEN);
     garden.platformSpawnY = SCREEN_HEIGHT / 2.0f - (ERA_GARDEN + phase) * BAND;
@@ -1962,21 +2063,20 @@ static void checkEras(void) {
            "core monster lost its local era or mature tuning");
   }
 
-  // Reboot ownership is Falling -> Settled -> Rooted. An older Blocks piece
-  // keeps falling, a late Blocks row stays locked, and the first Garden row is
-  // born rooted as a safe preview. Nothing resets the run.
+  // Blocks -> Magma keeps old pieces falling while relief introduces a slow I
+  // row and the first forge vent arrives broad, cooled, and route-aligned.
+  // Nothing at the chapter boundary resets the live run.
   {
-    World w = worldAtLevel(ERA_GARDEN);
-    float edgeY = SCREEN_HEIGHT / 2.0f - ERA_GARDEN * BAND;
-    w.platforms[0] = (Platform){{120.0f, edgeY + PLATFORM_SPACING},
-                                true,
-                                false,
-                                ERA_BLOCKS,
-                                0.0f,
-                                0.0f,
-                                BLOCK_FALL,
-                                3,
-                                1.0f};
+    World w = worldAtLevel(ERA_MAGMA);
+    float edgeY = SCREEN_HEIGHT / 2.0f - ERA_MAGMA * BAND;
+    w.platforms[0] = (Platform){
+        .position = {120.0f, edgeY + PLATFORM_SPACING},
+        .active = true,
+        .era = ERA_BLOCKS,
+        .vy = BLOCK_FALL,
+        .shape = 3,
+        .pressure = 1.0f,
+    };
     float oldY = w.platforms[0].position.y;
     w.coinsCollected = 17;
     w.combo = 6;
@@ -1985,22 +2085,40 @@ static void checkEras(void) {
     w.cameraY = edgeY + SCREEN_HEIGHT - PLATFORM_SPACING;
     float cameraY = w.cameraY;
     spawnPlatforms(&w);
-    Platform *locked = &w.platforms[1], *garden = &w.platforms[2];
-    assert(locked->active && garden->active && locked->position.y > edgeY &&
-           garden->position.y < edgeY && locked->era == ERA_BLOCKS &&
-           garden->era == ERA_GARDEN && locked->vy == 0.0f &&
-           garden->vy == 0.0f && locked->shape == 0 && garden->shape == 0 &&
-           locked->pressure < 0.1f && garden->pressure < 0.1f);
+    Platform *blocks = &w.platforms[1], *magma = &w.platforms[2];
+    assert(blocks->active && magma->active && blocks->position.y > edgeY &&
+           magma->position.y < edgeY && blocks->era == ERA_BLOCKS &&
+           magma->era == ERA_MAGMA && blocks->vy > 0.0f &&
+           blocks->vy < BLOCK_FALL && magma->vy == 0.0f && magma->cooled &&
+           blocks->shape == 0 && blocks->pressure < 0.1f &&
+           magma->pressure < 0.1f);
     Rectangle box[PAD_BOXES];
-    assert(padBoxes(locked, box) == 1 && box[0].width == tetroWidth(0));
-    float lockedY = locked->position.y;
-    assert(padBoxes(garden, box) == PAD_BOXES);
+    assert(padBoxes(blocks, box) == PAD_BOXES);
+    assert(padBoxes(magma, box) == 1 && box[0].width > PLATFORM_WIDTH);
+    float magmaY = magma->position.y;
     updatePlatforms(&w);
-    assert(w.platforms[0].position.y > oldY && w.platforms[0].vy > 0.0f &&
-           locked->position.y == lockedY && "live reboot piece retuned");
-    assert(themeSampleAtWorldY(garden->position.y).cycle == 0 &&
+    assert(w.platforms[0].position.y > oldY && blocks->position.y > edgeY &&
+           magma->position.y == magmaY && "live melt boundary retuned");
+    assert(themeSampleAtWorldY(magma->position.y).cycle == 0 &&
            w.cameraY == cameraY && w.coinsCollected == 17 && w.combo == 6 &&
-           w.comboBonus == 42 && "reboot reset the live run");
+           w.comboBonus == 42 && "melt boundary reset the live run");
+  }
+
+  // Magma -> Garden leaves cooled obsidian below the line and introduces the
+  // first rooted Garden I row above it, preserving each side's collision rule.
+  {
+    World w = worldAtLevel(ERA_GARDEN);
+    float edgeY = SCREEN_HEIGHT / 2.0f - ERA_GARDEN * BAND;
+    w.platformSpawnY = edgeY + PLATFORM_SPACING / 2.0f;
+    w.cameraY = edgeY + SCREEN_HEIGHT - PLATFORM_SPACING;
+    spawnPlatforms(&w);
+    Platform *magma = &w.platforms[0], *garden = &w.platforms[1];
+    Rectangle box[PAD_BOXES];
+    assert(magma->active && garden->active && magma->era == ERA_MAGMA &&
+           garden->era == ERA_GARDEN && magma->cooled &&
+           magma->position.y > edgeY && garden->position.y < edgeY &&
+           magma->pressure < 0.1f && garden->pressure < 0.1f &&
+           padBoxes(magma, box) == 1 && padBoxes(garden, box) == PAD_BOXES);
   }
 
   // Garden -> Hills preserves a rooted Garden shape below the boundary, eases
@@ -2009,15 +2127,13 @@ static void checkEras(void) {
   {
     World w = worldAtLevel(ERA_COUNT);
     float edgeY = SCREEN_HEIGHT / 2.0f - ERA_COUNT * BAND;
-    w.platforms[0] = (Platform){{120.0f, edgeY + PLATFORM_SPACING},
-                                true,
-                                false,
-                                ERA_GARDEN,
-                                0.0f,
-                                0.0f,
-                                0.0f,
-                                3,
-                                1.0f};
+    w.platforms[0] = (Platform){
+        .position = {120.0f, edgeY + PLATFORM_SPACING},
+        .active = true,
+        .era = ERA_GARDEN,
+        .shape = 3,
+        .pressure = 1.0f,
+    };
     Rectangle box[PAD_BOXES];
     assert(padBoxes(&w.platforms[0], box) == PAD_BOXES);
     w.platformSpawnY = edgeY + PLATFORM_SPACING / 2.0f;
@@ -2125,7 +2241,7 @@ static void checkEras(void) {
     World w = worldAtLevel(e);
     Player p = createPlayer();
     updateWorld(&w, &p); // one call generates a screen's worth of pads
-    int drifting = 0, fragile = 0, falling = 0, total = 0;
+    int drifting = 0, fragile = 0, falling = 0, vents = 0, total = 0;
     for (int i = 0; i < MAX_PLATFORMS; i++) {
       if (!w.platforms[i].active) {
         continue;
@@ -2136,6 +2252,7 @@ static void checkEras(void) {
       drifting += w.platforms[i].vx != 0.0f;
       fragile += w.platforms[i].fragile;
       falling += w.platforms[i].vy > 0.0f;
+      vents += w.platforms[i].era == ERA_MAGMA;
       if (e == ERA_GARDEN) {
         Rectangle box[PAD_BOXES];
         assert(padBoxes(&w.platforms[i], box) == PAD_BOXES);
@@ -2148,6 +2265,8 @@ static void checkEras(void) {
            "crumble gate is not Night Blocks");
     assert(falling == ((e == ERA_BLOCKS || e == ERA_GARDEN) ? total : 0) &&
            "falling gate is not Blocks or Garden");
+    assert(vents == (e == ERA_MAGMA ? total : 0) &&
+           "vent gate is not Magma Forge");
     // The pellet is reachable only where there are ghosts to frighten.
     assert((spawnWeightOf(POWERUP_PELLET, e) > 0) == (e == ERA_MAZE));
     for (int k = 0; k < 50; k++) {
@@ -2163,8 +2282,12 @@ static void checkEras(void) {
   // zero-filled TETRO row (the failure a designated table hides) collapses all
   // four cells onto one square and trips the distinctness check.
   for (int s = 0; s < TETRO_COUNT; s++) {
-    Platform pl = {{0.0f, 0.0f}, true,       false, ERA_BLOCKS, 0.0f,
-                   0.0f,         BLOCK_FALL, s,     1.0f};
+    Platform pl = {.position = {0.0f, 0.0f},
+                   .active = true,
+                   .era = ERA_BLOCKS,
+                   .vy = BLOCK_FALL,
+                   .shape = s,
+                   .pressure = 1.0f};
     Rectangle b[PAD_BOXES];
     assert(padBoxes(&pl, b) == PAD_BOXES);
     assert(tetroWidth(s) <= SCREEN_WIDTH - 2.0f * SPAWN_MARGIN);
@@ -2176,30 +2299,26 @@ static void checkEras(void) {
     }
   }
 
-  // Night Blocks: landing arms the fuse, and the fuse takes the pad with it.
+  // Night Blocks: landing arms the timer, and expiry takes the pad with it.
   {
     World w = bareWorld(ERA_NIGHT);
     Player p = createPlayer();
     p.position = (Vector2){400.0f, w.bestY};
     p.velocity = (Vector2){0.0f, 10.0f};
-    w.platforms[0] = (Platform){{350.0f, w.bestY + 40.0f},
-                                true,
-                                true,
-                                ERA_NIGHT,
-                                0.0f,
-                                0.0f,
-                                0.0f,
-                                0,
-                                1.0f};
-    for (int i = 0; i < 20 && w.platforms[0].fuse <= 0.0f; i++) {
+    w.platforms[0] = (Platform){.position = {350.0f, w.bestY + 40.0f},
+                                .active = true,
+                                .fragile = true,
+                                .era = ERA_NIGHT,
+                                .pressure = 1.0f};
+    for (int i = 0; i < 20 && w.platforms[0].timer <= 0.0f; i++) {
       updatePlayer(&p);
       updateWorld(&w, &p);
     }
-    assert(w.platforms[0].fuse > 0.0f && "landing did not arm the crumble");
+    assert(w.platforms[0].timer > 0.0f && "landing did not arm the crumble");
     for (int i = 0; i < (int)CRUMBLE_FRAMES + 2; i++) {
       updateWorld(&w, &p);
     }
-    assert(!w.platforms[0].active && "the fuse ran out and the pad survived");
+    assert(!w.platforms[0].active && "the timer ran out and the pad survived");
   }
 
   // Sunny Hills: the same landing on the same geometry changes nothing.
@@ -2208,20 +2327,15 @@ static void checkEras(void) {
     Player p = createPlayer();
     p.position = (Vector2){400.0f, w.bestY};
     p.velocity = (Vector2){0.0f, 10.0f};
-    w.platforms[0] = (Platform){{350.0f, w.bestY + 40.0f},
-                                true,
-                                false,
-                                ERA_HILLS,
-                                0.0f,
-                                0.0f,
-                                0.0f,
-                                0,
-                                1.0f};
+    w.platforms[0] = (Platform){.position = {350.0f, w.bestY + 40.0f},
+                                .active = true,
+                                .era = ERA_HILLS,
+                                .pressure = 1.0f};
     for (int i = 0; i < 20; i++) {
       updatePlayer(&p);
       updateWorld(&w, &p);
     }
-    assert(w.platforms[0].active && w.platforms[0].fuse <= 0.0f &&
+    assert(w.platforms[0].active && w.platforms[0].timer <= 0.0f &&
            "era 0 platform is not the baseline any more");
   }
 
@@ -2230,15 +2344,11 @@ static void checkEras(void) {
     World w = bareWorld(ERA_SKIES);
     Player p = createPlayer();
     p.position = (Vector2){400.0f, w.bestY};
-    w.platforms[0] = (Platform){{100.0f, w.bestY - 500.0f},
-                                true,
-                                false,
-                                ERA_SKIES,
-                                0.0f,
-                                CLOUD_DRIFT,
-                                0.0f,
-                                0,
-                                1.0f};
+    w.platforms[0] = (Platform){.position = {100.0f, w.bestY - 500.0f},
+                                .active = true,
+                                .era = ERA_SKIES,
+                                .vx = CLOUD_DRIFT,
+                                .pressure = 1.0f};
     updateWorld(&w, &p);
     assert(w.platforms[0].position.x > 100.0f && "sky platform did not drift");
     w.platforms[0].position.x = SCREEN_WIDTH - PLATFORM_WIDTH;
@@ -2304,29 +2414,64 @@ static void checkEras(void) {
     Player p = createPlayer();
     p.position = (Vector2){400.0f, w.bestY};
     w.coinsCollected = 5;
-    w.platforms[0] = (Platform){{350.0f, w.bestY - 10.0f},
-                                true,
-                                false,
-                                ERA_BLOCKS,
-                                0.0f,
-                                0.0f,
-                                BLOCK_FALL,
-                                0,
-                                1.0f};
-    w.platforms[1] = (Platform){{50.0f, w.bestY - 1000.0f},
-                                true,
-                                false,
-                                ERA_BLOCKS,
-                                0.0f,
-                                0.0f,
-                                BLOCK_FALL,
-                                0,
-                                1.0f};
+    w.platforms[0] = (Platform){.position = {350.0f, w.bestY - 10.0f},
+                                .active = true,
+                                .era = ERA_BLOCKS,
+                                .vy = BLOCK_FALL,
+                                .pressure = 1.0f};
+    w.platforms[1] = (Platform){.position = {50.0f, w.bestY - 1000.0f},
+                                .active = true,
+                                .era = ERA_BLOCKS,
+                                .vy = BLOCK_FALL,
+                                .pressure = 1.0f};
     float y0 = w.platforms[1].position.y;
     updateWorld(&w, &p);
     assert(w.platforms[1].position.y > y0 && "the blocks are not falling");
     assert(w.coinsCollected < 5 && !w.platforms[0].active &&
            "a falling block did not crush");
+  }
+
+  // Magma Forge: a visibly charged vent gives the stronger eruption launch,
+  // then remains cooled and safe. Landing early gives an ordinary bounce and
+  // leaves the vent cycling, making timing the era's actual rule.
+  {
+    World w = bareWorld(ERA_MAGMA);
+    Player p = createPlayer();
+    Platform *hot = &w.platforms[0];
+    *hot = (Platform){.position = {350.0f, w.bestY + 40.0f},
+                      .active = true,
+                      .era = ERA_MAGMA,
+                      .timer = MAGMA_CHARGE_CYCLE * 0.5f,
+                      .pressure = 1.0f};
+    p.position = (Vector2){400.0f, hot->position.y - p.radius + 1.0f};
+    p.velocity.y = 10.0f;
+    assert(magmaHeat(hot) > MAGMA_ERUPT_HEAT);
+    updateWorld(&w, &p);
+    assert(hot->active && hot->cooled && hot->timer == -MAGMA_ERUPT_FRAMES &&
+           p.velocity.y == MAGMA_ERUPT_BOUNCE && w.shake > 6.0f &&
+           w.flash > 0.0f && "charged vent did not erupt and cool");
+    updatePlatforms(&w);
+    assert(hot->timer == -MAGMA_ERUPT_FRAMES + 1.0f &&
+           "eruption plume timer did not decay");
+
+    p.position.y = hot->position.y - p.radius + 1.0f;
+    p.velocity.y = 10.0f;
+    updateWorld(&w, &p);
+    assert(hot->cooled && p.velocity.y == PLATFORM_BOUNCE &&
+           "cooled obsidian vent erupted twice");
+
+    Platform *cool = &w.platforms[1];
+    *cool = (Platform){.position = {200.0f, w.bestY + 80.0f},
+                       .active = true,
+                       .era = ERA_MAGMA,
+                       .timer = 0.0f,
+                       .pressure = 1.0f};
+    p.position = (Vector2){250.0f, cool->position.y - p.radius + 1.0f};
+    p.velocity.y = 10.0f;
+    updateWorld(&w, &p);
+    assert(!cool->cooled && cool->timer == 1.0f &&
+           p.velocity.y == PLATFORM_BOUNCE &&
+           "uncharged vent did not preserve the safe bounce or heat cycle");
   }
 
   // Reboot Garden: a legal top landing roots a moving piece. Its four cell
@@ -2336,15 +2481,12 @@ static void checkEras(void) {
     World w = bareWorld(ERA_GARDEN);
     Player p = createPlayer();
     Platform *pl = &w.platforms[0];
-    *pl = (Platform){{330.0f, w.bestY + 40.0f},
-                     true,
-                     false,
-                     ERA_GARDEN,
-                     0.0f,
-                     0.0f,
-                     GARDEN_FALL,
-                     2,
-                     1.0f};
+    *pl = (Platform){.position = {330.0f, w.bestY + 40.0f},
+                     .active = true,
+                     .era = ERA_GARDEN,
+                     .vy = GARDEN_FALL,
+                     .shape = 2,
+                     .pressure = 1.0f};
     p.position = (Vector2){pl->position.x + TETRO_CELL * 1.5f,
                            pl->position.y - p.radius + GARDEN_FALL + 0.1f};
     p.velocity.y = 10.0f;
@@ -2427,9 +2569,9 @@ int main(int argc, char **argv) {
     float cameraY = -(i * BAND + BAND * 0.05f);
     w.cameraY = cameraY;
     w.bestY = SCREEN_HEIGHT / 2.0f + cameraY;
-    // Each cell shows its era's *mechanic*, not just its palette: wind trails
-    // on Birdsong Skies, a cracked Night pad, frightened Maze ghosts, all seven
-    // Falling pieces plus one locked board, and moving/rooted Garden pieces.
+    // Each cell shows its era's *mechanic*, not just its palette: wind trails,
+    // a cracked Night pad, frightened Maze ghosts, all seven Falling pieces,
+    // cold/hot/erupted Magma vents, and moving/rooted Garden pieces.
     w.level = i;
     for (int k = 0; k < MAX_COINS; k++) {
       w.coins[k].era = i;
@@ -2445,52 +2587,59 @@ int main(int argc, char **argv) {
     }
     if (i == ERA_BLOCKS) {
       for (int k = 0; k < TETRO_COUNT; k++) {
-        w.platforms[k] =
-            (Platform){{20.0f + k * 110.0f, 300.0f + (k % 3) * 90.0f},
-                       true,
-                       false,
-                       ERA_BLOCKS,
-                       0.0f,
-                       0.0f,
-                       BLOCK_FALL,
-                       k,
-                       1.0f};
+        w.platforms[k] = (Platform){
+            .position = {20.0f + k * 110.0f, 300.0f + (k % 3) * 90.0f},
+            .active = true,
+            .era = ERA_BLOCKS,
+            .vy = BLOCK_FALL,
+            .shape = k,
+            .pressure = 1.0f,
+        };
       }
-      w.platforms[TETRO_COUNT] = (Platform){
-          {350.0f, 600.0f}, true, false, ERA_BLOCKS, 0.0f, 0.0f, 0.0f, 0, 0.0f};
+    } else if (i == ERA_MAGMA) {
+      static const float CHARGE[] = {0.0f, 0.28f, 0.5f, 0.0f};
+      for (int k = 0; k < 4; k++) {
+        w.platforms[k] = (Platform){
+            .position = {65.0f + k * 190.0f, 350.0f + (k % 2) * 130.0f},
+            .active = true,
+            .era = ERA_MAGMA,
+            .cooled = k == 3,
+            .timer = k == 3 ? -MAGMA_ERUPT_FRAMES * 0.82f
+                            : CHARGE[k] * MAGMA_CHARGE_CYCLE,
+            .shape = k,
+            .pressure = 1.0f,
+        };
+      }
     } else if (i == ERA_GARDEN) {
       for (int k = 0; k < 4; k++) {
-        w.platforms[k] =
-            (Platform){{80.0f + k * 185.0f, 330.0f + (k % 2) * 145.0f},
-                       true,
-                       false,
-                       ERA_GARDEN,
-                       0.0f,
-                       0.0f,
-                       k < 2 ? GARDEN_FALL : 0.0f,
-                       k,
-                       1.0f};
+        w.platforms[k] = (Platform){
+            .position = {80.0f + k * 185.0f, 330.0f + (k % 2) * 145.0f},
+            .active = true,
+            .era = ERA_GARDEN,
+            .vy = k < 2 ? GARDEN_FALL : 0.0f,
+            .shape = k,
+            .pressure = 1.0f,
+        };
       }
     } else {
       float vx = i == ERA_SKIES ? CLOUD_DRIFT * INTRO_DRIFT_MUL : 0.0f;
-      w.platforms[0] = (Platform){{80.0f, 470.0f},
-                                  true,
-                                  i == ERA_NIGHT,
-                                  i,
-                                  i == ERA_NIGHT ? CRUMBLE_FRAMES * 0.6f : 0.0f,
-                                  vx,
-                                  0.0f,
-                                  0,
-                                  i == ERA_SKIES ? 0.0f : 1.0f};
-      w.platforms[1] = (Platform){{440.0f, 355.0f},
-                                  true,
-                                  i == ERA_NIGHT,
-                                  i,
-                                  0.0f,
-                                  -vx,
-                                  0.0f,
-                                  0,
-                                  i == ERA_SKIES ? 0.0f : 1.0f};
+      w.platforms[0] = (Platform){
+          .position = {80.0f, 470.0f},
+          .active = true,
+          .fragile = i == ERA_NIGHT,
+          .era = i,
+          .timer = i == ERA_NIGHT ? CRUMBLE_FRAMES * 0.6f : 0.0f,
+          .vx = vx,
+          .pressure = i == ERA_SKIES ? 0.0f : 1.0f,
+      };
+      w.platforms[1] = (Platform){
+          .position = {440.0f, 355.0f},
+          .active = true,
+          .fragile = i == ERA_NIGHT,
+          .era = i,
+          .vx = -vx,
+          .pressure = i == ERA_SKIES ? 0.0f : 1.0f,
+      };
     }
     w.powerTimer[POWERUP_PELLET] = (i == ERA_MAZE) ? 300.0f : 0.0f;
     w.powerups[MAX_POWERUPS - 1].type =

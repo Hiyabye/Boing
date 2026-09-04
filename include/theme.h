@@ -17,6 +17,7 @@ typedef enum {
   ERA_NIGHT,
   ERA_MAZE,
   ERA_BLOCKS,
+  ERA_MAGMA,
   ERA_GARDEN,
   ERA_COUNT
 } EraId;
@@ -41,7 +42,8 @@ typedef enum {
   BRIDGE_TWILIGHT,
   BRIDGE_SIGNAL,
   BRIDGE_FRAGMENTATION,
-  BRIDGE_REBOOT,
+  BRIDGE_MELTDOWN,
+  BRIDGE_FERTILE,
   BRIDGE_BLOOM,
   BRIDGE_COUNT
 } BridgeStyle;
@@ -52,6 +54,7 @@ typedef enum {
   BACKDROP_STARS,  // night sky, moon, pixel stars, and blocky terrain
   BACKDROP_MAZE,   // neon maze lattice and pellet dots on dark ground
   BACKDROP_BLOCKS, // falling neon tetromino cells
+  BACKDROP_MAGMA,  // volcanic forge, lava rivers, basalt, and rising embers
   BACKDROP_GARDEN  // rooted cells, terraced fields, and predawn growth
 } BackdropStyle;
 

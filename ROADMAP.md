@@ -5,7 +5,7 @@
 - Roadmap closed after the final implementation audit on 2026-09-04.
 - Phase 0 baseline committed as `4e34256`.
 - Locked direction: a diegetic closed loop.
-- Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> Reboot Garden -> a rebuilt Sunny Hills.
+- Current sequence: Sunny Hills -> Birdsong Skies -> Night Blocks -> Neon Maze -> Falling Blocks -> Magma Forge -> Reboot Garden -> a rebuilt Sunny Hills.
 - North star: players should notice that the world evolved, but never notice a technical cut.
 
 ## Purpose

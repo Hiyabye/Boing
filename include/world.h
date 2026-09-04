@@ -27,11 +27,12 @@ typedef struct Platform {
   // identifies the source chapter; these concrete fields remain authoritative.
   bool fragile;      // Night Blocks: crumbles after it is landed on
   unsigned char era; // immutable EraId
-  float fuse; // frames left before a landed-on fragile pad breaks (0 = intact)
-  float vx;   // Birdsong Skies: horizontal cloud drift, reflected at the edges
-  float vy;   // Blocks/Garden descent; > 0 crushes, Garden landing sets it to 0
-  int shape; // Cell footprint in TETRO[]. Garden keeps it after rooting; a late
-             // reboot-locked Blocks row instead collides as one plain board.
+  bool cooled;       // Magma Forge: an erupted vent becomes safe obsidian
+  float timer; // Night crumble countdown or Magma charge/eruption animation
+  float vx;    // Birdsong Skies: horizontal drift, reflected at the edges
+  float vy;  // Blocks/Garden descent; > 0 crushes, Garden landing sets it to 0
+  int shape; // Cell footprint in TETRO[]. Garden keeps it after rooting; Magma
+             // uses it only to vary crack geometry.
   float pressure; // immutable 0..1 arrival/relief tuning; also organic growth
 } Platform;
 

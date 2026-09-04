@@ -78,7 +78,7 @@ static void drawCelestial(float radius, float detail, float alpha) {
 static void drawSun(float alpha) { drawCelestial(SUN_R, 0.0f, alpha); }
 static void drawMoon(float alpha) { drawCelestial(SUN_R, 1.0f, alpha); }
 
-// Sky haze for the three dark backdrops: one TEX_NEBULA quad wrapped
+// Sky haze for the dark backdrops: one TEX_NEBULA quad wrapped
 // vertically as two stacked copies. Deliberately *not* tiled — perlin noise has
 // a hard seam at its own edges, and one scrolling pair shows that seam once per
 // 1200 units instead of at every tile line. Faint by design; it exists to stop
@@ -628,6 +628,77 @@ static void drawBlocksMid(float cameraY, float alpha) {
   }
 }
 
+// Magma Forge far layer: a smoky caldera lit from below. Broad volcanic
+// silhouettes retain Blocks' angular language while the molten crater begins
+// the warm, mineral-rich path toward the Garden.
+static void drawMagmaFar(float cameraY, float alpha) {
+  drawNebula(cameraY, 0.9f * alpha);
+  BeginBlendMode(BLEND_ADDITIVE);
+  drawTex(TEX_PUFF, SCREEN_WIDTH * 0.5f, 485.0f, 520.0f, 250.0f, 0.0f,
+          Fade(SUN, 0.24f * alpha));
+  drawTex(TEX_PUFF, SCREEN_WIDTH * 0.5f, 505.0f, 260.0f, 105.0f, 0.0f,
+          Fade(SUN_CORE, 0.22f * alpha));
+  EndBlendMode();
+
+  Color far =
+      ColorBrightness(ColorLerp(SKY_TOP_HIGH, CLOUD_SHADE, 0.62f), -0.18f);
+  Color near = ColorBrightness(ColorLerp(CLOUD, CLOUD_SHADE, 0.72f), -0.12f);
+  drawLandscapeBand(500.0f, 118.0f, 74.0f, far, 0.96f * alpha, 3.5f, 0.95f);
+  drawLandscapeBand(560.0f, 92.0f, 305.0f, near, 0.94f * alpha, 4.0f, 0.9f);
+  DrawEllipse(SCREEN_WIDTH * 0.5f, 518.0f, 92.0f, 17.0f,
+              Fade(ColorBrightness(CLOUD_SHADE, -0.4f), alpha));
+  DrawEllipse(SCREEN_WIDTH * 0.5f, 514.0f, 74.0f, 9.0f,
+              Fade(ColorLerp(COIN_LO, SUN_CORE, 0.42f), 0.82f * alpha));
+
+  for (int i = 0; i < 6; i++) {
+    float depth = 0.08f + (i % 3) * 0.05f;
+    float x = wrapf(i * 181.0f + (float)GetTime() * depth * 7.0f,
+                    SCREEN_WIDTH + 300.0f) -
+              150.0f;
+    float y =
+        wrapf(80.0f + i * 113.0f - cameraY * depth, SCREEN_HEIGHT + 360.0f) -
+        180.0f;
+    drawCloud(x, y, 20.0f + (i % 3) * 7.0f, CLOUD,
+              (0.2f + (i % 2) * 0.05f) * alpha);
+  }
+}
+
+// Midground lava forks through black rock while embers rise against gravity.
+// The center remains sparse enough that charged gameplay vents read first.
+static void drawMagmaMid(float cameraY, float alpha) {
+  static const Vector2 FLOW[][5] = {
+      {{100, 850}, {145, 735}, {120, 650}, {185, 575}, {160, 505}},
+      {{410, 850}, {360, 748}, {430, 660}, {385, 585}, {420, 512}},
+      {{735, 850}, {675, 750}, {710, 665}, {645, 585}, {675, 520}},
+  };
+  for (int f = 0; f < 3; f++) {
+    Vector2 river[5];
+    float sway = sinf((float)GetTime() * 0.45f + f * 1.7f) * 6.0f;
+    for (int i = 0; i < 5; i++) {
+      river[i] = FLOW[f][i];
+      river[i].x += sway * (float)i / 4.0f;
+    }
+    DrawSplineCatmullRom(river, 5, 18.0f,
+                         Fade(ColorBrightness(COIN_LO, -0.28f), 0.7f * alpha));
+    DrawSplineCatmullRom(river, 5, 5.0f, Fade(SUN_CORE, 0.7f * alpha));
+  }
+
+  for (int i = 0; i < 22; i++) {
+    float depth = 0.18f + (i % 3) * 0.04f;
+    float x = wrapf(31.0f + i * 83.0f + sinf(i * 2.1f) * 23.0f,
+                    SCREEN_WIDTH + 40.0f) -
+              20.0f;
+    float y = wrapf(i * 67.0f - (float)GetTime() * (18.0f + i % 4 * 4.0f) -
+                        cameraY * depth,
+                    SCREEN_HEIGHT + 100.0f) -
+              50.0f;
+    float r = 1.2f + (i % 3) * 0.65f;
+    DrawLineEx((Vector2){x, y + 7.0f}, (Vector2){x, y}, 1.2f,
+               Fade(COIN_LO, 0.24f * alpha));
+    DrawCircle(x, y, r, Fade(i % 4 ? FLAME : SUN_CORE, 0.58f * alpha));
+  }
+}
+
 static void drawGardenSprout(float x, float y, float h, float alpha) {
   float sway = sinf((float)GetTime() * 1.8f + x * 0.03f) * h * 0.08f;
   Color stem = Fade(GRASS_DK, alpha);
@@ -688,65 +759,108 @@ static void drawGardenMid(float cameraY, float alpha) {
   }
 }
 
-// Blocks -> Garden: falling cells first lock into a flat horizon, then soften
-// onto the incoming mountain ridge. One bright grid cell rounds and grows into
-// the new sun, while a faint predawn ribbon preserves light across the change.
-static void drawRebootFar(float cameraY, float t) {
-  if (t <= 0.0f) {
+// Blocks -> Magma: rigid grid lines sag into glowing drips while the falling
+// cells soften, redden, and collect along the forge's molten horizon.
+static void drawMeltdownFar(float cameraY, float t) {
+  float alpha = bridgeBell(t);
+  if (alpha <= 0.01f) {
     return;
   }
-  float round = easedWindow(t, 0.18f, 0.92f);
-  float gridX = floorf(SUN_X / 44.0f) * 44.0f + 22.0f;
-  float gridY = floorf(SUN_Y / 44.0f) * 44.0f + 22.0f;
-  float cellX = gridX + (SUN_X - gridX) * round;
-  float cellY = gridY + (SUN_Y - gridY) * round;
-  float cell = 22.0f - 6.0f * round;
-  float cellIn = easedWindow(t, 0.0f, 0.12f);
-  if (round < 0.999f) {
-    drawBlockC(cellX - cell * 0.5f, cellY - cell * 0.5f, cell,
-               ColorLerp(CLOUD, SUN_CORE, round), cellIn * (1.0f - round));
+  float sag = easedWindow(t, 0.08f, 0.88f);
+  BeginBlendMode(BLEND_ADDITIVE);
+  drawTex(TEX_PUFF, SCREEN_WIDTH * 0.5f, 505.0f, 580.0f, 190.0f, 0.0f,
+          Fade(SUN, 0.16f * alpha));
+  EndBlendMode();
+  for (int i = 0; i < 10; i++) {
+    float x = 38.0f + i * 81.0f;
+    float depth = 0.12f + (i % 3) * 0.04f;
+    float drift = sinf(i * 1.9f - cameraY * depth * 0.003f) * 18.0f * sag;
+    Vector2 drip[] = {{x, -20.0f},
+                      {x, 145.0f + i % 2 * 35.0f},
+                      {x + drift * 0.45f, 315.0f + i % 3 * 24.0f},
+                      {x + drift, 475.0f + i % 2 * 31.0f}};
+    Color c = ColorLerp(CLOUD, COIN_LO, sag);
+    DrawSplineCatmullRom(drip, 4, 1.0f + 3.0f * sag,
+                         Fade(c, (0.16f + 0.3f * sag) * alpha));
+    DrawCircleV(drip[3], 2.0f + 5.0f * sag,
+                Fade(ColorLerp(c, SUN_CORE, 0.35f), 0.62f * alpha));
   }
-  drawCelestial(11.0f + (GARDEN_SUN_R - 11.0f) * round, 0.0f, round);
+}
+
+static void drawMeltdownMid(float cameraY, float t) {
+  float alpha = bridgeBell(t);
+  if (alpha <= 0.01f) {
+    return;
+  }
+  float melt = easedWindow(t, 0.12f, 0.9f);
+  for (int i = 0; i < 12; i++) {
+    float depth = 0.25f + (i % 3) * 0.08f;
+    float x =
+        wrapf(i * 137.0f + (i % 2) * 41.0f, SCREEN_WIDTH + 100.0f) - 50.0f;
+    float falling =
+        wrapf(i * 109.0f + (float)GetTime() * 18.0f - cameraY * depth,
+              SCREEN_HEIGHT + 180.0f) -
+        90.0f;
+    float pool = 540.0f + (i % 4) * 67.0f;
+    float y = falling + (pool - falling) * melt;
+    float size = 16.0f - 7.0f * melt;
+    Color c = ColorLerp(gTheme.confetti[i % CONFETTI_COUNT], FLAME, melt);
+    DrawRectangleRounded((Rectangle){x - size * 0.5f, y - size * 0.5f, size,
+                                     size + 10.0f * melt},
+                         0.08f + 0.92f * melt, 6, Fade(c, 0.68f * alpha));
+    if (melt > 0.28f) {
+      DrawCircle(x + sinf(i * 2.3f) * 8.0f * melt, y + size + 8.0f * melt,
+                 2.0f + 3.0f * melt, Fade(SUN_CORE, alpha * melt));
+    }
+  }
+}
+
+// Magma -> Garden: the lava crust locks into a dark ridge, then softens into
+// mineral-rich soil while clearing ash reveals the Garden's compact sunrise.
+static void drawFertileFar(float cameraY, float t) {
+  float clear = easedWindow(t, 0.18f, 0.92f);
+  drawCelestial(12.0f + (GARDEN_SUN_R - 12.0f) * clear, 0.0f, clear);
 
   float alpha = bridgeBell(t);
   if (alpha <= 0.01f) {
     return;
   }
-  float lock = easedWindow(t, 0.08f, 0.56f);
-  float soften = easedWindow(t, 0.42f, 0.94f);
+  float cool = easedWindow(t, 0.08f, 0.78f);
+  float soften = easedWindow(t, 0.4f, 0.94f);
   Vector2 ridge[11];
   for (int i = 0; i < 11; i++) {
     float x = -20.0f + i * 84.0f;
-    float depth = 0.18f + (i % 3) * 0.04f;
-    float falling =
-        wrapf(70.0f + i * 107.0f + (float)GetTime() * 18.0f - cameraY * depth,
-              SCREEN_HEIGHT + 180.0f) -
-        90.0f;
-    float horizon = 440.0f + (i % 2) * 3.0f;
+    float moltenY = 512.0f + sinf(i * 1.7f - cameraY * 0.001f) * 17.0f;
     float mountain = ridgeY(x, 465.0f, 92.0f, 90.0f, 0.88f);
-    float target = horizon + (mountain - horizon) * soften;
-    float y = falling + (target - falling) * lock;
-    Color c = ColorLerp(gTheme.confetti[i % CONFETTI_COUNT], GRASS_DK, soften);
-    drawBlockC(x - 8.0f, y - 8.0f, 16.0f, c, alpha * (0.72f - 0.34f * soften));
-    ridge[i] = (Vector2){x, target};
+    float y = moltenY + (mountain - moltenY) * soften;
+    float w = 26.0f - 9.0f * soften;
+    Color rock = ColorLerp(CLOUD_SHADE, GRASS_DK, soften);
+    DrawRectangleRounded((Rectangle){x - w * 0.5f, y - 7.0f, w, 14.0f},
+                         0.85f - 0.55f * soften, 6, Fade(rock, 0.68f * alpha));
+    DrawLineEx(
+        (Vector2){x - w * 0.35f, y - 2.0f}, (Vector2){x + w * 0.35f, y + 1.0f},
+        2.5f,
+        Fade(ColorLerp(COIN_LO, GRASS, cool), (1.0f - 0.55f * cool) * alpha));
+    ridge[i] = (Vector2){x, y};
   }
-  DrawSplineCatmullRom(ridge, 11, 4.0f - 1.5f * soften,
-                       Fade(ColorLerp(CLOUD, GRASS_DK, soften), 0.5f * alpha));
+  DrawSplineCatmullRom(
+      ridge, 11, 4.0f - 1.5f * soften,
+      Fade(ColorLerp(CLOUD_SHADE, GRASS_DK, soften), 0.55f * alpha));
 
-  Vector2 aurora[] = {{-40.0f, 270.0f},
-                      {190.0f, 210.0f},
-                      {430.0f, 255.0f},
-                      {670.0f, 190.0f},
-                      {840.0f, 235.0f}};
-  DrawSplineCatmullRom(aurora, 5, 18.0f - 10.0f * t,
-                       Fade(ColorLerp(CLOUD, SUN, 0.45f), 0.12f * alpha));
-  DrawSplineCatmullRom(aurora, 5, 3.0f, Fade(SUN_CORE, 0.2f * alpha));
+  Vector2 steam[] = {{-40.0f, 285.0f},
+                     {190.0f, 215.0f},
+                     {430.0f, 260.0f},
+                     {670.0f, 195.0f},
+                     {840.0f, 235.0f}};
+  DrawSplineCatmullRom(steam, 5, 16.0f - 9.0f * t,
+                       Fade(ColorLerp(CLOUD, SKY_BOT, clear), 0.11f * alpha));
+  DrawSplineCatmullRom(steam, 5, 2.5f,
+                       Fade(ColorLerp(SUN_CORE, CLOUD, clear), 0.2f * alpha));
 }
 
-// Settled cell rows flatten and widen into patchwork fields. A straight well
-// line bends into the river while loose pixels round into rising seeds and
-// tiny sprouts, changing motion only after the blocks have come to rest.
-static void drawRebootMid(float cameraY, float t) {
+// Cooling basalt shelves widen into patchwork fields. Molten channels bend
+// into the river while rising embers round into seeds and tiny sprouts.
+static void drawFertileMid(float cameraY, float t) {
   float alpha = bridgeBell(t);
   if (alpha <= 0.01f) {
     return;
@@ -755,21 +869,18 @@ static void drawRebootMid(float cameraY, float t) {
   float organic = easedWindow(t, 0.40f, 0.94f);
   static const float BAND_Y[] = {560.0f, 635.0f, 705.0f};
   for (int i = 0; i < 12; i++) {
-    float depth = 0.28f + (i % 3) * 0.05f;
-    float falling =
-        wrapf(i * 127.0f + (float)GetTime() * (18.0f * depth) - cameraY * depth,
-              SCREEN_HEIGHT + 180.0f) -
-        90.0f;
+    float molten =
+        565.0f + (i / 4) * 72.0f + sinf(i * 1.7f - cameraY * 0.001f) * 18.0f;
     float targetX = 45.0f + (i % 4) * 235.0f + (i / 4) * 24.0f;
     float targetY = BAND_Y[i / 4] + sinf(i * 1.7f) * 12.0f;
     float startX = wrapf(i * 151.0f, SCREEN_WIDTH + 80.0f) - 40.0f;
     float x = startX + (targetX - startX) * settle;
-    float y = falling + (targetY - falling) * settle;
+    float y = molten + (targetY - molten) * settle;
     float w = 18.0f + (62.0f + (i % 3) * 14.0f) * organic;
     float h = 18.0f + 14.0f * organic;
     Color field = (i / 4 == 1) ? ColorLerp(GRASS, COIN_HI, 0.16f)
                                : (i / 4 == 0 ? GRASS : GRASS_DK);
-    Color c = ColorLerp(gTheme.confetti[i % CONFETTI_COUNT], field, organic);
+    Color c = ColorLerp(i % 3 ? COIN_LO : FLAME, field, organic);
     DrawRectangleRounded((Rectangle){x - w * 0.5f, y - h * 0.5f, w, h},
                          0.08f + 0.72f * organic, 6, Fade(c, 0.5f * alpha));
     DrawRectangle(x - w * 0.42f, y - h * 0.34f, w * 0.84f,
@@ -785,9 +896,9 @@ static void drawRebootMid(float cameraY, float t) {
                   RIVER_GRID[i].y + (RIVER[i].y - RIVER_GRID[i].y) * bend};
   }
   DrawSplineCatmullRom(water, RIVER_POINTS, 9.0f + 8.0f * bend,
-                       Fade(ColorLerp(CLOUD, SKY_BOT, bend), 0.38f * alpha));
+                       Fade(ColorLerp(COIN_LO, SKY_BOT, bend), 0.44f * alpha));
   DrawSplineCatmullRom(water, RIVER_POINTS, 2.5f,
-                       Fade(SUN_CORE, 0.48f * alpha));
+                       Fade(ColorLerp(SUN_CORE, CLOUD, bend), 0.52f * alpha));
 
   float sprout = easedWindow(t, 0.54f, 0.96f);
   for (int i = 0; i < 14; i++) {
@@ -806,7 +917,7 @@ static void drawRebootMid(float cameraY, float t) {
         50.0f;
     float x = startX + (seedX - startX) * sprout;
     float y = startY + (seedY - startY) * sprout;
-    Color c = ColorLerp(gTheme.confetti[i % CONFETTI_COUNT], SUN_CORE, sprout);
+    Color c = ColorLerp(i % 3 ? FLAME : COIN_HI, SUN_CORE, sprout);
     DrawRectangle(x - 2.5f, y - 2.5f, 5.0f * (1.0f - sprout),
                   5.0f * (1.0f - sprout), Fade(c, 0.5f * alpha));
     DrawCircle(x, y, 1.2f + 1.0f * sprout, Fade(c, 0.55f * alpha * sprout));
@@ -1098,6 +1209,28 @@ static void drawBlocksForeground(float cameraY, float alpha) {
   }
 }
 
+static void drawMagmaForeground(float cameraY, float alpha) {
+  for (int side = 0; side < 2; side++) {
+    float edge = side ? SCREEN_WIDTH + 16.0f : -16.0f;
+    float inward = side ? -1.0f : 1.0f;
+    for (int i = 0; i < 4; i++) {
+      float y = wrapf(i * 229.0f - cameraY * (0.6f + i * 0.035f),
+                      SCREEN_HEIGHT + 240.0f) -
+                120.0f;
+      float r = 42.0f + (i % 2) * 12.0f;
+      Color rock = ColorLerp(CLOUD_SHADE, SKY_TOP_HIGH, 0.35f);
+      DrawPoly((Vector2){edge, y}, 7, r, side ? 18.0f : -18.0f,
+               Fade(rock, 0.68f * alpha));
+      Vector2 a = {edge + inward * r * 0.18f, y - r * 0.55f};
+      Vector2 b = {edge + inward * r * 0.58f, y - r * 0.08f};
+      Vector2 c = {edge + inward * r * 0.28f, y + r * 0.5f};
+      DrawLineEx(a, b, 3.0f, Fade(COIN_LO, 0.42f * alpha));
+      DrawLineEx(b, c, 2.2f, Fade(SUN_CORE, 0.3f * alpha));
+      DrawCircle(b.x, b.y, 3.0f, Fade(FLAME, 0.46f * alpha));
+    }
+  }
+}
+
 static void drawGardenForeground(float cameraY, float alpha) {
   for (int side = 0; side < 2; side++) {
     float x = side ? SCREEN_WIDTH - 20.0f : -22.0f;
@@ -1134,6 +1267,9 @@ static void drawBackdropFar(BackdropStyle style, float cameraY, float alpha,
   case BACKDROP_BLOCKS:
     drawBlocksFar(cameraY, alpha);
     break;
+  case BACKDROP_MAGMA:
+    drawMagmaFar(cameraY, alpha);
+    break;
   case BACKDROP_GARDEN:
     drawGardenFar(cameraY, alpha, omitDisc);
     break;
@@ -1160,6 +1296,9 @@ static void drawBackdropMid(BackdropStyle style, float cameraY, float alpha,
     break;
   case BACKDROP_BLOCKS:
     drawBlocksMid(cameraY, alpha);
+    break;
+  case BACKDROP_MAGMA:
+    drawMagmaMid(cameraY, alpha);
     break;
   case BACKDROP_GARDEN:
     drawGardenMid(cameraY, alpha);
@@ -1191,6 +1330,9 @@ static void drawForeground(BackdropStyle style, float cameraY, float alpha,
   case BACKDROP_BLOCKS:
     drawBlocksForeground(cameraY, alpha);
     break;
+  case BACKDROP_MAGMA:
+    drawMagmaForeground(cameraY, alpha);
+    break;
   case BACKDROP_GARDEN:
     drawGardenForeground(cameraY, alpha);
     break;
@@ -1202,8 +1344,10 @@ static void drawBridgeFar(BridgeStyle bridge, float cameraY, float t) {
     drawTwilightDisc(t);
   } else if (bridge == BRIDGE_SIGNAL) {
     drawSignalFar(cameraY, t);
-  } else if (bridge == BRIDGE_REBOOT) {
-    drawRebootFar(cameraY, t);
+  } else if (bridge == BRIDGE_MELTDOWN) {
+    drawMeltdownFar(cameraY, t);
+  } else if (bridge == BRIDGE_FERTILE) {
+    drawFertileFar(cameraY, t);
   } else if (bridge == BRIDGE_BLOOM) {
     drawBloomFar(t);
   }
@@ -1218,8 +1362,10 @@ static void drawBridgeMid(BridgeStyle bridge, float cameraY, float t) {
     drawSignalMid(cameraY, t);
   } else if (bridge == BRIDGE_FRAGMENTATION) {
     drawFragmentBridge(cameraY, t);
-  } else if (bridge == BRIDGE_REBOOT) {
-    drawRebootMid(cameraY, t);
+  } else if (bridge == BRIDGE_MELTDOWN) {
+    drawMeltdownMid(cameraY, t);
+  } else if (bridge == BRIDGE_FERTILE) {
+    drawFertileMid(cameraY, t);
   } else if (bridge == BRIDGE_BLOOM) {
     drawBloomMid(cameraY, t);
   }
@@ -1259,7 +1405,8 @@ void drawGameBackground(float cameraY) {
   float mid = easedWindow(sample.phase, MID_START, MID_END);
   BridgeStyle bridge = THEMES[sample.era].bridge;
   int omitDisc = bridge == BRIDGE_TWILIGHT || bridge == BRIDGE_SIGNAL ||
-                 bridge == BRIDGE_REBOOT || bridge == BRIDGE_BLOOM;
+                 bridge == BRIDGE_MELTDOWN || bridge == BRIDGE_FERTILE ||
+                 bridge == BRIDGE_BLOOM;
   float farSink = bridge == BRIDGE_CLOUDLINE ? far * 170.0f : 0.0f;
   float midSink = bridge == BRIDGE_CLOUDLINE ? mid * 230.0f : 0.0f;
 
@@ -1284,9 +1431,9 @@ void drawGameForeground(float cameraY) {
 }
 
 #ifdef BG_SELFTEST
-// Transition contact matrix of every outgoing edge, including Blocks -> Garden
-// and the Garden -> Hills wrap. Rows follow THEMES[] order. Columns are the
-// boundary at .000, phases .700, .780, .840, .900, .960, .995, and finally
+// Transition contact matrix of every outgoing edge, including Blocks -> Magma,
+// Magma -> Garden, and the Garden -> Hills wrap. Rows follow THEMES[] order.
+// Columns sample .000, .700, .780, .840, .900, .960, .995, and finally
 // the next era at phase .005.
 // Every cell includes the foreground depth pass. This needs a real GL context
 // because it renders the actual draw path.
